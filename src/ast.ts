@@ -10,7 +10,7 @@ export type Expr =
   // Core-language list support (phase 12): the whole list {name::*}
   // as a value (its entries in iteration order), and its size.
   | { kind: "variableList"; name: string }
-  | { kind: "listSize"; list: ListExpr }
+  | { kind: "listSize"; list: AnyListExpr }
   // Loop expressions (phase 12): the element a list loop is
   // visiting (in times/range loops, the current number; in player
   // loops, the player), and the index of a list loop (a number or
@@ -57,7 +57,20 @@ export type Expr =
   // Core-language arithmetic (phase 11): a binary operation over two
   // expressions. "+" also concatenates when both operands are texts;
   // "mod" is the mathematical remainder (Skript's mod() function).
-  | { kind: "arith"; op: ArithOp; left: Expr; right: Expr };
+  | { kind: "arith"; op: ArithOp; left: Expr; right: Expr }
+  // Core-language local variables (phase 13): {_name} / {_name::%i%}
+  // and the whole local list {_name::*}. Locals live in the current
+  // trigger's frame — every event/command body has one, and every
+  // function call gets a fresh one (function parameters ARE locals,
+  // bound by name). Verified against the real Skript 2.17.1: frames
+  // are isolated in both directions and fresh on every call.
+  | { kind: "localVariable"; name: string; index?: Expr }
+  | { kind: "localVariableList"; name: string }
+  // Core-language function call (phase 13): invoke a function made
+  // with defineFunction and use its return value. Skript resolves
+  // calls by signature at parse time; the engine resolves by the
+  // runtime types of the argument values (see README).
+  | { kind: "functionCall"; name: string; args: readonly Expr[] };
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
@@ -95,6 +108,48 @@ export type VariableExpr = Extract<Expr, { kind: "variable" }>;
 /** Represents a whole-list variable expression ({name::*}). */
 export type ListExpr = Extract<Expr, { kind: "variableList" }>;
 
+/** Represents a local variable expression ({_name}). */
+export type LocalVariableExpr = Extract<Expr, { kind: "localVariable" }>;
+
+/** Represents a whole local-list variable expression ({_name::*}). */
+export type LocalListExpr = Extract<Expr, { kind: "localVariableList" }>;
+
+/** Any scalar variable expression: a global variable or a local one. */
+export type ScalarVarExpr = VariableExpr | LocalVariableExpr;
+
+/** Any whole-list variable expression: a global list or a local one. */
+export type AnyListExpr = ListExpr | LocalListExpr;
+
+/** Anything a set/delete statement can target: a scalar or a whole list, global or local. */
+export type VarTarget = ScalarVarExpr | AnyListExpr;
+
+/**
+ * A Skript type name for function parameters and return types
+ * (phase 13). The plural forms ("numbers", "objects", ...) take /
+ * return lists of the singular type; "object" accepts any single
+ * value and "objects" any list.
+ */
+export type FunctionTypeName =
+  | "number" | "numbers"
+  | "text" | "texts"
+  | "boolean" | "booleans"
+  | "player" | "players"
+  | "location" | "locations"
+  | "object" | "objects";
+
+/**
+ * One declared parameter of a custom function. The parameter is a
+ * local variable of the function's frame, named after the
+ * parameter; `default` is an expression evaluated at call time
+ * (before any parameter is bound — defaults can see globals, not
+ * the arguments) and used only when the argument is omitted.
+ */
+export interface FunctionParam {
+  name: string;
+  type: FunctionTypeName;
+  default?: Expr;
+}
+
 /** Represents a wait duration unit (phase 12). */
 export type TimeUnit = "ticks" | "seconds" | "minutes";
 
@@ -103,14 +158,29 @@ export interface SourceLoc { file: string; line: number; column: number }
 
 /** Represents a Skript statement. */
 export type Stmt =
-  | { kind: "send"; target: Expr; message: TextExpr; loc?: SourceLoc }
-  | { kind: "broadcast"; message: TextExpr; loc?: SourceLoc }
+  // The message of send / broadcast is any expression (phase 13
+  // widened it from text-only): Skript's send effect takes
+  // %objects%, so a function call or a variable can be sent
+  // directly; string/format expressions still emit as quoted text.
+  | { kind: "send"; target: Expr; message: Expr; loc?: SourceLoc }
+  | { kind: "broadcast"; message: Expr; loc?: SourceLoc }
   | { kind: "give"; target: Expr; itemName: string; amount: number; loc?: SourceLoc }
   | { kind: "teleport"; target: Expr; location: Expr; loc?: SourceLoc }
-  | { kind: "setVar"; variable: VariableExpr; value: Expr; loc?: SourceLoc }
-  | { kind: "addVar"; variable: VariableExpr; value: Expr; loc?: SourceLoc }
+  | { kind: "setVar"; variable: VarTarget; value: Expr; loc?: SourceLoc }
+  | { kind: "addVar"; variable: ScalarVarExpr; value: Expr; loc?: SourceLoc }
   | { kind: "if"; cond: Cond; then: readonly Stmt[]; else?: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "loopPlayers"; body: readonly Stmt[]; loc?: SourceLoc }
+  // Core-language function statements (phase 13). return carries a
+  // value (Skript has no bare return — that is a parse error there;
+  // a value function that never returns yields no value) and exits
+  // the function immediately, from inside loops too. stop emits
+  // Skript's `stop`: it ends the current trigger — in a function,
+  // the call completes with no value; anywhere else, the rest of
+  // the trigger is skipped. callStmt invokes a function for its
+  // effects and discards any return value.
+  | { kind: "return"; value: Expr; loc?: SourceLoc }
+  | { kind: "stop"; loc?: SourceLoc }
+  | { kind: "callStmt"; name: string; args: readonly Expr[]; loc?: SourceLoc }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration
@@ -119,10 +189,10 @@ export type Stmt =
   // loopIndex); while accepts leaf conditions only (the builder
   // enforces it — a while head has no control-flow lowering);
   // wait suspends the rest of the trigger for the duration.
-  | { kind: "listAdd"; list: ListExpr; value: Expr; loc?: SourceLoc }
-  | { kind: "listRemove"; list: ListExpr; value: Expr; loc?: SourceLoc }
-  | { kind: "deleteVar"; target: VariableExpr | ListExpr; loc?: SourceLoc }
-  | { kind: "loopList"; list: ListExpr; body: readonly Stmt[]; loc?: SourceLoc }
+  | { kind: "listAdd"; list: AnyListExpr; value: Expr; loc?: SourceLoc }
+  | { kind: "listRemove"; list: AnyListExpr; value: Expr; loc?: SourceLoc }
+  | { kind: "deleteVar"; target: VarTarget; loc?: SourceLoc }
+  | { kind: "loopList"; list: AnyListExpr; body: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "loopTimes"; count: Expr; body: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "loopRange"; from: Expr; to: Expr; body: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "while"; cond: Cond; body: readonly Stmt[]; loc?: SourceLoc }
@@ -175,7 +245,12 @@ export type TopLevel =
   // `prefixes` is set only for the papiRequest event (phase 10): the
   // PlaceholderAPI expansion identifiers this handler serves.
   | { kind: "event"; event: EventKind; body: readonly Stmt[]; prefixes?: readonly string[]; loc?: SourceLoc }
-  | { kind: "command"; name: string; argType: CommandArgType | null; argOptional: boolean; body: readonly Stmt[]; loc?: SourceLoc };
+  | { kind: "command"; name: string; argType: CommandArgType | null; argOptional: boolean; body: readonly Stmt[]; loc?: SourceLoc }
+  // A custom function (phase 13). `returnType` is null for a void
+  // function (no `:: type` in the .sk form). Functions are global:
+  // they can be called from any script, before or after their
+  // definition in file order (verified against the real Skript).
+  | { kind: "function"; name: string; params: readonly FunctionParam[]; returnType: FunctionTypeName | null; body: readonly Stmt[]; loc?: SourceLoc };
 
 /** Represents a Skript script. */
 export interface Script { kind: "script"; body: readonly TopLevel[] }

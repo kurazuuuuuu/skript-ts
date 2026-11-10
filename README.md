@@ -82,8 +82,8 @@ section.
 ### Effects (statements)
 | TypeScript | Skript |
 | --- | --- |
-| `send(target, text)` | `send "<text>" to <target>` |
-| `broadcast(text)` | `broadcast "<text>"` |
+| `send(target, message)` | `send "<text>" to <target>` (any expression; text emits quoted, other expressions bare) |
+| `broadcast(message)` | `broadcast "<text>"` (any expression) |
 | `give(target, itemName, amount)` | `give <amount> <item> to <target>` |
 | `teleport(target, location)` | `teleport <target> to <location>` |
 | `set(variable, value)` | `set {var} to <value>` |
@@ -98,6 +98,9 @@ section.
 | `loopRange(from, to, body)` | `loop numbers from <a> to <b>:` |
 | `whileLoop(cond, body)` | `while <cond>:` (leaf conditions only, see below) |
 | `wait(amount, unit)` | `wait <n> ticks` / `seconds` / `minutes` |
+| `returnValue(value)` | `return <value>` (inside `defineFunction`) |
+| `stopTrigger()` | `stop` (early exit from a trigger or function) |
+| `callStmt(name, ...args)` | `<name>(<args>)` as a bare statement |
 
 ### Expressions
 | TypeScript | value position | inside a string |
@@ -111,6 +114,9 @@ section.
 | `variable(name)` | `{name}` | `%{name}%` |
 | `variable(name, index)` | `{name::%<index>%}` | `%{name::%<index>%}%` |
 | `listVar(name)` | `{name::*}` | `%{name::*}%` |
+| `localVar(name)` / `localVar(name, index)` | `{_name}` / `{_name::%<index>%}` | `%{_name}%` |
+| `localList(name)` | `{_name::*}` | `%{_name::*}%` |
+| `call(name, ...args)` | `<name>(<args>)` | `%<name>(<args>)%` |
 | `listSize(list)` | `size of {name::*}` | `%size of {name::*}%` |
 | `loopValue()` | `loop-value` | `%loop-value%` |
 | `loopIndex()` | `loop-index` | `%loop-index%` |
@@ -127,13 +133,19 @@ operands must both be numbers, except that `+` over two texts
 concatenates them — `"5" + "6"` is the text `"56"`, never `11`.
 Every other type combination (a text and a number, in either
 order) yields *no value*: not an error, just an absent result.
-Division is real division and follows doubles at zero (`1 / 0`
-is Infinity). Emission always parenthesizes, so the emitted tree
-does not depend on Skript's own precedence. The remainder is
-Skript's `mod()` function (there is no infix remainder operator
-in Skript): the mathematical modulo, whose result takes the
-divisor's sign — `mod(-1, 10)` is `9` — and NaN for a zero
-divisor.
+A *missing* operand is different from a wrong-typed one (pinned
+down by the phase-13 probes): for the four infix operators it
+counts as 0 when the other side is a number — an unset variable
+`+ 100` is `100`, `* 2` is `0`, `5 /` unset is Infinity — while
+a text or boolean partner, or both sides missing, yields no
+value. Division is real division and follows doubles at zero
+(`1 / 0` is Infinity). Emission always parenthesizes, so the
+emitted tree does not depend on Skript's own precedence. The
+remainder is Skript's `mod()` function (there is no infix
+remainder operator in Skript): the mathematical modulo, whose
+result takes the divisor's sign — `mod(-1, 10)` is `9` — and
+NaN for a zero divisor; `mod()` never substitutes 0 for a
+missing operand (a missing operand makes it valueless).
 
 Note: in `on death` events there is **no** `player` — Skript rejects it
 ("There's no player in an on death event"). Use `victim()` for the player
@@ -230,6 +242,84 @@ duration, in order. In Skript this is the runtime's own delay
 behavior; the engine implements the same continuation semantics
 on the Bukkit scheduler. Amounts may be fractional (`wait 0.5
 seconds`); units are `ticks`, `seconds` and `minutes`.
+
+### Custom functions
+
+`defineFunction(name, params, returnType, body)` defines a
+function; `param(name, type, default?)` declares a parameter.
+Types are `number`, `text`, `boolean`, `player`, `location`,
+`object` and their plurals (`numbers`, `texts`, ...). A plural
+parameter must be last, and at most one is allowed (the builder
+enforces both). `returnType` is one of the same type names, or
+`null` for a void function. Inside the body, parameters and
+locals are `localVar(name)` / `localList(name)` (`{_name}`,
+`{_name::*}`); `returnValue(v)` returns, `stopTrigger()` exits
+early, `call(name, ...args)` calls as an expression and
+`callStmt(name, ...args)` as a statement. Definitions emit as
+Skript `function` sections; the engine registers them from the
+IR. Functions are core language — the same script runs under
+both runtimes.
+
+Semantics (verified against the real Skript 2.17.1 with probe
+scripts, in value and string positions alike):
+
+- **Resolution is by signature.** Definition order and file
+  order do not matter — a function can be called before its
+  definition, across files too. Names are **case-sensitive**.
+  Overloads (same name, different parameter types) dispatch by
+  the argument types. Skript resolves statically, at parse time:
+  a wrong arity, a wrongly-typed literal, or an overload called
+  through an untyped variable is a parse error there. The engine
+  resolves at runtime by the argument values' types (exact-type
+  parameters beat `object`); the observable behavior agrees for
+  every program whose argument types are statically known.
+- **No conversions.** A value whose runtime type does not match
+  its parameter — including a numeric text like `"5"` passed to
+  a `number` parameter — is not converted: the parameter is
+  simply left unset and the body still runs. (What happens next
+  is the body's own semantics: arithmetic over the unset
+  parameter applies the missing-operand rule above.) A missing
+  value passed explicitly does the same and does **not** trigger
+  the parameter's default.
+- **Defaults** apply only to omitted trailing arguments. They
+  are arbitrary expressions, evaluated at call time *before* any
+  parameter is bound: they can read globals, but they cannot see
+  the arguments.
+- **Locals are a fresh frame per call**, isolated in both
+  directions: a function cannot see its caller's `{_x}`, and its
+  own writes never leak back. Nested calls and recursion (which
+  works) each get their own frame; globals are shared normally.
+  Local lists work like global ones. Function bodies have **no
+  event context** — under Skript, `player` inside a function is
+  a parse error; the engine's call frames likewise start blank.
+- **Return discipline.** `return` requires a value (a bare
+  `return` is a parse error under Skript; use `stopTrigger()`).
+  A returned value whose runtime type mismatches the declared
+  return type makes the call yield *no value*. A value function
+  that never returns also yields no value. A plural return type
+  wraps a single value into a one-element list and drops
+  mismatched elements; assigning a multi-value result to a
+  scalar variable yields no value. Whole-list assignment
+  (`set(localList("a"), someList)`) replaces the target and
+  renumbers to 1..n in iteration order.
+- **Plural parameters** accept spread values (`f(1, 2, 3)`), a
+  whole list (`f({list::*})`), or a single value; inside, the
+  parameter is the local list `{_name::*}`. Calling with zero
+  values for a plural parameter does not resolve.
+- **A `wait` inside a function detaches the call**: the caller
+  resumes the moment the wait starts, a call used as an
+  expression yields no value, and the rest of the body continues
+  on its own after the delay. A `return` after a wait is a
+  **load error** under Skript ("A return statement after a delay
+  is useless..."), so loadable programs never contain one; the
+  engine accepts the shape and drops the value — the same net
+  semantics.
+
+`examples/functions.ts` exercises all of this (a recursive
+factorial, defaults, overloads, a plural-parameter sum over a
+list-returning function, the mismatch and scope demos, the
+detaching wait), and `examples/behavior/functions.behavior.ts`
+asserts the identical expectations under both runtimes.
 
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal

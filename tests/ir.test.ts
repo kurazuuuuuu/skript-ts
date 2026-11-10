@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { emitIr, toIr } from "../src/index.js";
+import { isEngineOnlyScript } from "../src/ir.js";
 import { welcomeScript } from "../examples/welcome.js";
 import { kitScript } from "../examples/kit.js";
 import { chatLogScript } from "../examples/chatlog.js";
 import { deathScript } from "../examples/death.js";
 import { spawnScript } from "../examples/spawn.js";
+import { functionsScript } from "../examples/functions.js";
 
 const examples = [
   ["welcome", welcomeScript],
@@ -35,6 +37,16 @@ describe("toIr / emitIr", () => {
     for (const [, prog] of examples) {
       expect(containsKey(toIr(prog), "loc")).toBe(false);
     }
+  });
+
+  it("custom functions are core language, not engine-only (phase 13)", () => {
+    expect(isEngineOnlyScript(functionsScript)).toBe(false);
+    const parsed = JSON.parse(emitIr(functionsScript)) as {
+      body: { kind: string; name?: string }[];
+    };
+    const defs = parsed.body.filter((t) => t.kind === "function");
+    expect(defs.map((t) => t.name)).toContain("fact");
+    expect(defs.map((t) => t.name)).toContain("sumAll");
   });
 
   it("keeps the node kinds the engine dispatches on", () => {

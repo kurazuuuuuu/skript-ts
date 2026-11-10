@@ -12,6 +12,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -71,8 +72,36 @@ import java.util.logging.Logger;
  * conditions, and wait — which suspends the rest of the trigger
  * through the continuation-based executor below, matching the
  * timed behavior probed against the real Skript.
+ * Phase 13 adds core-language custom functions (no addon scope):
+ * user-defined functions with typed parameters (defaults, one
+ * trailing plural parameter), return values with declared types,
+ * and local variables. Every trigger execution and every function
+ * call runs in a Frame: locals ({_name}, function parameters
+ * included) live in the frame's own map, isolated from other
+ * frames and fresh per call, while globals stay in the variable
+ * store — probed against the real Skript 2.17.1 over six rounds
+ * (see the project development log), including the wait rule: a
+ * wait inside a function resumes the caller immediately with no
+ * value, the rest of the body runs detached, and its return is
+ * dropped.
  */
 final class Engine {
+
+    /**
+     * One execution frame (phase 13): the local variables of one
+     * trigger body or one function call, plus the return state.
+     * Frames are shared by every nested block and loop iteration of
+     * the same body (locals are body-scoped, as in Skript), and a
+     * function call always runs in a fresh frame — locals never
+     * leak between callers and callees or between calls. `returned`
+     * is set by the return and stop statements; once set, the
+     * statement chain unwinds without running any continuation.
+     */
+    static final class Frame {
+        final Map<String, Object> locals = new LinkedHashMap<>();
+        boolean returned;
+        Object returnValue;
+    }
 
     /** Execution context: the entities and data the running code is attached to. */
     static final class Ctx {
@@ -91,6 +120,7 @@ final class Engine {
         String papiResult;  // answer set by the set-result statement (read back after dispatch)
         String argType;     // command argument type ("text"/"player"/"integer") or null
         String[] rawArgs = new String[0];
+        Frame frame = new Frame(); // locals + return state of the running body
 
         Ctx copy() {
             Ctx c = new Ctx();
@@ -109,6 +139,7 @@ final class Engine {
             c.papiResult = papiResult;
             c.argType = argType;
             c.rawArgs = rawArgs;
+            c.frame = frame;
             return c;
         }
     }
@@ -162,6 +193,8 @@ final class Engine {
     private final Variables variables;
     private final Logger logger;
     private List<Map<String, Object>> topLevels = List.of();
+    /** Custom functions (phase 13) by exact, case-sensitive name; overloads share a name. */
+    private Map<String, List<Map<String, Object>>> functions = Map.of();
     private WsHost wsHost;
     private TimerHost timerHost;
     private DelayHost delayHost;
@@ -217,9 +250,84 @@ final class Engine {
         this.files = files;
     }
 
+    /**
+     * A key/value store view over one variable space (phase 13):
+     * the persistent global variables, or one frame's locals. Both
+     * use the same key shape ("name" or "name::index"), so scalar
+     * and list operations are written once against this interface.
+     * Setting a null value removes the key.
+     */
+    private interface Store {
+        Object get(String key);
+        void set(String key, Object value);
+        List<String> keysWithPrefix(String prefix);
+        void removePrefix(String prefix);
+    }
+
+    /** The store of the persistent global variables. */
+    private Store globalStore() {
+        return new Store() {
+            @Override public Object get(String key) { return variables.get(key); }
+            @Override public void set(String key, Object value) { variables.set(key, value); }
+            @Override public List<String> keysWithPrefix(String prefix) { return variables.keysWithPrefix(prefix); }
+            @Override public void removePrefix(String prefix) { variables.removePrefix(prefix); }
+        };
+    }
+
+    /** The store of one execution frame's local variables. */
+    private static Store localStore(Ctx ctx) {
+        Map<String, Object> locals = ctx.frame.locals;
+        return new Store() {
+            @Override public Object get(String key) { return locals.get(key); }
+            @Override public void set(String key, Object value) {
+                if (value == null) locals.remove(key);
+                else locals.put(key, value);
+            }
+            @Override public List<String> keysWithPrefix(String prefix) {
+                List<String> out = new ArrayList<>();
+                for (String key : locals.keySet()) {
+                    if (key.startsWith(prefix)) out.add(key);
+                }
+                return out;
+            }
+            @Override public void removePrefix(String prefix) {
+                locals.keySet().removeIf(k -> k.startsWith(prefix));
+            }
+        };
+    }
+
+    /** The store a variable-ish node addresses: local nodes read the frame, the rest the globals. */
+    private Store storeFor(Map<String, Object> varNode, Ctx ctx) {
+        String k = kind(varNode);
+        return "localVariable".equals(k) || "localVariableList".equals(k) ? localStore(ctx) : globalStore();
+    }
+
     /** Replace the running program (flat list of top-level IR nodes, in load order). */
     void setProgram(List<Map<String, Object>> topLevels) {
         this.topLevels = topLevels;
+        // Index the custom functions. A duplicate name+signature
+        // keeps the first definition (under Skript the later file
+        // fails to load with an error and the first one serves);
+        // overloads — same name, different parameter types — all
+        // register, in declaration order.
+        Map<String, List<Map<String, Object>>> byName = new LinkedHashMap<>();
+        Set<String> seenSignatures = new HashSet<>();
+        for (Map<String, Object> top : topLevels) {
+            if (!"function".equals(kind(top))) continue;
+            String name = str(top.get("name"));
+            if (name == null) continue;
+            StringBuilder sig = new StringBuilder(name).append('(');
+            for (Object p : list(top.get("params"))) {
+                sig.append(str(node(p).get("type"))).append(',');
+            }
+            sig.append(')');
+            if (!seenSignatures.add(sig.toString())) {
+                logger.warning("skript-ts: duplicate function '" + sig + "' ignored; the first definition wins");
+                continue;
+            }
+            byName.computeIfAbsent(name, k -> new ArrayList<>()).add(top);
+        }
+        this.functions = byName;
     }
 
     List<Map<String, Object>> topLevels() {
@@ -391,14 +499,54 @@ final class Engine {
                 cont.run();
             }
             case "setVar" -> {
-                variables.set(varKey(node(stmt.get("variable")), ctx), evalExpr(node(stmt.get("value")), ctx));
+                Map<String, Object> target = node(stmt.get("variable"));
+                Object value = evalExpr(node(stmt.get("value")), ctx);
+                if ("variableList".equals(kind(target)) || "localVariableList".equals(kind(target))) {
+                    // Whole-list assignment replaces the list
+                    // (verified against the real Skript): old
+                    // entries are cleared, the new values land at
+                    // indices 1..n in iteration order.
+                    assignList(storeFor(target, ctx), str(target.get("name")), value);
+                } else {
+                    // A multi-value result assigned to a scalar
+                    // yields no value (verified: a list-valued
+                    // function result set into a plain variable
+                    // reads back as <none>); a one-element list
+                    // unwraps to its element.
+                    storeFor(target, ctx).set(varKey(target, ctx), scalarValue(value));
+                }
                 cont.run();
             }
             case "addVar" -> {
                 Object v = evalExpr(node(stmt.get("value")), ctx);
                 if (v instanceof Number n) {
-                    variables.add(varKey(node(stmt.get("variable")), ctx), n.doubleValue());
+                    Map<String, Object> target = node(stmt.get("variable"));
+                    if ("localVariable".equals(kind(target))) {
+                        Store store = localStore(ctx);
+                        String key = varKey(target, ctx);
+                        Object cur = store.get(key);
+                        store.set(key, (cur instanceof Number c ? c.doubleValue() : 0.0) + n.doubleValue());
+                    } else {
+                        variables.add(varKey(target, ctx), n.doubleValue());
+                    }
                 }
+                cont.run();
+            }
+            case "return" -> {
+                // Exits the function at once: the continuation is
+                // deliberately not run, so every enclosing block
+                // and loop unwinds. The value is type-checked by
+                // the invoker against the declared return type.
+                ctx.frame.returnValue = evalExpr(node(stmt.get("value")), ctx);
+                ctx.frame.returned = true;
+            }
+            case "stop" -> {
+                // Skript's `stop`: end this trigger (in a function,
+                // the call completes with no value).
+                ctx.frame.returned = true;
+            }
+            case "callStmt" -> {
+                invokeFunction(str(stmt.get("name")), evalArgs(list(stmt.get("args")), ctx), ctx);
                 cont.run();
             }
             case "if" -> {
@@ -418,22 +566,32 @@ final class Engine {
                 // Append at the smallest unused positive integer
                 // index (verified against the real Skript: a list
                 // holding indices 2 and 3 gains the new entry at 1).
-                String name = str(node(stmt.get("list")).get("name"));
+                // A list-valued addend contributes all its elements.
+                Map<String, Object> listNode = node(stmt.get("list"));
+                Store store = storeFor(listNode, ctx);
+                String name = str(listNode.get("name"));
                 Object value = evalExpr(node(stmt.get("value")), ctx);
-                if (value != null) {
-                    variables.set(listBase(name) + "::" + nextListIndex(name), value);
+                List<Object> elements = new ArrayList<>();
+                spreadInto(elements, value);
+                for (Object element : elements) {
+                    store.set(listBase(name) + "::" + nextListIndex(store, name), element);
                 }
                 cont.run();
             }
             case "listRemove" -> {
-                // Remove only the first matching entry, in
-                // iteration order (verified against the real Skript).
-                String name = str(node(stmt.get("list")).get("name"));
+                // Remove only the first matching entry per value,
+                // in iteration order (verified against the real
+                // Skript).
+                Map<String, Object> listNode = node(stmt.get("list"));
+                Store store = storeFor(listNode, ctx);
+                String name = str(listNode.get("name"));
                 Object value = evalExpr(node(stmt.get("value")), ctx);
-                if (value != null) {
-                    for (Map.Entry<Object, Object> entry : listEntries(name)) {
-                        if (valuesEqual(entry.getValue(), value)) {
-                            variables.set(listBase(name) + "::" + indexSegment(entry.getKey()), null);
+                List<Object> targets = new ArrayList<>();
+                spreadInto(targets, value);
+                for (Object target : targets) {
+                    for (Map.Entry<Object, Object> entry : listEntries(store, name)) {
+                        if (valuesEqual(entry.getValue(), target)) {
+                            store.set(listBase(name) + "::" + indexSegment(entry.getKey()), null);
                             break;
                         }
                     }
@@ -442,20 +600,23 @@ final class Engine {
             }
             case "deleteVar" -> {
                 Map<String, Object> target = node(stmt.get("target"));
-                if ("variableList".equals(kind(target))) {
+                Store store = storeFor(target, ctx);
+                if ("variableList".equals(kind(target)) || "localVariableList".equals(kind(target))) {
                     // Delete the list's entries; the bare variable
                     // of the same name is a different node and
                     // stays (verified against the real Skript).
-                    variables.removePrefix(listBase(str(target.get("name"))) + "::");
+                    store.removePrefix(listBase(str(target.get("name"))) + "::");
                 } else {
-                    variables.set(varKey(target, ctx), null);
+                    store.set(varKey(target, ctx), null);
                 }
                 cont.run();
             }
-            case "loopList" ->
+            case "loopList" -> {
                 // Snapshot the entries: bodies may change the list
                 // while it is being visited.
-                loopListStep(stmt, listEntries(str(node(stmt.get("list")).get("name"))), 0, ctx, cont);
+                Map<String, Object> listNode = node(stmt.get("list"));
+                loopListStep(stmt, listEntries(storeFor(listNode, ctx), str(listNode.get("name"))), 0, ctx, cont);
+            }
             case "loopTimes" -> {
                 Object count = evalExpr(node(stmt.get("count")), ctx);
                 loopTimesStep(stmt, count instanceof Number n ? n.doubleValue() : 0, 1, ctx, cont);
@@ -672,6 +833,271 @@ final class Engine {
     }
 
     // ------------------------------------------------------------------
+    // Custom functions (phase 13)
+    //
+    // Semantics probed against the real Skript 2.17.1 (six rounds of
+    // hand-written probe scripts; see the development log):
+    //
+    // - Calls resolve by signature. Skript resolves statically at
+    //   parse time (wrong arity or a wrongly-typed literal is a
+    //   parse error; an overload called through an untyped variable
+    //   is rejected as ambiguous). The engine resolves at runtime
+    //   by the argument values' types, preferring exact-type
+    //   parameters over `object` and earlier declarations on ties —
+    //   the same observable behavior for every program Skript
+    //   accepts with statically-known argument types.
+    // - A value whose runtime type does not match its parameter is
+    //   not converted: the parameter is simply left unset and the
+    //   body still runs. A missing value passed explicitly does the
+    //   same and does NOT trigger the default; defaults apply only
+    //   to omitted arguments, are evaluated at call time before any
+    //   parameter is bound (they can read globals, never the
+    //   arguments), in the callee's fresh frame.
+    // - Function bodies have no event context (under Skript,
+    //   `player` inside a function is a parse error), so the call
+    //   frame starts from a blank Ctx.
+    // - A wait inside the body detaches the call: the invocation
+    //   completes synchronously only when the body finishes without
+    //   suspending. When a wait suspends it, the caller resumes
+    //   with no value; the detached remainder keeps running through
+    //   the delay host, and a return it eventually reaches is
+    //   dropped. Under Skript a return after a delay is a load
+    //   ERROR ("A return statement after a delay is useless, as
+    //   the calling trigger will resume when the delay starts"),
+    //   so loadable programs never contain one; the engine accepts
+    //   the shape and drops the value, the same net semantics.
+    // ------------------------------------------------------------------
+
+    private List<Object> evalArgs(List<Object> argNodes, Ctx ctx) {
+        List<Object> out = new ArrayList<>();
+        for (Object arg : argNodes) {
+            out.add(evalExpr(node(arg), ctx));
+        }
+        return out;
+    }
+
+    /**
+     * Invoke a custom function and return its return value (null
+     * for no value: a void function, a missing return, a return
+     * type mismatch, or a body that suspended at a wait).
+     */
+    private Object invokeFunction(String name, List<Object> argValues, Ctx callerCtx) {
+        Map<String, Object> fn = selectFunction(functions.getOrDefault(name, List.of()), argValues);
+        if (fn == null) {
+            logger.warning("skript-ts: call to unknown function '" + name + "' or with unmatched arguments");
+            return null;
+        }
+        List<Object> params = list(fn.get("params"));
+        // A fresh frame with no event context; parameters become
+        // the frame's locals, bound by (lowercased) name.
+        Ctx ctx = new Ctx();
+        Store locals = localStore(ctx);
+        // Defaults are evaluated BEFORE any parameter is bound
+        // (probed: a default referencing a parameter does not see
+        // the passed value, but globals are readable).
+        Map<String, Object> defaults = new LinkedHashMap<>();
+        for (int i = 0; i < params.size(); i++) {
+            Map<String, Object> p = node(params.get(i));
+            if (i >= argValues.size() && p.get("default") instanceof Map<?, ?>) {
+                defaults.put(str(p.get("name")), evalExpr(node(p.get("default")), ctx));
+            }
+        }
+        for (int i = 0; i < params.size(); i++) {
+            Map<String, Object> p = node(params.get(i));
+            String pname = str(p.get("name")).toLowerCase(Locale.ROOT);
+            String ptype = str(p.get("type"));
+            if (isPluralTypeName(ptype)) {
+                // The plural parameter collects every remaining
+                // argument value (lists spread); elements of the
+                // wrong type are dropped, as a mismatched singular
+                // argument leaves its parameter unset.
+                List<Object> collected = new ArrayList<>();
+                for (int j = i; j < argValues.size(); j++) {
+                    spreadInto(collected, argValues.get(j));
+                }
+                String elementType = baseTypeName(ptype);
+                collected.removeIf(v -> !typeMatches(elementType, v));
+                assignList(locals, str(p.get("name")), collected.isEmpty() ? null : collected);
+            } else if (i < argValues.size()) {
+                bindParameter(locals, pname, ptype, argValues.get(i));
+            } else if (defaults.containsKey(str(p.get("name")))) {
+                bindParameter(locals, pname, ptype, defaults.get(str(p.get("name"))));
+            }
+            // Otherwise the parameter stays unset.
+        }
+        boolean[] finished = { false };
+        execRange(list(fn.get("body")), 0, ctx, () -> finished[0] = true);
+        if (ctx.frame.returned) {
+            return checkedReturn(fn, ctx.frame.returnValue);
+        }
+        // The body either ran to completion without returning, or
+        // suspended at a wait (finished stays false and the
+        // detached remainder continues on its own): both give the
+        // caller no value.
+        return null;
+    }
+
+    /** Bind one singular parameter: a mismatched or missing value leaves it unset (no conversion). */
+    private void bindParameter(Store locals, String pname, String ptype, Object value) {
+        Object scalar = scalarValue(value);
+        if (scalar != null && typeMatches(ptype, scalar)) {
+            locals.set(pname, scalar);
+        }
+    }
+
+    /**
+     * Pick the overload to call: arity must fit (a trailing plural
+     * parameter absorbs any number of extra values but needs at
+     * least one argument landing on it, and every parameter past
+     * the supplied arguments must have a default — both probed:
+     * calling with too few or too many arguments is "the function
+     * does not exist" under Skript). Among the fitting candidates
+     * the best type score wins: exact-type parameters beat
+     * `object`, a missing value is neutral (it binds as unset
+     * against anything), a mismatch counts against the candidate.
+     */
+    private Map<String, Object> selectFunction(List<Map<String, Object>> candidates, List<Object> argValues) {
+        Map<String, Object> best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (Map<String, Object> fn : candidates) {
+            Integer score = matchScore(fn, argValues);
+            if (score != null && score > bestScore) {
+                bestScore = score;
+                best = fn;
+            }
+        }
+        return best;
+    }
+
+    private Integer matchScore(Map<String, Object> fn, List<Object> argValues) {
+        List<Object> params = list(fn.get("params"));
+        int n = params.size();
+        boolean pluralLast = n > 0 && isPluralTypeName(str(node(params.get(n - 1)).get("type")));
+        if (!pluralLast && argValues.size() > n) return null; // too many arguments
+        int score = 0;
+        for (int i = 0; i < n; i++) {
+            Map<String, Object> p = node(params.get(i));
+            boolean plural = isPluralTypeName(str(p.get("type")));
+            if (i < argValues.size()) {
+                if (plural) {
+                    for (int j = i; j < argValues.size(); j++) {
+                        score += spreadScore(str(p.get("type")), argValues.get(j));
+                    }
+                } else {
+                    score += valueScore(str(p.get("type")), argValues.get(i));
+                }
+            } else {
+                // Nothing lands on this parameter: it needs a
+                // default — a plural parameter too (probed: a
+                // zero-argument call to a plural-parameter function
+                // does not resolve, even though the list could be
+                // empty).
+                if (!defaultsCover(p, plural)) return null;
+            }
+        }
+        return score;
+    }
+
+    private boolean defaultsCover(Map<String, Object> param, boolean plural) {
+        return !plural && param.get("default") instanceof Map<?, ?>;
+    }
+
+    /** Score one argument value against a singular parameter type: exact 3, object 1, missing 0, mismatch -10. */
+    private static int valueScore(String ptype, Object value) {
+        if (value == null) return 0;
+        if (value instanceof List<?> l) {
+            if (l.size() != 1) return -10;
+            value = l.get(0);
+        }
+        if ("object".equals(ptype)) return 1;
+        return typeMatches(ptype, value) ? 3 : -10;
+    }
+
+    /** Score one argument value against a plural parameter: its elements score against the element type. */
+    private static int spreadScore(String ptype, Object value) {
+        if (value == null) return 0;
+        String elementType = baseTypeName(ptype);
+        List<Object> elements = new ArrayList<>();
+        spreadInto(elements, value);
+        int worst = 3;
+        for (Object element : elements) {
+            worst = Math.min(worst, valueScore(elementType, element));
+        }
+        return elements.isEmpty() ? 1 : worst;
+    }
+
+    /**
+     * Type-check a returned value against the declared return
+     * type (probed: a runtime mismatch means the call yields no
+     * value). A plural return type wraps a single value into a
+     * one-element list and drops mismatched elements; a singular
+     * type rejects a multi-value result outright.
+     */
+    private Object checkedReturn(Map<String, Object> fn, Object value) {
+        String rt = str(fn.get("returnType"));
+        if (rt == null || value == null) return null;
+        if (isPluralTypeName(rt)) {
+            List<Object> values = new ArrayList<>();
+            spreadInto(values, value);
+            String elementType = baseTypeName(rt);
+            values.removeIf(v -> !typeMatches(elementType, v));
+            return values.isEmpty() ? null : values;
+        }
+        if (value instanceof List) return null;
+        return typeMatches(rt, value) ? value : null;
+    }
+
+    private static final Set<String> PLURAL_TYPE_NAMES =
+            Set.of("numbers", "texts", "booleans", "players", "locations", "objects");
+
+    private static boolean isPluralTypeName(String type) {
+        return type != null && PLURAL_TYPE_NAMES.contains(type);
+    }
+
+    /** The singular element type of a function type name ("numbers" -> "number", "number" -> "number"). */
+    private static String baseTypeName(String type) {
+        return isPluralTypeName(type) ? type.substring(0, type.length() - 1) : type;
+    }
+
+    /**
+     * Does a runtime value have the given (singular) Skript type?
+     * Probed: there are no conversions between the subset's types —
+     * a number is not a text, a text is not a number, a boolean is
+     * not either; only `object` accepts anything.
+     */
+    private static boolean typeMatches(String singularType, Object value) {
+        if (value == null) return false;
+        return switch (singularType) {
+            case "number" -> value instanceof Number;
+            case "text" -> value instanceof String;
+            case "boolean" -> value instanceof Boolean;
+            case "player" -> value instanceof Player;
+            case "location" -> value instanceof Location;
+            default -> true; // object, and any type outside the subset's checks
+        };
+    }
+
+    /**
+     * The value of a multi-value result used in a single-value
+     * position: the element when there is exactly one, no value
+     * otherwise (verified against the real Skript for function
+     * results assigned to scalar variables).
+     */
+    private static Object scalarValue(Object value) {
+        if (value instanceof List<?> l) {
+            return l.size() == 1 ? l.get(0) : null;
+        }
+        return value;
+    }
+
+    /** Append a value to a list of values, spreading lists (a missing value contributes nothing). */
+    private static void spreadInto(List<Object> out, Object value) {
+        if (value == null) return;
+        if (value instanceof List<?> l) out.addAll(l);
+        else out.add(value);
+    }
+
+    // ------------------------------------------------------------------
     // Conditions
     // ------------------------------------------------------------------
 
@@ -776,17 +1202,15 @@ final class Engine {
             case "argument" -> resolveArgument((int) num(expr.get("index")), ctx);
             case "chatMessage" -> ctx.chatMessage;
             case "variable" -> variables.get(varKey(expr, ctx));
-            case "variableList" -> {
-                // The list's values in iteration order, snapshotted;
-                // an empty (or unset) list has no value, like any
-                // other missing value in Skript.
-                List<Object> values = new ArrayList<>();
-                for (Map.Entry<Object, Object> entry : listEntries(str(expr.get("name")))) {
-                    values.add(entry.getValue());
-                }
-                yield values.isEmpty() ? null : values;
+            case "variableList" -> listValue(globalStore(), str(expr.get("name")));
+            case "localVariable" -> localStore(ctx).get(varKey(expr, ctx));
+            case "localVariableList" -> listValue(localStore(ctx), str(expr.get("name")));
+            case "listSize" -> {
+                Map<String, Object> listNode = node(expr.get("list"));
+                yield (double) listEntries(storeFor(listNode, ctx), str(listNode.get("name"))).size();
             }
-            case "listSize" -> (double) listEntries(str(node(expr.get("list")).get("name"))).size();
+            case "functionCall" ->
+                invokeFunction(str(expr.get("name")), evalArgs(list(expr.get("args")), ctx), ctx);
             case "loopValue" -> ctx.loopValue;
             case "loopIndex" -> ctx.loopIndex;
             case "string" -> str(expr.get("value"));
@@ -881,8 +1305,20 @@ final class Engine {
      * is Skript's mod(): the mathematical modulo whose result
      * takes the divisor's sign — mod(-1, 10) is 9 — and NaN for a
      * zero divisor.
+     *
+     * <p>A MISSING operand is not a wrong-typed one (phase-13
+     * probes): for the four infix operators, a missing operand
+     * with a number on the other side counts as 0 — unset + 100
+     * is 100, unset * 2 is 0, 5 / unset is Infinity. With a text
+     * or boolean partner, or with both sides missing, the result
+     * has no value. mod() does not substitute: a missing operand
+     * makes it valueless.
      */
     private static Object evalArith(String op, Object a, Object b) {
+        if (!"mod".equals(op)) {
+            if (a == null && b instanceof Number) a = 0.0;
+            else if (b == null && a instanceof Number) b = 0.0;
+        }
         if ("+".equals(op) && a instanceof String sa && b instanceof String sb) {
             return sa + sb;
         }
@@ -1095,15 +1531,47 @@ final class Engine {
      * text indices first — numeric texts by value, then the rest
      * alphabetically — then numeric indices in ascending order.
      */
-    private List<Map.Entry<Object, Object>> listEntries(String rawName) {
+    private List<Map.Entry<Object, Object>> listEntries(Store store, String rawName) {
         String prefix = listBase(rawName) + "::";
         List<Map.Entry<Object, Object>> out = new ArrayList<>();
-        for (String key : variables.keysWithPrefix(prefix)) {
+        for (String key : store.keysWithPrefix(prefix)) {
             Object index = decodeIndex(key.substring(prefix.length()));
-            out.add(new AbstractMap.SimpleEntry<>(index, variables.get(key)));
+            out.add(new AbstractMap.SimpleEntry<>(index, store.get(key)));
         }
         out.sort((a, b) -> compareIndices(a.getKey(), b.getKey()));
         return out;
+    }
+
+    /**
+     * A whole list as a value: its entries' values in iteration
+     * order, snapshotted; an empty (or unset) list has no value,
+     * like any other missing value in Skript.
+     */
+    private Object listValue(Store store, String rawName) {
+        List<Object> values = new ArrayList<>();
+        for (Map.Entry<Object, Object> entry : listEntries(store, rawName)) {
+            values.add(entry.getValue());
+        }
+        return values.isEmpty() ? null : values;
+    }
+
+    /**
+     * Replace a whole list with a value (whole-list assignment and
+     * plural-parameter binding): the old entries are cleared and
+     * the new values land at indices 1..n in iteration order — a
+     * scalar becomes a one-element list and no value just clears
+     * (all verified against the real Skript 2.17.1, including for
+     * list-valued function results, whose holes are renumbered).
+     */
+    private void assignList(Store store, String rawName, Object value) {
+        store.removePrefix(listBase(rawName) + "::");
+        if (value == null) return;
+        List<?> values = value instanceof List<?> l ? l : List.of(value);
+        int i = 1;
+        for (Object v : values) {
+            if (v != null) store.set(listBase(rawName) + "::" + i, v);
+            i++;
+        }
     }
 
     private static int compareIndices(Object a, Object b) {
@@ -1126,9 +1594,9 @@ final class Engine {
     }
 
     /** The smallest positive integer not used as a numeric index of the list. */
-    private int nextListIndex(String rawName) {
+    private int nextListIndex(Store store, String rawName) {
         Set<Double> used = new HashSet<>();
-        for (Map.Entry<Object, Object> entry : listEntries(rawName)) {
+        for (Map.Entry<Object, Object> entry : listEntries(store, rawName)) {
             if (entry.getKey() instanceof Number n) used.add(n.doubleValue());
         }
         int i = 1;

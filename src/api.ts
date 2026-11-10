@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -43,6 +43,23 @@ export function chatMessage(): Expr {
 export function variable(name: string, index?: Expr): VariableExpr {
   if (index === undefined) return { kind: "variable", name };
   return { kind: "variable", name, index };
+}
+
+/** Construct a local variable expression ({_name}), optionally indexed ({_name::%index%}). */
+export function localVar(name: string, index?: Expr): LocalVariableExpr {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new RangeError("local variable name must be a non-empty string");
+  }
+  if (index === undefined) return { kind: "localVariable", name };
+  return { kind: "localVariable", name, index };
+}
+
+/** Construct a whole local-list expression ({_name::*}). */
+export function localList(name: string): LocalListExpr {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new RangeError("local list name must be a non-empty string");
+  }
+  return { kind: "localVariableList", name };
 }
 
 /** Construct a string literal expression. */
@@ -91,10 +108,15 @@ export function fmt(...parts: (string | Expr)[]): TextExpr {
 // Arithmetic mirrors Skript's arithmetic expression plus its mod()
 // function: operands must both be numbers, except that "+" over
 // two texts concatenates them; any other type combination yields
-// no value. Division is real division (7 / 2 is 3.5, 1 / 0 is
-// Infinity); remainder is the mathematical modulo — the result
-// takes the divisor's sign (remainder(-1, 10) is 9) and is NaN
-// for a zero divisor.
+// no value. A MISSING operand is different from a wrong-typed one
+// (phase-13 probes): for the four infix operators it counts as 0
+// when the other side is a number (unset + 100 is 100, unset * 2
+// is 0); with a text/boolean partner or both sides missing the
+// result has no value, and mod() never substitutes (a missing
+// operand makes it valueless). Division is real division (7 / 2
+// is 3.5, 1 / 0 is Infinity); remainder is the mathematical
+// modulo — the result takes the divisor's sign (remainder(-1, 10)
+// is 9) and is NaN for a zero divisor.
 // ---------------------------------------------------------------------------
 
 /** Construct an equality condition: the two values are equal (texts compare case-insensitively). */
@@ -193,13 +215,13 @@ export function isOp(target: Expr): Cond {
   return { kind: "isOp", target };
 }
 
-/** Construct a send statement. */
-export function send(target: Expr, message: TextExpr): Stmt {
+/** Construct a send statement. The message may be any expression; text expressions emit as quoted strings. */
+export function send(target: Expr, message: Expr): Stmt {
   return withLoc({ kind: "send", target, message });
 }
 
-/** Construct a broadcast statement. */
-export function broadcast(message: TextExpr): Stmt {
+/** Construct a broadcast statement. The message may be any expression; text expressions emit as quoted strings. */
+export function broadcast(message: Expr): Stmt {
   return withLoc({ kind: "broadcast", message });
 }
 
@@ -213,13 +235,13 @@ export function teleport(target: Expr, location: Expr): Stmt {
   return withLoc({ kind: "teleport", target, location });
 }
 
-/** Construct a set-variable statement. */
-export function set(variable: VariableExpr, value: Expr): Stmt {
+/** Construct a set-variable statement. The target may be a scalar or a whole list, global or local. */
+export function set(variable: VarTarget, value: Expr): Stmt {
   return withLoc({ kind: "setVar", variable, value });
 }
 
-/** Construct an add-variable statement. */
-export function add(variable: VariableExpr, value: Expr): Stmt {
+/** Construct an add-variable statement. The target may be a global or a local scalar variable. */
+export function add(variable: ScalarVarExpr, value: Expr): Stmt {
   return withLoc({ kind: "addVar", variable, value });
 }
 
@@ -276,7 +298,7 @@ export function listVar(name: string): ListExpr {
 }
 
 /** Construct a list-size expression: the number of entries in the list (0 when unset). */
-export function listSize(list: ListExpr): Expr {
+export function listSize(list: AnyListExpr): Expr {
   return { kind: "listSize", list };
 }
 
@@ -291,12 +313,12 @@ export function loopIndex(): Expr {
 }
 
 /** Construct a list-add statement: append the value at the smallest unused positive integer index. */
-export function listAdd(list: ListExpr, value: Expr): Stmt {
+export function listAdd(list: AnyListExpr, value: Expr): Stmt {
   return withLoc({ kind: "listAdd", list, value });
 }
 
 /** Construct a list-remove statement: delete the first entry (in iteration order) equal to the value. */
-export function listRemove(list: ListExpr, value: Expr): Stmt {
+export function listRemove(list: AnyListExpr, value: Expr): Stmt {
   return withLoc({ kind: "listRemove", list, value });
 }
 
@@ -304,13 +326,14 @@ export function listRemove(list: ListExpr, value: Expr): Stmt {
  * Construct a delete statement: remove a variable, one list entry
  * (an indexed variable), or a whole list (a list variable — the
  * bare variable of the same name is a different node and stays).
+ * Global and local targets both work.
  */
-export function deleteVar(target: VariableExpr | ListExpr): Stmt {
+export function deleteVar(target: VarTarget): Stmt {
   return withLoc({ kind: "deleteVar", target });
 }
 
 /** Construct a loop over a list variable's entries, exposing loopValue() and loopIndex(). */
-export function loopList(list: ListExpr, body: readonly Stmt[]): Stmt {
+export function loopList(list: AnyListExpr, body: readonly Stmt[]): Stmt {
   return withLoc({ kind: "loopList", list, body });
 }
 
@@ -358,6 +381,140 @@ export function whileLoop(cond: Cond, body: readonly Stmt[]): Stmt {
 /** Construct a wait statement: suspend the rest of the trigger for the given duration. */
 export function wait(amount: Expr, unit: TimeUnit): Stmt {
   return withLoc({ kind: "wait", amount, unit });
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 13): custom functions
+//
+// Semantics mirror the real Skript 2.17.1, verified against the
+// sandbox server with hand-written probe scripts (six rounds; see
+// the development log):
+//
+// - A function is global: callable from any script, before or
+//   after its definition in file order. Names are case-sensitive.
+// - Parameters are local variables of the call's fresh frame,
+//   named after the parameter, and writable. Locals never leak
+//   between the caller and the callee, nor between calls; globals
+//   are shared as usual. Recursion works — every call is a frame.
+// - Calls are resolved by signature. A value whose type does not
+//   match its parameter is NOT converted: literals fail Skript's
+//   parse, and a runtime value simply leaves the parameter unset
+//   (the body still runs). Passing a missing value does the same —
+//   and does not trigger the parameter's default: defaults apply
+//   only to omitted arguments. Defaults are arbitrary expressions
+//   evaluated at call time before any parameter is bound, so they
+//   can read globals but never the arguments.
+// - return carries a value (Skript has no bare return); it exits
+//   the function at once, from inside loops too, and the value is
+//   type-checked against the declared return type (a mismatch at
+//   runtime means the call yields no value). A value function
+//   that never returns yields no value. Early exit without a
+//   value is stopTrigger() (Skript's `stop`).
+// - A plural parameter (a type like "numbers") collects the
+//   remaining arguments: spread values, one list, or a single
+//   value all work, and inside the body it is the local list
+//   {_name::*}. A function declared with a plural return type
+//   ("objects") returns a list; assigning a multi-value result
+//   to a scalar variable yields no value.
+// - Function bodies have no event context (player and friends
+//   are a parse error under Skript — pass what you need in as a
+//   parameter). A wait inside a function detaches: the caller
+//   resumes the moment the wait starts, the call yields no value,
+//   the rest of the body still runs later, and any return after
+//   the wait is lost (Skript warns about exactly this at parse).
+// ---------------------------------------------------------------------------
+
+const FUNCTION_TYPES: ReadonlySet<string> = new Set([
+  "number", "numbers", "text", "texts", "boolean", "booleans",
+  "player", "players", "location", "locations", "object", "objects",
+]);
+
+function requireFunctionName(name: string): string {
+  if (typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new RangeError(`invalid function name: ${String(name)}`);
+  }
+  return name;
+}
+
+function requireFunctionType(type: FunctionTypeName, what: string): FunctionTypeName {
+  if (!FUNCTION_TYPES.has(type)) {
+    throw new RangeError(`invalid ${what} type: ${String(type)}`);
+  }
+  return type;
+}
+
+/** True for a plural function type ("numbers", "objects", ...): it takes / returns a list. */
+export function isPluralType(type: FunctionTypeName): boolean {
+  return type.endsWith("s");
+}
+
+/**
+ * Construct one parameter of a custom function: a name and a
+ * Skript type, plus an optional default expression (used only
+ * when a call omits the argument). A plural type ("numbers",
+ * "objects", ...) makes the parameter collect the remaining
+ * arguments as a list; it must be the last parameter.
+ */
+export function param(name: string, type: FunctionTypeName, defaultValue?: Expr): FunctionParam {
+  if (typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new RangeError(`invalid parameter name: ${String(name)}`);
+  }
+  requireFunctionType(type, "parameter");
+  if (defaultValue === undefined) return { name, type };
+  return { name, type, default: defaultValue };
+}
+
+/**
+ * Construct a custom function declaration: a name, its parameters
+ * (from param()), a return type (null for a void function) and a
+ * body. Functions are top-level declarations, like events and
+ * commands, and are callable from anywhere in the program.
+ */
+export function defineFunction(
+  name: string,
+  params: readonly FunctionParam[],
+  returnType: FunctionTypeName | null,
+  body: readonly Stmt[],
+): TopLevel {
+  requireFunctionName(name);
+  if (returnType !== null) requireFunctionType(returnType, "return");
+  const plurals = params.filter((p) => isPluralType(p.type));
+  if (plurals.length > 1) {
+    throw new RangeError(`function ${name}: at most one plural parameter is allowed`);
+  }
+  if (plurals.length === 1 && params[params.length - 1] !== plurals[0]) {
+    throw new RangeError(`function ${name}: a plural parameter must be the last parameter`);
+  }
+  return withLoc({ kind: "function", name, params, returnType, body });
+}
+
+/** Construct a function-call expression: invoke a custom function and use its return value. */
+export function call(name: string, ...args: Expr[]): Expr {
+  return { kind: "functionCall", name: requireFunctionName(name), args };
+}
+
+/** Construct a function-call statement: invoke a custom function for its effects, discarding any return value. */
+export function callStmt(name: string, ...args: Expr[]): Stmt {
+  return withLoc({ kind: "callStmt", name: requireFunctionName(name), args });
+}
+
+/**
+ * Construct a return statement: hand the value back to the caller
+ * and exit the function immediately. Only meaningful inside a
+ * defineFunction body whose return type is not null (Skript
+ * rejects it elsewhere, and rejects it in void functions too).
+ */
+export function returnValue(value: Expr): Stmt {
+  return withLoc({ kind: "return", value });
+}
+
+/**
+ * Construct a stop statement (Skript's `stop`): end the current
+ * trigger at once. Inside a function the call completes with no
+ * value; in an event or command the rest of the body is skipped.
+ */
+export function stopTrigger(): Stmt {
+  return withLoc({ kind: "stop" });
 }
 
 /** Construct an on-join event. */

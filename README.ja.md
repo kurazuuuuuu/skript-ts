@@ -77,8 +77,8 @@ on join:
 ### エフェクト（文）
 | TypeScript | Skript |
 | --- | --- |
-| `send(target, text)` | `send "<text>" to <target>` |
-| `broadcast(text)` | `broadcast "<text>"` |
+| `send(target, message)` | `send "<text>" to <target>`（任意の式。テキストは引用符つき、それ以外は素の値） |
+| `broadcast(message)` | `broadcast "<text>"`（任意の式） |
 | `give(target, itemName, amount)` | `give <amount> <item> to <target>` |
 | `teleport(target, location)` | `teleport <target> to <location>` |
 | `set(variable, value)` | `set {var} to <value>` |
@@ -93,6 +93,9 @@ on join:
 | `loopRange(from, to, body)` | `loop numbers from <a> to <b>:` |
 | `whileLoop(cond, body)` | `while <cond>:`（葉条件のみ、下記） |
 | `wait(amount, unit)` | `wait <n> ticks` / `seconds` / `minutes` |
+| `returnValue(value)` | `return <value>`（`defineFunction` 内） |
+| `stopTrigger()` | `stop`（トリガー／関数からの早期終了） |
+| `callStmt(name, ...args)` | `<name>(<args>)` を単独の文として |
 
 ### 式
 | TypeScript | 値の位置 | 文字列の中 |
@@ -106,6 +109,9 @@ on join:
 | `variable(name)` | `{name}` | `%{name}%` |
 | `variable(name, index)` | `{name::%<index>%}` | `%{name::%<index>%}%` |
 | `listVar(name)` | `{name::*}` | `%{name::*}%` |
+| `localVar(name)` / `localVar(name, index)` | `{_name}` / `{_name::%<index>%}` | `%{_name}%` |
+| `localList(name)` | `{_name::*}` | `%{_name::*}%` |
+| `call(name, ...args)` | `<name>(<args>)` | `%<name>(<args>)%` |
 | `listSize(list)` | `size of {name::*}` | `%size of {name::*}%` |
 | `loopValue()` | `loop-value` | `%loop-value%` |
 | `loopIndex()` | `loop-index` | `%loop-index%` |
@@ -121,12 +127,17 @@ on join:
 原則として両方とも数値です。例外は `+` で、両方が文字列なら連結に
 なります（`"5" + "6"` は数値の 11 ではなく文字列 `"56"`）。それ以外の
 型の組み合わせ（文字列と数値の混在も、どちらの順でも）はエラーに
-ならず「値なし」になります。除算は実数除算で、ゼロ除算は doubles の
-規則に従います（`1 / 0` は Infinity）。出力は常に括弧で囲むため、
-Skript 自身の演算子優先順位に依存しません。剰余は Skript の
-`mod()` 関数です（Skript に中置の剰余演算子はありません）。数学的
-剰余で、結果の符号は除数に一致します（`mod(-1, 10)` は `9`）。
-除数がゼロのときは NaN です。
+ならず「値なし」になります。**値なしの被演算子は型違いとは別物**
+です（フェーズ13のプローブで確定）。4つの中置演算子では、相手が
+数値なら値なしは 0 として扱われます（未設定の変数 `+ 100` は `100`、
+`* 2` は `0`、`5 /` 未設定 は Infinity）。相手が文字列・真偽値の
+場合と、両辺とも値なしの場合は「値なし」になります。除算は実数
+除算で、ゼロ除算は doubles の規則に従います（`1 / 0` は Infinity）。
+出力は常に括弧で囲むため、Skript 自身の演算子優先順位に依存し
+ません。剰余は Skript の `mod()` 関数です（Skript に中置の剰余
+演算子はありません）。数学的剰余で、結果の符号は除数に一致します
+（`mod(-1, 10)` は `9`）。除数がゼロのときは NaN です。なお
+`mod()` は 0 代入をしません（被演算子が値なしなら結果も値なし）。
 
 注意: `on death` イベントには `player` が存在せず、Skript にエラーとして
 弾かれます（"There's no player in an on death event"）。死亡したプレイヤーは
@@ -216,6 +227,77 @@ that matches 'loop-index'"）、プレイヤーループも同様です。添字
 遅延挙動、エンジン側では Bukkit スケジューラ上の継続
 （continuation）として同じ意味論を実装しています。量は小数も可
 （`wait 0.5 seconds`）で、単位は `ticks` / `seconds` / `minutes` です。
+
+### カスタム関数
+
+`defineFunction(name, params, returnType, body)` で関数を定義し、
+引数は `param(name, type, default?)` で宣言します。型は `number`、
+`text`、`boolean`、`player`、`location`、`object` とその複数形
+（`numbers`、`texts` など）です。複数形の引数は最後尾に1つだけ
+置けます（ビルダが強制します）。`returnType` は同じ型名のいずれか、
+void 関数は `null` です。本体では引数とローカル変数を
+`localVar(name)` / `localList(name)`（`{_name}`、`{_name::*}`）で
+扱い、`returnValue(v)` で戻し、`stopTrigger()` で早期終了します。
+呼び出しは式の `call(name, ...args)` と文の `callStmt(name, ...args)`
+です。定義は Skript の `function` セクションとして出力され、
+エンジンは IR から登録します。関数はコア言語であり、同じ
+スクリプトが両ランタイムで動きます。
+
+意味論（本家 Skript 2.17.1 へのプローブで裏取り。値の位置でも
+文字列の中でも確認済み）：
+
+- **解決はシグネチャ単位**。定義順・ファイル順は無関係で、定義
+  より前の呼び出しも、ファイル間の呼び出しも可能です。名前は
+  **大文字小文字を区別**します。オーバーロード（同名・引数型違い）
+  は引数の型で振り分けられます。Skript は静的に（パース時に）
+  解決するため、引数の個数違い・リテラルの型違い・型なし変数
+  経由のオーバーロード呼び出しはパースエラーになります。
+  エンジンは実行時に引数値の型で解決します（完全一致の型が
+  `object` に勝つ）。引数型が静的に分かるプログラムでは観測
+  される挙動は一致します。
+- **変換は一切起きません**。実行時の型が引数の型と合わない値
+  （`"5"` のような数値文字列を `number` 引数へ渡す場合を含む）
+  は変換されず、引数が未設定のまま本体が実行されます（その後
+  の挙動は本体側の意味論次第で、未設定の引数に対する算術は
+  前述の「値なしオペランド」規則に従います）。値なしを明示的
+  に渡した場合も同じで、デフォルト値は発動しません。
+- **デフォルト値**は省略された末尾の引数にだけ適用されます。
+  任意の式が書け、呼び出し時に、引数が1つも束縛される**前に**
+  評価されます。グローバル変数は読めますが、引数は見えません。
+- **ローカル変数は呼び出しごとの新鮮なフレーム**で、双方向に
+  隔離されます。関数は呼び出し側の `{_x}` を見られず、関数内の
+  書き込みが外へ漏れることもありません。入れ子の呼び出しも
+  再帰（動作します）もそれぞれ独立したフレームを持ち、
+  グローバル変数は通常通り共有されます。ローカルリストも
+  グローバルと同様に使えます。関数本体には**イベント文脈が
+  ありません**。Skript では関数内の `player` はパースエラーで、
+  エンジンのコールフレームも空白から始まります。
+- **戻り値の規律**。`return` には値が必須です（値なしの
+  `return` は Skript ではパースエラー。早期終了には
+  `stopTrigger()` を使います）。戻り値の実行時の型が宣言と
+  合わない場合、呼び出しは**値なし**になります。値を返す関数が
+  return せずに終わった場合も値なしです。複数形の戻り型は
+  単一の値を1要素のリストとして包み、型の合わない要素を
+  落とします。複数値の結果をスカラー変数へ代入すると値なし
+  になります。リスト全体の代入（`set(localList("a"), someList)`）
+  は対象を置き換え、反復順に 1..n へ詰め直します。
+- **複数形の引数**は、ばらした値（`f(1, 2, 3)`）、リスト全体
+  （`f({list::*})`）、単一の値のいずれでも受け取れます。本体の
+  中ではローカルリスト `{_name::*}` として見えます。複数形の
+  引数へ0個の値で呼ぶ呼び出しは解決されません。
+- **関数内の `wait` は呼び出しを切り離します**。呼び出し側は
+  wait が始まった瞬間に再開し、式としての呼び出しは値なしに
+  なり、本体の残りは遅延の後に単独で実行され続けます。wait の
+  後の `return` は Skript では**読み込みエラー**です（"A return
+  statement after a delay is useless..."）。読み込める
+  プログラムには現れない形であり、エンジンはこの形を受け
+  入れて値を捨てます（最終的な意味論は同じです）。
+
+`examples/functions.ts` がこれら全てを exercised し（再帰の
+階乗、デフォルト値、オーバーロード、リストを返す関数への
+複数形引数の合計、型不一致とスコープのデモ、切り離される
+wait）、`examples/behavior/functions.behavior.ts` が両ランタイムで
+同一の期待値を検証します。
 
 ### 文字列のエスケープ
 リテラルテキストは Skript の規則に従います。`"` は `""` に、リテラルな `%` は `%%` に

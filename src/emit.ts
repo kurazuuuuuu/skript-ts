@@ -23,6 +23,12 @@ function emitValue(e: Expr): string {
             return `{${e.name}${e.index !== undefined ? `::%${emitValue(e.index)}%` : ""}}`;
         case "variableList":
             return `{${e.name}::*}`;
+        case "localVariable":
+            return `{_${e.name}${e.index !== undefined ? `::%${emitValue(e.index)}%` : ""}}`;
+        case "localVariableList":
+            return `{_${e.name}::*}`;
+        case "functionCall":
+            return `${e.name}(${e.args.map((a) => emitValue(a)).join(", ")})`;
         case "listSize":
             return `size of ${emitValue(e.list)}`;
         case "loopValue":
@@ -94,6 +100,9 @@ function emitString(e: Expr): string {
             // its value; a bare {..} would be literal text in Skript.
             return `%${emitValue(e)}%`;
         case "variableList":
+        case "localVariable":
+        case "localVariableList":
+        case "functionCall":
         case "listSize":
         case "loopValue":
         case "loopIndex":
@@ -148,17 +157,20 @@ function emitStringParts(parts: readonly (string | Expr)[]): string {
     return result;
 }
 
-function emitText(t: TextExpr): string {
+/**
+ * Emit a message expression: string literals and formats emit as
+ * quoted Skript text; any other expression (a variable, a function
+ * call, ...) emits as a bare value, which Skript's send/broadcast
+ * effects accept (%objects%).
+ */
+function emitText(t: Expr): string {
     switch (t.kind) {
         case "string":
             return `"${escapeText(t.value)}"`;
         case "format":
             return `"${emitStringParts(t.parts)}"`;
-        default: {
-            const exhaustive: never = t;
-            void exhaustive;
-            throw new Error("Unhandled TextExpr in emitText");
-        }
+        default:
+            return emitValue(t);
     }
 }
 
@@ -369,6 +381,12 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         }
         case "wait":
             return [own(`${prefix}wait ${emitValue(s.amount)} ${s.unit}`, path, s.loc)];
+        case "return":
+            return [own(`${prefix}return ${emitValue(s.value)}`, path, s.loc)];
+        case "stop":
+            return [own(`${prefix}stop`, path, s.loc)];
+        case "callStmt":
+            return [own(`${prefix}${s.name}(${s.args.map((a) => emitValue(a)).join(", ")})`, path, s.loc)];
         case "wsConnect":
         case "wsSend":
         case "wsDisconnect":
@@ -426,6 +444,18 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
                 own("    trigger:", path, t.loc),
                 ...emitBlock(t.body, 2, path, "body"),
             ];
+        }
+        case "function": {
+            const params = t.params
+                .map((p) =>
+                    p.default === undefined
+                        ? `${p.name}: ${p.type}`
+                        : `${p.name}: ${p.type} = ${emitValue(p.default)}`,
+                )
+                .join(", ");
+            const ret = t.returnType === null ? "" : ` :: ${t.returnType}`;
+            const header = `function ${t.name}(${params})${ret}:`;
+            return [own(header, path, t.loc), ...emitBlock(t.body, 1, path, "body")];
         }
         default: {
             const exhaustive: never = t;

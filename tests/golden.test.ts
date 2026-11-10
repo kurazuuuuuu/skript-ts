@@ -7,8 +7,11 @@ import {
   argument,
   bool,
   broadcast,
+  call,
+  callStmt,
   chatMessage,
   command,
+  defineFunction,
   deleteVar,
   dividedBy,
   emit,
@@ -28,6 +31,8 @@ import {
   listRemove,
   listSize,
   listVar,
+  localList,
+  localVar,
   locationOf,
   loopIndex,
   loopList,
@@ -46,12 +51,15 @@ import {
   onJoin,
   onQuit,
   or,
+  param,
   player,
   plus,
   remainder,
+  returnValue,
   script,
   send,
   set,
+  stopTrigger,
   str,
   teleport,
   times,
@@ -67,6 +75,7 @@ import { deathScript } from "../examples/death.js";
 import { spawnScript } from "../examples/spawn.js";
 import { logicScript } from "../examples/logic.js";
 import { listsScript } from "../examples/lists.js";
+import { functionsScript } from "../examples/functions.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -96,6 +105,102 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("lists", () => {
     expect(emit(listsScript)).toBe(fixture("lists.sk"));
+  });
+  it("functions", () => {
+    expect(emit(functionsScript)).toBe(fixture("functions.sk"));
+  });
+});
+
+describe("custom functions (phase 13)", () => {
+  it("definition with a return type and a default", () => {
+    expect(
+      emit(
+        script(
+          defineFunction("f", [param("a", "number"), param("b", "text", str("x"))], "text", [
+            returnValue(localVar("b")),
+          ]),
+        ),
+      ),
+    ).toBe('function f(a: number, b: text = "x") :: text:\n    return {_b}\n');
+  });
+  it("void definition without parameters", () => {
+    expect(
+      emit(script(defineFunction("g", [], null, [broadcast(str("y"))]))),
+    ).toBe('function g():\n    broadcast "y"\n');
+  });
+  it("plural parameter definition", () => {
+    expect(
+      emit(
+        script(
+          defineFunction("h", [param("ns", "numbers")], "number", [
+            returnValue(num(0)),
+          ]),
+        ),
+      ),
+    ).toBe("function h(ns: numbers) :: number:\n    return 0\n");
+  });
+  it("call as an expression, a nested call, and a bare call statement", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(variable("x"), call("f", num(1), call("g", num(2)))),
+            callStmt("h"),
+          ]),
+        ),
+      ),
+    ).toBe("on join:\n    set {x} to f(1, g(2))\n    h()\n");
+  });
+  it("call interpolated in a string, with a text literal argument", () => {
+    expect(
+      emit(script(onJoin([send(player(), fmt("r=", call("greet", str("World"))))]))),
+    ).toBe('on join:\n    send "r=%greet("World")%" to player\n');
+  });
+  it("send accepts a bare call as the message", () => {
+    expect(
+      emit(script(onJoin([send(player(), call("greet", str("x")))]))),
+    ).toBe('on join:\n    send greet("x") to player\n');
+  });
+  it("local variables and local lists", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("v"), num(1)),
+            set(localList("l"), variable("src")),
+            set(variable("dst"), localList("l")),
+            add(localVar("v", player()), num(2)),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n    set {_v} to 1\n    set {_l::*} to {src}\n    set {dst} to {_l::*}\n    add 2 to {_v::%player%}\n",
+    );
+  });
+  it("return and stop", () => {
+    expect(
+      emit(
+        script(
+          defineFunction("k", [], "number", [
+            ifElse(equals(variable("a"), num(1)), [stopTrigger()]),
+            returnValue(num(3)),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "function k() :: number:\n    if {a} is 1:\n        stop\n    return 3\n",
+    );
+  });
+  it("api guards: defineFunction and param validation", () => {
+    expect(() => defineFunction("bad name", [], null, [])).toThrow(RangeError);
+    expect(() => defineFunction("ok", [], "integer" as never, [])).toThrow(RangeError);
+    expect(() => param("x", "integer" as never)).toThrow(RangeError);
+    expect(() => param("1x", "number")).toThrow(RangeError);
+    expect(() =>
+      defineFunction("two", [param("a", "numbers"), param("b", "number")], null, []),
+    ).toThrow(RangeError);
+    expect(() => call("bad name")).toThrow(RangeError);
+    expect(() => localVar("")).toThrow(RangeError);
   });
 });
 
