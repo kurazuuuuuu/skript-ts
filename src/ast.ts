@@ -70,7 +70,24 @@ export type Expr =
   // with defineFunction and use its return value. Skript resolves
   // calls by signature at parse time; the engine resolves by the
   // runtime types of the argument values (see README).
-  | { kind: "functionCall"; name: string; args: readonly Expr[] };
+  | { kind: "functionCall"; name: string; args: readonly Expr[] }
+  // Core-language gameplay event values (phase 14): the block an
+  // event is about (break / place / click on a block; no value for
+  // clicks into air), the item an event involves (the item in hand
+  // for click, the item being placed for place, the broken block
+  // in item form for break), the
+  // attacker of a damage event (no value unless an entity caused
+  // the damage), the damage amount (current — it reflects earlier
+  // setDamage writes in the same handler), and the damage cause
+  // as a text ("entity attack", "fall", ...). typeOf yields the
+  // Skript type name of any value ("grass block", "dirt",
+  // "player", "number", ...), or no value for a missing value.
+  | { kind: "eventBlock" }
+  | { kind: "eventItem" }
+  | { kind: "attacker" }
+  | { kind: "damageAmount" }
+  | { kind: "damageCause" }
+  | { kind: "typeOf"; target: Expr };
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
@@ -135,7 +152,13 @@ export type FunctionTypeName =
   | "boolean" | "booleans"
   | "player" | "players"
   | "location" | "locations"
-  | "object" | "objects";
+  | "object" | "objects"
+  // Gameplay value types (phase 14): a block, an item, an entity.
+  // Singular only — the plural forms are not part of this slice.
+  // All three parse as Skript declaration types (probed against
+  // the real Skript 2.17.1); the engine matches them against its
+  // Block / ItemStack / Entity values.
+  | "block" | "item" | "entity";
 
 /**
  * One declared parameter of a custom function. The parameter is a
@@ -181,6 +204,17 @@ export type Stmt =
   | { kind: "return"; value: Expr; loc?: SourceLoc }
   | { kind: "stop"; loc?: SourceLoc }
   | { kind: "callStmt"; name: string; args: readonly Expr[]; loc?: SourceLoc }
+  // Core-language event control (phase 14). cancelEvent /
+  // uncancelEvent map to Skript's `cancel event` / `uncancel
+  // event`: they flag the Bukkit event the current trigger is
+  // handling (block break/place, clicks, damage, ...) as cancelled
+  // or not; outside a cancellable event they do nothing. setDamage
+  // rewrites the amount of the damage event being handled (damage
+  // is a settable expression in Skript, not a variable, so it gets
+  // its own statement kind); anywhere else it does nothing.
+  | { kind: "cancelEvent"; loc?: SourceLoc }
+  | { kind: "uncancelEvent"; loc?: SourceLoc }
+  | { kind: "setDamage"; value: Expr; loc?: SourceLoc }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration
@@ -230,9 +264,10 @@ export type Stmt =
   // handler never sets a result resolves to no value.
   | { kind: "setPlaceholderResult"; text: TextExpr; loc?: SourceLoc };
 
-/** Represents a Skript event kind. The ws* kinds are engine-builtin events (phase 6), the timer* kinds are phase 7, papiRequest is phase 10. */
+/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14). */
 export type EventKind =
   | "join" | "firstJoin" | "quit" | "chat" | "death"
+  | "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage"
   | "wsOpen" | "wsMessage" | "wsClose"
   | "timerTick" | "timerComplete"
   | "papiRequest";

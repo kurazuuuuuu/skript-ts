@@ -30,6 +30,27 @@ export interface BehaviorBot {
   /** Poll the bot's inventory until an item with this name appears. Throws on timeout. */
   expectInventoryItem(itemName: string, timeoutMs?: number): Promise<void>;
   disconnect(): void;
+  // World interaction controls (phase 14): enough of the bot's
+  // body to exercise the gameplay events — digging, placing,
+  // clicking and fighting — against the live server.
+  /** Current position; block coordinates are the floor of these. */
+  position(): { x: number; y: number; z: number };
+  /** Minecraft name of the block at the coordinates ("grass_block"), or null for air / not loaded. */
+  blockNameAt(x: number, y: number, z: number): string | null;
+  /** Dig the block at the coordinates until it breaks. */
+  digAt(x: number, y: number, z: number): Promise<void>;
+  /** Stop an in-progress dig (e.g. one the server keeps cancelling). */
+  stopDigging(): void;
+  /** Equip the named inventory item in the main hand. Throws on timeout. */
+  equipItem(itemName: string, timeoutMs?: number): Promise<void>;
+  /** Place the held block on top of the block at the coordinates. */
+  placeOnTopOf(x: number, y: number, z: number): Promise<void>;
+  /** Right-click the block at the coordinates with the held item (or empty hand). */
+  activateBlockAt(x: number, y: number, z: number): Promise<void>;
+  /** Attack the named player once. */
+  attackPlayer(username: string): Promise<void>;
+  /** Current health (20 is full). */
+  health(): number;
 }
 
 export interface BehaviorContext {
@@ -153,6 +174,78 @@ class MineflayerBehaviorBot implements BehaviorBot {
     } catch {
       // already gone
     }
+  }
+
+  position(): { x: number; y: number; z: number } {
+    const p = this.bot.entity.position;
+    return { x: p.x, y: p.y, z: p.z };
+  }
+
+  /** The mineflayer block at absolute coordinates, or null when not loaded. */
+  private blockAt(x: number, y: number, z: number) {
+    return this.bot.blockAt(this.bot.entity.position.clone().set(x, y, z));
+  }
+
+  blockNameAt(x: number, y: number, z: number): string | null {
+    const block = this.blockAt(x, y, z);
+    if (block === null || block.name === "air") return null;
+    return block.name;
+  }
+
+  async digAt(x: number, y: number, z: number): Promise<void> {
+    const block = this.blockAt(x, y, z);
+    if (block === null || block.name === "air") {
+      throw new Error(`no diggable block at ${x}, ${y}, ${z}`);
+    }
+    await this.bot.dig(block);
+  }
+
+  stopDigging(): void {
+    this.bot.stopDigging();
+  }
+
+  async equipItem(itemName: string, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const found = (this.bot.inventory?.items() ?? []).find((it) => it.name === itemName);
+      if (found !== undefined) {
+        await this.bot.equip(found, "hand");
+        return;
+      }
+      if (Date.now() >= deadline) {
+        const names = (this.bot.inventory?.items() ?? []).map((it) => it.name).join(", ") || "(empty)";
+        throw new Error(`timed out after ${timeoutMs}ms waiting to equip "${itemName}"; inventory: ${names}`);
+      }
+      await sleep(250);
+    }
+  }
+
+  async placeOnTopOf(x: number, y: number, z: number): Promise<void> {
+    const reference = this.blockAt(x, y, z);
+    if (reference === null) {
+      throw new Error(`no reference block at ${x}, ${y}, ${z} to place on`);
+    }
+    await this.bot.placeBlock(reference, this.bot.entity.position.clone().set(0, 1, 0));
+  }
+
+  async activateBlockAt(x: number, y: number, z: number): Promise<void> {
+    const block = this.blockAt(x, y, z);
+    if (block === null) {
+      throw new Error(`no block at ${x}, ${y}, ${z} to activate`);
+    }
+    await this.bot.activateBlock(block);
+  }
+
+  async attackPlayer(username: string): Promise<void> {
+    const entity = Object.values(this.bot.entities).find((e) => e.username === username);
+    if (entity === undefined) {
+      throw new Error(`player "${username}" is not visible to bot "${this.username}"`);
+    }
+    this.bot.attack(entity);
+  }
+
+  health(): number {
+    return this.bot.health;
   }
 }
 

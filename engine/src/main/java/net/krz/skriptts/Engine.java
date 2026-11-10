@@ -5,8 +5,12 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Cancellable;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.AbstractMap;
@@ -84,6 +88,17 @@ import java.util.logging.Logger;
  * wait inside a function resumes the caller immediately with no
  * value, the rest of the body runs detached, and its return is
  * dropped.
+ * Phase 14 adds core-language gameplay events (no addon scope):
+ * block break / place, right / left click and damage, fired by the
+ * plugin's Bukkit listeners with the event's values on the context
+ * (event block, event item, attacker, the live damage event).
+ * Blocks and items are real values now (Block / ItemStack): they
+ * print and compare by their Skript type name ("grass block"),
+ * typeOf() reads that name back, and the function type system
+ * knows "block", "item" and "entity". Cancellation and the damage
+ * amount write through to the underlying Bukkit event, so a
+ * cancelled break leaves the block standing and setDamage changes
+ * what the victim actually takes.
  */
 final class Engine {
 
@@ -110,7 +125,12 @@ final class Engine {
         Player loopPlayer;  // "loop-player" inside loop all players
         Object loopValue;   // "loop-value": element / counter / player of the enclosing loop
         Object loopIndex;   // "loop-index" (a Double or String) inside list loops; null elsewhere
-        Player victim;      // "victim" in death events
+        Entity victim;      // "victim" in death and damage events (any entity)
+        Block eventBlock;   // "event-block" in block break/place/click events; null for air clicks
+        ItemStack eventItem; // "event-item" in block break/place/click events
+        Entity attacker;    // "attacker" in damage events caused by an entity; null otherwise
+        Cancellable cancellable; // the Bukkit event being handled, when it can be cancelled
+        EntityDamageEvent damageEvent; // the live damage event (damage get/set); null elsewhere
         String chatMessage; // "message" in chat events
         String wsId;        // websocket connection id in websocket events
         String wsText;      // received text in websocket message events
@@ -130,6 +150,11 @@ final class Engine {
             c.loopValue = loopValue;
             c.loopIndex = loopIndex;
             c.victim = victim;
+            c.eventBlock = eventBlock;
+            c.eventItem = eventItem;
+            c.attacker = attacker;
+            c.cancellable = cancellable;
+            c.damageEvent = damageEvent;
             c.chatMessage = chatMessage;
             c.wsId = wsId;
             c.wsText = wsText;
@@ -547,6 +572,29 @@ final class Engine {
             }
             case "callStmt" -> {
                 invokeFunction(str(stmt.get("name")), evalArgs(list(stmt.get("args")), ctx), ctx);
+                cont.run();
+            }
+            case "cancelEvent" -> {
+                // Writes through to the Bukkit event the plugin
+                // listener is currently dispatching; the vanilla
+                // outcome (block stays, damage skipped) follows
+                // from the event's cancelled flag.
+                if (ctx.cancellable != null) ctx.cancellable.setCancelled(true);
+                cont.run();
+            }
+            case "uncancelEvent" -> {
+                if (ctx.cancellable != null) ctx.cancellable.setCancelled(false);
+                cont.run();
+            }
+            case "setDamage" -> {
+                // The damage expression is settable in Skript; the
+                // write lands on the live event, so later reads of
+                // damageAmount() in the same handler see it and the
+                // victim takes the rewritten amount.
+                Object v = evalExpr(node(stmt.get("value")), ctx);
+                if (ctx.damageEvent != null && v instanceof Number n) {
+                    ctx.damageEvent.setDamage(n.doubleValue());
+                }
                 cont.run();
             }
             case "if" -> {
@@ -1073,6 +1121,9 @@ final class Engine {
             case "boolean" -> value instanceof Boolean;
             case "player" -> value instanceof Player;
             case "location" -> value instanceof Location;
+            case "block" -> value instanceof Block;
+            case "item" -> value instanceof ItemStack;
+            case "entity" -> value instanceof Entity;
             default -> true; // object, and any type outside the subset's checks
         };
     }
@@ -1172,8 +1223,70 @@ final class Engine {
             return !Double.isNaN(x) && !Double.isNaN(y) && x == y;
         }
         if (a instanceof String sa && b instanceof String sb) return sa.equalsIgnoreCase(sb);
+        // Blocks and items compare by type against the subset's
+        // text-form item literals ("dirt", "grass block" — the
+        // `item` expression evaluates to its name as a String):
+        // `type of event-block is dirt` goes through typeOf, but a
+        // direct `event-item is dirt` must agree with Skript too.
+        String aType = typeNameOf(a);
+        String bType = typeNameOf(b);
+        if (aType != null && b instanceof String sb) return aType.equalsIgnoreCase(sb);
+        if (bType != null && a instanceof String sa) return bType.equalsIgnoreCase(sa);
+        if (a instanceof Block ba && b instanceof Block bb) {
+            return ba.getType() == bb.getType()
+                    && ba.getX() == bb.getX() && ba.getY() == bb.getY() && ba.getZ() == bb.getZ()
+                    && ba.getWorld().equals(bb.getWorld());
+        }
+        if (a instanceof ItemStack ia && b instanceof ItemStack ib) {
+            return ia.getType() == ib.getType() && ia.getAmount() == ib.getAmount();
+        }
         if (a.getClass() != b.getClass()) return false;
         return a.equals(b);
+    }
+
+    /**
+     * The Skript type name of a gameplay value, or null when the
+     * value has no type name in this subset: a block or an item
+     * reads as its material ("grass block", "dirt"), an entity as
+     * its kind ("zombie"; players read "player"). Type names are
+     * the lowercase, space-separated form Skript prints and its
+     * item literals use.
+     */
+    static String typeNameOf(Object value) {
+        if (value instanceof Block block) return materialName(block.getType());
+        if (value instanceof ItemStack stack) return materialName(stack.getType());
+        if (value instanceof Player) return "player";
+        if (value instanceof Entity entity) {
+            return entity.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        }
+        if (value instanceof Number) return "number";
+        if (value instanceof String) return "text";
+        if (value instanceof Boolean) return "boolean";
+        if (value instanceof Location) return "location";
+        if (value instanceof World) return "world";
+        return null;
+    }
+
+    /** A Bukkit material in Skript's printed form: GRASS_BLOCK -> "grass block". */
+    private static String materialName(Material material) {
+        return material.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+    }
+
+    /**
+     * A damage cause in Skript's printed form. Most causes read
+     * as their lowercase name ("fall", "lava", "drowning"), but
+     * Skript's names are not a mechanical transform of Bukkit's:
+     * ENTITY_ATTACK prints as "attack" (verified live against the
+     * real Skript 2.17.1) and FIRE_TICK as "burning" (the form
+     * Skript's own documentation examples use). Only "attack" is
+     * pinned by a behavior test in this subset.
+     */
+    private static String damageCauseName(EntityDamageEvent.DamageCause cause) {
+        return switch (cause) {
+            case ENTITY_ATTACK -> "attack";
+            case FIRE_TICK -> "burning";
+            default -> cause.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        };
     }
 
     /**
@@ -1219,7 +1332,21 @@ final class Engine {
             case "item" -> str(expr.get("name"));
             case "locationOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
-                yield target instanceof Player p ? p.getLocation() : null;
+                if (target instanceof Player p) yield p.getLocation();
+                if (target instanceof Block b) yield b.getLocation();
+                if (target instanceof Entity e) yield e.getLocation();
+                yield null;
+            }
+            case "eventBlock" -> ctx.eventBlock;
+            case "eventItem" -> ctx.eventItem;
+            case "attacker" -> ctx.attacker;
+            case "damageAmount" -> ctx.damageEvent == null ? null : ctx.damageEvent.getDamage();
+            case "damageCause" -> ctx.damageEvent == null
+                    ? null
+                    : damageCauseName(ctx.damageEvent.getCause());
+            case "typeOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target == null ? null : typeNameOf(target);
             }
             case "wsMessage" -> ctx.wsText;
             case "wsId" -> ctx.wsId;
@@ -1434,6 +1561,9 @@ final class Engine {
         if (value instanceof List<?> list) return joinList(list);
         if (value instanceof Database.DataSource ds) return ds.display();
         if (value instanceof Player p) return p.getName();
+        if (value instanceof Block block) return materialName(block.getType());
+        if (value instanceof ItemStack stack) return materialName(stack.getType());
+        if (value instanceof Entity entity) return typeNameOf(entity);
         if (value instanceof World w) return w.getName();
         if (value instanceof Number n) return formatNumber(n.doubleValue());
         if (value instanceof Boolean b) return b.toString();

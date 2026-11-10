@@ -9,9 +9,17 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
@@ -349,5 +357,84 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         Engine.Ctx ctx = baseCtx(player);
         ctx.victim = player;
         engine.fireEvent("death", ctx, false);
+    }
+
+    // ------------------------------------------------------------------
+    // Gameplay events (phase 14): Bukkit events -> engine events.
+    // Each listener packs the event's values into the context; the
+    // engine reads them back through its event-value expressions,
+    // and cancellation / damage rewrites land on the live Bukkit
+    // event, so the vanilla outcome follows the script.
+    // ------------------------------------------------------------------
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player player = event.getPlayer();
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventBlock = event.getBlock();
+        // Skript's break event-item is the broken block in item
+        // form, not the tool in hand (verified live against the
+        // real Skript: digging grass while holding a sword still
+        // reported the block, "grass block").
+        ctx.eventItem = new ItemStack(event.getBlock().getType());
+        ctx.cancellable = event;
+        engine.fireEvent("blockBreak", ctx, false);
+    }
+
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent event) {
+        Player player = event.getPlayer();
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventBlock = event.getBlockPlaced();
+        ctx.eventItem = normalizeItem(event.getItemInHand());
+        ctx.cancellable = event;
+        engine.fireEvent("blockPlace", ctx, false);
+    }
+
+    @EventHandler
+    public void onInteract(PlayerInteractEvent event) {
+        // The event fires once per hand; only the main hand counts,
+        // or every click would run its handlers twice.
+        if (event.getHand() != EquipmentSlot.HAND) return;
+        String kind = switch (event.getAction()) {
+            case LEFT_CLICK_BLOCK, LEFT_CLICK_AIR -> "leftClick";
+            case RIGHT_CLICK_BLOCK, RIGHT_CLICK_AIR -> "rightClick";
+            default -> null; // PHYSICAL (pressure plates and the like) is not a click
+        };
+        if (kind == null) return;
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.eventBlock = event.getClickedBlock();
+        ctx.eventItem = normalizeItem(event.getItem());
+        ctx.cancellable = event;
+        engine.fireEvent(kind, ctx, false);
+    }
+
+    @EventHandler
+    public void onDamage(EntityDamageEvent event) {
+        // The bare player / event-player stay unset on purpose:
+        // Skript has no player value in a damage event ("There's
+        // no player in an on damage event" is a parse error there),
+        // so scripts address the participants through the victim
+        // and attacker expressions instead.
+        Engine.Ctx ctx = new Engine.Ctx();
+        ctx.victim = event.getEntity();
+        if (event instanceof EntityDamageByEntityEvent byEntity) {
+            ctx.attacker = byEntity.getDamager();
+        }
+        ctx.damageEvent = event;
+        ctx.cancellable = event;
+        engine.fireEvent("damage", ctx, false);
+    }
+
+    /**
+     * Normalize an event's item value. Bukkit is inconsistent about
+     * empty hands: the inventory reports an air stack while the
+     * interact event reports null. Scripts see one rule — an empty
+     * hand means the event has no item value at all, matching the
+     * real Skript (verified live: a click with an empty hand reads
+     * its event-item as <none>, not "air").
+     */
+    private static ItemStack normalizeItem(ItemStack item) {
+        return item == null || item.getType().isAir() ? null : item;
     }
 }

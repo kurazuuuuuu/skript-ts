@@ -1,0 +1,37 @@
+function blockLabel(b: block) :: object:
+    return type of {_b}
+
+function itemLabel(i: item) :: object:
+    return type of {_i}
+
+function entityLabel(e: entity) :: text:
+    return "%{_e}%"
+
+on block break:
+    if type of event-block is dirt:
+        broadcast "break blocked for %player%"
+        cancel event
+    else:
+        broadcast "%player% broke %blockLabel(event-block)% (block item: %itemLabel(event-item)%)"
+
+on block place:
+    if type of event-item is stone:
+        broadcast "place blocked for %player%"
+        cancel event
+    else:
+        broadcast "%player% placed %blockLabel(event-block)% from %itemLabel(event-item)%"
+
+on right click:
+    broadcast "%player% right clicked %blockLabel(event-block)% with %itemLabel(event-item)%"
+
+on left click:
+    broadcast "%player% left clicked %blockLabel(event-block)% with %itemLabel(event-item)%"
+
+on damage:
+    broadcast "%entityLabel(victim)% was hurt by %entityLabel(attacker)%: %damage% damage (%damage cause%)"
+    if "%victim%" is "ShieldBot":
+        cancel event
+        broadcast "shielded %victim%"
+    else:
+        if "%victim%" is "HalfBot":
+            set damage to (damage / 2)

@@ -52,8 +52,10 @@ on join:
 サンプルプログラムは [`examples/`](examples/) にあります。v0 の5本
 （参加ウェルカム、キットコマンド、チャットログ中継、死亡カウンタ、
 スポーンコマンド）、エンジン内蔵機能ごとのサンプル、コア言語
-（比較・論理・算術）の `logic.ts`、そしてリスト変数・拡張ループ・
-`while`・`wait` の `lists.ts` です。ゴールデンテストのフィクスチャ
+（比較・論理・算術）の `logic.ts`、リスト変数・拡張ループ・
+`while`・`wait` の `lists.ts`、カスタム関数の `functions.ts`、
+そしてゲームプレイイベント（ブロック破壊／設置、クリック、
+ダメージ）の `gameplay.ts` です。ゴールデンテストのフィクスチャ
 も兼ねています。
 
 ## 対応サブセット（SPEC、v0）
@@ -68,6 +70,11 @@ on join:
 | `onQuit` | `on quit:` |
 | `onChat` | `on chat:` |
 | `onDeath` | `on death:` |
+| `onBlockBreak` | `on block break:` |
+| `onBlockPlace` | `on block place:` |
+| `onRightClick` | `on right click:` |
+| `onLeftClick` | `on left click:` |
+| `onDamage` | `on damage:` |
 
 ### コマンド
 `command(name, argType, body, argOptional?)` — 引数は最大 **1つ**。
@@ -96,6 +103,9 @@ on join:
 | `returnValue(value)` | `return <value>`（`defineFunction` 内） |
 | `stopTrigger()` | `stop`（トリガー／関数からの早期終了） |
 | `callStmt(name, ...args)` | `<name>(<args>)` を単独の文として |
+| `cancelEvent()` | `cancel event`（キャンセル可能なイベントのハンドラ内） |
+| `uncancelEvent()` | `uncancel event` |
+| `setDamage(value)` | `set damage to <value>`（`onDamage` 内） |
 
 ### 式
 | TypeScript | 値の位置 | 文字列の中 |
@@ -119,6 +129,12 @@ on join:
 | `num(n)` / `bool(b)` | `42` / `true` | 同じ |
 | `item(name)` | `diamond sword` | 同じ |
 | `locationOf(e)` | `location of <e>` | `%location of <e>%` |
+| `eventBlock()` | `event-block` | `%event-block%` |
+| `eventItem()` | `event-item` | `%event-item%` |
+| `attacker()` | `attacker` | `%attacker%` |
+| `damageAmount()` | `damage` | `%damage%` |
+| `damageCause()` | `damage cause` | `%damage cause%` |
+| `typeOf(e)` | `type of <e>` | `%type of <e>%` |
 | `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` など | `%(<a> + <b>)%` など |
 | `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可） | `mod(<a>, <b>)` | `%mod(<a>, <b>)%` |
 | `fmt(...parts)` | `"<parts>"` | 外側の文字列に平坦化 |
@@ -233,7 +249,9 @@ that matches 'loop-index'"）、プレイヤーループも同様です。添字
 `defineFunction(name, params, returnType, body)` で関数を定義し、
 引数は `param(name, type, default?)` で宣言します。型は `number`、
 `text`、`boolean`、`player`、`location`、`object` とその複数形
-（`numbers`、`texts` など）です。複数形の引数は最後尾に1つだけ
+（`numbers`、`texts` など）に加え、単数形のみのゲームプレイ型
+`block`、`item`、`entity` があります（後述の「ゲームプレイ
+イベント」参照）。複数形の引数は最後尾に1つだけ
 置けます（ビルダが強制します）。`returnType` は同じ型名のいずれか、
 void 関数は `null` です。本体では引数とローカル変数を
 `localVar(name)` / `localList(name)`（`{_name}`、`{_name::*}`）で
@@ -298,6 +316,74 @@ void 関数は `null` です。本体では引数とローカル変数を
 複数形引数の合計、型不一致とスコープのデモ、切り離される
 wait）、`examples/behavior/functions.behavior.ts` が両ランタイムで
 同一の期待値を検証します。
+
+### ゲームプレイイベント
+
+ゲームプレイイベントはコア言語です。同じスクリプトが Skript
+（出力された `.sk`）でもエンジン jar（独自の Bukkit リスナー
+から発火）でも動きます。いずれも**フィルタなしの形**であり、
+Skript のフィルタ付き形（`on break of stone:`、`on damage of
+player by zombie:`）はこのスライスの範囲外です。汎用の
+`on click:`（右／左のペアでカバーします）とブロックダメージ
+イベント（Skript 自身のドキュメントが左クリックイベントを
+案内しています）も同様です。
+
+イベント値（本家 Skript 2.17.1 へのプローブと振る舞いテストで
+裏取り済み）：
+
+- `eventBlock()` はイベント対象のブロックです。空への
+  クリックにはブロックがありません。`locationOf(eventBlock())`
+  でその位置が得られます。
+- `eventItem()` は、**クリック**では手持ちアイテム、**設置**
+  では置かれるアイテムです。**破壊**では手持ちの道具では
+  なく、壊したブロックの**アイテム形**です（実測で確定：
+  剣を持って草を掘っても `grass block` と報告されました）。
+  空手のとき値は**存在せず**、文字列の中では `air` ではなく
+  `<none>` と読めます。
+- ダメージイベントでは `victim()` がダメージを受ける
+  エンティティ、`attacker()` が与えたエンティティです。
+  `attacker()` は環境ダメージ（落下、溶岩など）では値なし
+  です。素の `player()` / `eventPlayer()` はダメージイベント
+  では**定義されません**。Skript はパース時に弾き（"There's no
+  player in an on damage event"）、エンジンも両方を未設定の
+  ままにして倣います。
+- `damageAmount()` はイベントの**現在**の量です。同じ
+  ハンドラ内で先行した `setDamage()` の書き換えを反映します。
+  量そのものはサーバーの計算です（素手の一撃が `1` になるのは
+  攻撃チャージが満タンのときだけ）。エンジンも同じ Bukkit
+  イベントを読むため、両ランタイムで同一になります。
+- `damageCause()` は原因のテキストです。大半は小文字の名前
+  （`fall`、`lava`）ですが、Skript の名前は機械的な変換では
+  ありません。エンティティ攻撃は `attack` と印字され（実測で
+  確定）、`FIRE_TICK` は `burning` と読めます。
+- `cancelEvent()` は背後のイベントをキャンセル済みにします
+  （ブロックは残り、ダメージは適用されません）。
+  `uncancelEvent()` は同じイベント内での先行キャンセルを
+  取り消します。キャンセルできない文脈では何もしません。
+- エンティティをテキストとして使うと、プレイヤーは名前、
+  それ以外は型名（`iron golem`、`slime`）として読めます。
+  両ランタイム共通です。
+
+ブロックとアイテムは値です。`typeOf(v)` は値の Skript 型名を
+返し（`grass block`、`dirt`、`player`、`number` など。値なし
+には型がありません）、`item("...")` リテラルとの比較が、
+ブロックやアイテムの種類を判定する正式な方法です。ブロック
+やアイテムをテキストとして使うとその名前として読めます。
+関数の引数型と戻り型には単数形の `block`、`item`、`entity`
+が使えます（このスライスでは複数形なし）。型付け上の注意点
+が1つ、実 Skript の読み込みエラーで確定しています：
+`typeOf(...)` が返すのはテキストではなく**型の値**です。
+それを返す関数の戻り型は `object` でなければならず、文字列の
+中では型の名前として印字されます。
+
+`examples/gameplay.ts` がこれら全てを exercised します（土は
+掘れず石は置けない＝どちらもキャンセル、クリックはブロック
+とアイテムのラベル付きで通知、ダメージは報告され、名前付き
+ボットの1体はキャンセル、もう1体は半減）。
+`examples/behavior/gameplay.behavior.ts` が実ボットに掘る・
+置く・クリックする・戦わせ、メッセージと結果のワールド状態
+（ブロックが消えたか残ったか、体力が減ったか否か）の両方を
+両ランタイムで検証します。
 
 ### 文字列のエスケープ
 リテラルテキストは Skript の規則に従います。`"` は `""` に、リテラルな `%` は `%%` に

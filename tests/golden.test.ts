@@ -5,17 +5,23 @@ import {
   add,
   and,
   argument,
+  attacker,
   bool,
   broadcast,
   call,
   callStmt,
+  cancelEvent,
   chatMessage,
   command,
+  damageAmount,
+  damageCause,
   defineFunction,
   deleteVar,
   dividedBy,
   emit,
   equals,
+  eventBlock,
+  eventItem,
   eventPlayer,
   fmt,
   give,
@@ -23,6 +29,7 @@ import {
   greaterThan,
   hasPermission,
   ifElse,
+  isEngineOnlyScript,
   isOp,
   item,
   lessOrEqual,
@@ -45,11 +52,16 @@ import {
   not,
   notEquals,
   num,
+  onBlockBreak,
+  onBlockPlace,
   onChat,
+  onDamage,
   onDeath,
   onFirstJoin,
   onJoin,
+  onLeftClick,
   onQuit,
+  onRightClick,
   or,
   param,
   player,
@@ -59,10 +71,13 @@ import {
   script,
   send,
   set,
+  setDamage,
   stopTrigger,
   str,
   teleport,
   times,
+  typeOf,
+  uncancelEvent,
   variable,
   victim,
   wait,
@@ -76,6 +91,7 @@ import { spawnScript } from "../examples/spawn.js";
 import { logicScript } from "../examples/logic.js";
 import { listsScript } from "../examples/lists.js";
 import { functionsScript } from "../examples/functions.js";
+import { gameplayScript } from "../examples/gameplay.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -108,6 +124,101 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("functions", () => {
     expect(emit(functionsScript)).toBe(fixture("functions.sk"));
+  });
+  it("gameplay", () => {
+    expect(emit(gameplayScript)).toBe(fixture("gameplay.sk"));
+  });
+});
+
+describe("gameplay events (phase 14)", () => {
+  const body = [broadcast(str("x"))];
+  it("event headers", () => {
+    expect(emit(script(onBlockBreak(body)))).toBe('on block break:\n    broadcast "x"\n');
+    expect(emit(script(onBlockPlace(body)))).toBe('on block place:\n    broadcast "x"\n');
+    expect(emit(script(onRightClick(body)))).toBe('on right click:\n    broadcast "x"\n');
+    expect(emit(script(onLeftClick(body)))).toBe('on left click:\n    broadcast "x"\n');
+    expect(emit(script(onDamage(body)))).toBe('on damage:\n    broadcast "x"\n');
+  });
+  it("event values in value position", () => {
+    expect(
+      emit(
+        script(
+          onDamage([
+            set(variable("a"), eventBlock()),
+            set(variable("b"), eventItem()),
+            set(variable("c"), attacker()),
+            set(variable("d"), damageAmount()),
+            set(variable("e"), damageCause()),
+            set(variable("f"), typeOf(eventBlock())),
+            set(variable("g"), locationOf(eventBlock())),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on damage:\n" +
+        "    set {a} to event-block\n" +
+        "    set {b} to event-item\n" +
+        "    set {c} to attacker\n" +
+        "    set {d} to damage\n" +
+        "    set {e} to damage cause\n" +
+        "    set {f} to type of event-block\n" +
+        "    set {g} to location of event-block\n",
+    );
+  });
+  it("event values interpolated in a format string", () => {
+    expect(
+      emit(
+        script(
+          onBlockBreak([
+            broadcast(
+              fmt(eventBlock(), "/", eventItem(), "/", typeOf(eventItem()), "/", damageCause()),
+            ),
+          ]),
+        ),
+      ),
+    ).toBe(
+      'on block break:\n    broadcast "%event-block%/%event-item%/%type of event-item%/%damage cause%"\n',
+    );
+  });
+  it("type-of parenthesizes an arithmetic operand", () => {
+    expect(
+      emit(script(onDamage([set(variable("t"), typeOf(plus(num(1), num(2))))]))),
+    ).toBe("on damage:\n    set {t} to type of ((1 + 2))\n");
+  });
+  it("cancel, uncancel and set damage statements", () => {
+    expect(
+      emit(
+        script(
+          onDamage([cancelEvent(), uncancelEvent(), setDamage(dividedBy(damageAmount(), num(2)))]),
+        ),
+      ),
+    ).toBe("on damage:\n    cancel event\n    uncancel event\n    set damage to (damage / 2)\n");
+  });
+  it("block, item and entity function parameter types", () => {
+    expect(
+      emit(
+        script(
+          defineFunction(
+            "lbl",
+            [param("b", "block"), param("i", "item"), param("e", "entity")],
+            "object",
+            [returnValue(typeOf(localVar("b")))],
+          ),
+        ),
+      ),
+    ).toBe("function lbl(b: block, i: item, e: entity) :: object:\n    return type of {_b}\n");
+    expect(() => param("x", "itemtype" as never)).toThrow(RangeError);
+  });
+  it("gameplay constructs are core language, not engine-only", () => {
+    expect(isEngineOnlyScript(gameplayScript)).toBe(false);
+    expect(
+      isEngineOnlyScript(
+        script(
+          onDamage([cancelEvent(), setDamage(damageAmount())]),
+          onBlockBreak([broadcast(fmt(typeOf(eventBlock()), " ", damageCause()))]),
+        ),
+      ),
+    ).toBe(false);
   });
 });
 

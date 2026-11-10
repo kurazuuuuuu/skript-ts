@@ -45,6 +45,22 @@ function emitValue(e: Expr): string {
             return e.name;
         case "locationOf":
             return `location of ${emitValue(e.target)}`;
+        case "eventBlock":
+            return "event-block";
+        case "eventItem":
+            return "event-item";
+        case "attacker":
+            return "attacker";
+        case "damageAmount":
+            return "damage";
+        case "damageCause":
+            return "damage cause";
+        case "typeOf":
+            // Parenthesize an arithmetic operand so the emitted
+            // text groups the operation, not the type-of.
+            return e.target.kind === "arith"
+                ? `type of (${emitValue(e.target)})`
+                : `type of ${emitValue(e.target)}`;
         case "arith":
             // Arithmetic is always parenthesized so the emitted tree
             // means the same thing regardless of Skript's own
@@ -117,6 +133,13 @@ function emitString(e: Expr): string {
             return e.name;
         case "locationOf":
             return `%location of ${emitValue(e.target)}%`;
+        case "eventBlock":
+        case "eventItem":
+        case "attacker":
+        case "damageAmount":
+        case "damageCause":
+        case "typeOf":
+            return `%${emitValue(e)}%`;
         case "arith":
             return `%${emitValue(e)}%`;
         case "format":
@@ -383,6 +406,12 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             return [own(`${prefix}wait ${emitValue(s.amount)} ${s.unit}`, path, s.loc)];
         case "return":
             return [own(`${prefix}return ${emitValue(s.value)}`, path, s.loc)];
+        case "cancelEvent":
+            return [own(`${prefix}cancel event`, path, s.loc)];
+        case "uncancelEvent":
+            return [own(`${prefix}uncancel event`, path, s.loc)];
+        case "setDamage":
+            return [own(`${prefix}set damage to ${emitValue(s.value)}`, path, s.loc)];
         case "stop":
             return [own(`${prefix}stop`, path, s.loc)];
         case "callStmt":
@@ -430,7 +459,17 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
                         ? "on quit:"
                         : t.event === "chat"
                           ? "on chat:"
-                          : "on death:";
+                          : t.event === "blockBreak"
+                            ? "on block break:"
+                            : t.event === "blockPlace"
+                              ? "on block place:"
+                              : t.event === "rightClick"
+                                ? "on right click:"
+                                : t.event === "leftClick"
+                                  ? "on left click:"
+                                  : t.event === "damage"
+                                    ? "on damage:"
+                                    : "on death:";
             return [own(header, path, t.loc), ...emitBlock(t.body, 1, path, "body")];
         }
         case "command": {

@@ -56,9 +56,10 @@ on join:
 Sample programs live in [`examples/`](examples/): the five v0
 programs (welcome, kit command, chat log relay, death counter, spawn
 commands), one per engine builtin, `logic.ts` for the core language
-(comparisons, logic, arithmetic), and `lists.ts` for list variables,
-the extended loops, `while` and `wait`. They double as golden-test
-fixtures.
+(comparisons, logic, arithmetic), `lists.ts` for list variables,
+the extended loops, `while` and `wait`, `functions.ts` for custom
+functions, and `gameplay.ts` for the gameplay events (block
+break/place, clicks, damage). They double as golden-test fixtures.
 
 ## Supported subset (SPEC, v0)
 
@@ -72,6 +73,11 @@ Anything not listed here is out of scope for v0.
 | `onQuit` | `on quit:` |
 | `onChat` | `on chat:` |
 | `onDeath` | `on death:` |
+| `onBlockBreak` | `on block break:` |
+| `onBlockPlace` | `on block place:` |
+| `onRightClick` | `on right click:` |
+| `onLeftClick` | `on left click:` |
+| `onDamage` | `on damage:` |
 
 ### Commands
 `command(name, argType, body, argOptional?)` — at most **one** argument.
@@ -101,6 +107,9 @@ section.
 | `returnValue(value)` | `return <value>` (inside `defineFunction`) |
 | `stopTrigger()` | `stop` (early exit from a trigger or function) |
 | `callStmt(name, ...args)` | `<name>(<args>)` as a bare statement |
+| `cancelEvent()` | `cancel event` (in a cancellable event handler) |
+| `uncancelEvent()` | `uncancel event` |
+| `setDamage(value)` | `set damage to <value>` (inside `onDamage`) |
 
 ### Expressions
 | TypeScript | value position | inside a string |
@@ -124,6 +133,12 @@ section.
 | `num(n)` / `bool(b)` | `42` / `true` | same |
 | `item(name)` | `diamond sword` | same |
 | `locationOf(e)` | `location of <e>` | `%location of <e>%` |
+| `eventBlock()` | `event-block` | `%event-block%` |
+| `eventItem()` | `event-item` | `%event-item%` |
+| `attacker()` | `attacker` | `%attacker%` |
+| `damageAmount()` | `damage` | `%damage%` |
+| `damageCause()` | `damage cause` | `%damage cause%` |
+| `typeOf(e)` | `type of <e>` | `%type of <e>%` |
 | `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc. | `%(<a> + <b>)%` etc. |
 | `remainder(a, b)` (or `arith(op, a, b)` for any of the five) | `mod(<a>, <b>)` | `%mod(<a>, <b>)%` |
 | `fmt(...parts)` | `"<parts>"` | flattened into the enclosing string |
@@ -248,7 +263,9 @@ seconds`); units are `ticks`, `seconds` and `minutes`.
 `defineFunction(name, params, returnType, body)` defines a
 function; `param(name, type, default?)` declares a parameter.
 Types are `number`, `text`, `boolean`, `player`, `location`,
-`object` and their plurals (`numbers`, `texts`, ...). A plural
+`object` and their plurals (`numbers`, `texts`, ...), plus the
+singular-only gameplay types `block`, `item` and `entity` (see
+*Gameplay events* below). A plural
 parameter must be last, and at most one is allowed (the builder
 enforces both). `returnType` is one of the same type names, or
 `null` for a void function. Inside the body, parameters and
@@ -320,6 +337,74 @@ factorial, defaults, overloads, a plural-parameter sum over a
 list-returning function, the mismatch and scope demos, the
 detaching wait), and `examples/behavior/functions.behavior.ts`
 asserts the identical expectations under both runtimes.
+
+### Gameplay events
+
+The gameplay events are core language: the same script runs
+under Skript (as emitted `.sk`) and under the engine jar (which
+fires them from its own Bukkit listeners). All of them are the
+*unfiltered* forms — Skript's filtered variants (`on break of
+stone:`, `on damage of player by zombie:`) are not in this
+slice, and neither is the generic `on click:` (the right/left
+pair covers it) or the block-damage event (Skript's own docs
+point at the left-click event for that).
+
+Event values (verified against the real Skript 2.17.1 with probe
+scripts and the behavior test):
+
+- `eventBlock()` is the block the event is about; a click into
+  air has no block. `locationOf(eventBlock())` gives its
+  location.
+- `eventItem()` is the item in hand for **click** events and the
+  item being placed for **place** events. In **break** events it
+  is the broken block *in item form*, **not** the tool in hand
+  (pinned live: digging grass with a sword in hand reported
+  `grass block`). An empty hand means the value is *absent* —
+  inside a string it reads `<none>`, not `air`.
+- In damage events, `victim()` is the entity taking damage and
+  `attacker()` the entity that caused it; `attacker()` has no
+  value for environmental damage (fall, lava, ...). The bare
+  `player()` / `eventPlayer()` are **not defined** in damage
+  events — Skript rejects them at parse time ("There's no
+  player in an on damage event"), and the engine mirrors that by
+  leaving both unset there.
+- `damageAmount()` is the event's *current* amount: it reflects
+  `setDamage()` writes made earlier in the same handler. The
+  amount itself is the server's computation (a fist hit is `1`
+  only at full attack charge), identical under both runtimes
+  because the engine reads the same Bukkit event.
+- `damageCause()` is the cause as a text. Most causes read as
+  their lowercase name (`fall`, `lava`), but Skript's names are
+  not a mechanical transform: an entity attack prints as
+  `attack` (pinned live), and `FIRE_TICK` reads `burning`.
+- `cancelEvent()` flags the underlying event cancelled — the
+  block stays, the damage is not applied — and
+  `uncancelEvent()` undoes a cancellation made earlier in the
+  same event. Outside a cancellable event they do nothing.
+- An entity used as text reads as its name for players and as
+  its type name (`iron golem`, `slime`) for everything else, in
+  both runtimes.
+
+Blocks and items are values: `typeOf(v)` yields a value's
+Skript type name (`grass block`, `dirt`, `player`, `number`,
+...; a missing value has no type), and comparing it against an
+`item("...")` literal is the supported way to test what a block
+or item is. A block or item used as text reads as that name.
+Function parameters and return types accept the singular types
+`block`, `item` and `entity` (no plurals in this slice). One
+typing quirk, pinned by a load error on the real Skript:
+`typeOf(...)` yields a *type value*, not a text — a function
+returning it must declare the `object` return type; it still
+prints as the type's name inside strings.
+
+`examples/gameplay.ts` exercises all of this — dirt cannot be
+broken and stone cannot be placed (both cancelled), clicks are
+announced with their block and item labels, and damage is
+reported, cancelled for one named bot and halved for another —
+and `examples/behavior/gameplay.behavior.ts` drives real bots
+through it (digging, placing, clicking, fighting) and asserts
+both the messages and the resulting world state (block gone or
+still there, health lost or not) under both runtimes.
 
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal

@@ -427,6 +427,7 @@ export function wait(amount: Expr, unit: TimeUnit): Stmt {
 const FUNCTION_TYPES: ReadonlySet<string> = new Set([
   "number", "numbers", "text", "texts", "boolean", "booleans",
   "player", "players", "location", "locations", "object", "objects",
+  "block", "item", "entity",
 ]);
 
 function requireFunctionName(name: string): string {
@@ -540,6 +541,111 @@ export function onChat(body: readonly Stmt[]): TopLevel {
 /** Construct an on-death event. */
 export function onDeath(body: readonly Stmt[]): TopLevel {
   return withLoc({ kind: "event", event: "death", body });
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 14): gameplay events — block break / place,
+// right / left click, damage
+//
+// Semantics mirror the real Skript 2.17.1, verified against the
+// sandbox server with hand-written probe scripts and mineflayer
+// behavior tests (see the development log):
+//
+// - Each event is the unfiltered form ("on block break", "on
+//   damage"); Skript's filtered forms ("on break of stone",
+//   "on damage of player by zombie") are not part of this slice.
+// - eventBlock() is the block the event is about; a click into
+//   air has no block. eventItem() is the item in the player's
+//   hand for click events and the item being placed for place
+//   events; in break events it is the broken block in item form
+//   (NOT the tool in hand — verified live: digging grass with a
+//   sword in hand reported "grass block"). In damage events
+//   victim() is the entity
+//   taking damage and attacker() the entity that caused it —
+//   attacker() has no value for environmental damage (fall,
+//   lava, ...). damageAmount() is the event's current amount:
+//   it reflects setDamage() writes made earlier in the handler.
+//   damageCause() is the cause as a text ("entity attack").
+// - The bare player()/eventPlayer() are NOT defined in damage
+//   events — Skript rejects them at parse time ("There's no
+//   player in an on damage event"), and the engine mirrors that
+//   by leaving both unset there. Use victim()/attacker().
+// - cancelEvent() prevents the action the event describes (the
+//   block stays, the damage is not applied); uncancelEvent()
+//   undoes a cancellation made earlier in the same event.
+// - typeOf() yields a value's Skript type name; comparing it
+//   against item("...") literals is the supported way to test
+//   what a block or item is. A missing value has no type.
+// ---------------------------------------------------------------------------
+
+/** Construct an on-block-break event: a player breaks a block. */
+export function onBlockBreak(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "blockBreak", body });
+}
+
+/** Construct an on-block-place event: a player places a block. */
+export function onBlockPlace(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "blockPlace", body });
+}
+
+/** Construct an on-right-click event: a player right-clicks a block, an entity, or air. */
+export function onRightClick(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "rightClick", body });
+}
+
+/** Construct an on-left-click event: a player left-clicks a block or air (attacking an entity is the damage event, not a click). */
+export function onLeftClick(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "leftClick", body });
+}
+
+/** Construct an on-damage event: an entity takes damage from any cause. */
+export function onDamage(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "damage", body });
+}
+
+/** Construct an event-block expression: the block of a block break / place / click event (no value for air clicks). */
+export function eventBlock(): Expr {
+  return { kind: "eventBlock" };
+}
+
+/** Construct an event-item expression: the item a click / place event involves (hand / placed item); in break events, the broken block in item form. */
+export function eventItem(): Expr {
+  return { kind: "eventItem" };
+}
+
+/** Construct an attacker expression: the entity that caused a damage event (no value for environmental damage). */
+export function attacker(): Expr {
+  return { kind: "attacker" };
+}
+
+/** Construct a damage-amount expression: the current damage of the damage event being handled. */
+export function damageAmount(): Expr {
+  return { kind: "damageAmount" };
+}
+
+/** Construct a damage-cause expression: the cause of a damage event as a text ("entity attack", "fall", ...). */
+export function damageCause(): Expr {
+  return { kind: "damageCause" };
+}
+
+/** Construct a type-of expression: the Skript type name of the value ("grass block", "player", ...), or no value. */
+export function typeOf(target: Expr): Expr {
+  return { kind: "typeOf", target };
+}
+
+/** Construct a cancel-event statement: cancel the event the current trigger is handling. */
+export function cancelEvent(): Stmt {
+  return withLoc({ kind: "cancelEvent" });
+}
+
+/** Construct an uncancel-event statement: undo a cancellation of the event being handled. */
+export function uncancelEvent(): Stmt {
+  return withLoc({ kind: "uncancelEvent" });
+}
+
+/** Construct a set-damage statement: rewrite the amount of the damage event being handled. */
+export function setDamage(value: Expr): Stmt {
+  return withLoc({ kind: "setDamage", value });
 }
 
 /** Construct a command declaration with resolved optional-argument flag. */
