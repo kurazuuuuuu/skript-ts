@@ -1,0 +1,3 @@
+on death:
+    add 1 to {deaths::%player%}
+    send "死亡回数は {deaths::%player%} 回です" to player

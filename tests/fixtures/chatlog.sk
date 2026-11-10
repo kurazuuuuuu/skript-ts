@@ -1,0 +1,4 @@
+on chat:
+    loop all players:
+        if loop-player is op:
+            send "[LOG] %player%: %message%" to loop-player

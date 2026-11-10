@@ -1,0 +1,7 @@
+on first join:
+    broadcast "ようこそ %player% さん、初めての参加です！"
+    give 1 wooden sword to player
+    set {welcomed::%player%} to true
+
+on join:
+    send "おかえりなさい、%player% さん" to player

@@ -1,0 +1,8 @@
+command /kit [<text>]:
+    trigger:
+        if player has permission "server.kit":
+            give 3 golden apple to player
+            add 1 to {kits::%player%}
+            send "キット %arg-1% を配布しました" to player
+        else:
+            send "権限がありません" to player

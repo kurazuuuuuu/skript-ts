@@ -1,0 +1,11 @@
+command /setspawn:
+    trigger:
+        set {spawn} to location of player
+        send "スポーン地点を設定しました" to player
+
+command /spawn:
+    trigger:
+        teleport player to {spawn}
+
+on quit:
+    broadcast "%event-player% さんが退出しました"
