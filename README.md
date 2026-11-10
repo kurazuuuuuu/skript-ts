@@ -95,8 +95,8 @@ section.
 | `victim()` | `victim` | `%victim%` |
 | `argument(n)` (1-based) | `arg-<n>` | `%arg-<n>%` |
 | `chatMessage()` | `message` | `%message%` |
-| `variable(name)` | `{name}` | `{name}` |
-| `variable(name, index)` | `{name::%<index>%}` | `{name::%<index>%}` |
+| `variable(name)` | `{name}` | `%{name}%` |
+| `variable(name, index)` | `{name::%<index>%}` | `%{name::%<index>%}%` |
 | `str(s)` | `"<s>"` | raw text |
 | `num(n)` / `bool(b)` | `42` / `true` | same |
 | `item(name)` | `diamond sword` | same |
@@ -107,6 +107,12 @@ Note: in `on death` events there is **no** `player` — Skript rejects it
 ("There's no player in an on death event"). Use `victim()` for the player
 who died. This was caught by the real-server verification stage against
 Skript 2.17.1, which is exactly what that stage is for.
+
+Note: inside a string, a variable must be wrapped in `%...%` to
+interpolate its value. A bare `{...}` in a string is literal text in
+Skript (no error — the wrong text is simply sent). The emitter handles
+the wrapping; this was caught by the behavior-test stage described
+below, not by load checks.
 
 ### Conditions
 | TypeScript | Skript |
@@ -132,6 +138,48 @@ Two stages, both required:
    (gitignored): Paper 1.21.11, Skript 2.17.1, Temurin JDK 21.
    `pnpm exec tsx examples/to-sk-files.ts` regenerates the `.sk` files
    into `server/plugins/Skript/scripts/`.
+
+## Build & verify CLI
+
+`bin/skript-ts.mjs` (run from the project root) drives the whole
+pipeline. Stages are shown one line each: a running stage updates its
+own line in place on a TTY, a finished stage stays with a ✓ or ✗, and
+non-TTY output falls back to append-only lines.
+
+```sh
+# typecheck -> transpile into build/ (add --deploy to also copy into a server)
+bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--server-dir server]
+
+# full verification against the throwaway sandbox server in server/
+bin/skript-ts.mjs verify [--no-behavior] [--no-fresh] [--json]
+```
+
+`verify` runs: typecheck → transpile → deploy → server start → script
+load check (initial load plus `skript reload all`) → behavior tests →
+stop. With `--json`, progress goes to stderr and a single JSON result
+(per-stage status, mapped errors, behavior results) is printed to
+stdout; the exit code is 0 only when everything passes.
+
+Transpiling also writes a source map next to each `.sk` file
+(`<name>.sk.map.json`) recording, for every emitted line, the AST node
+path and the TypeScript call site that produced it. When Skript reports
+a parse error, `verify` reports it mapped back to the TypeScript
+position, e.g. `death.sk:2 → examples/death.ts:5:5 (body[0].body[0])`.
+
+Before booting, `verify` wipes the sandbox's per-player state
+(playerdata, Skript `variables.csv`, `ops.json`) so behavior tests
+start from a clean slate; pass `--no-fresh` to keep it.
+
+### Behavior tests
+
+Load checks prove a script parses; behavior tests prove it *works*.
+Tests are TypeScript modules in `<src>/behavior/*.behavior.ts` whose
+default export receives a context (`src/behavior.ts`): connect a
+[mineflayer](https://github.com/PrismarineJS/mineflayer) bot over a
+real connection, wait for chat messages, run console commands, and
+assert on inventory. The bundled samples test the welcome broadcast +
+first-join item, the `/kit` permission flow, the op chat-log relay, and
+the death counter. See `examples/behavior/`.
 
 ## Development
 

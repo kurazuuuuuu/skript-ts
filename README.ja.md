@@ -92,8 +92,8 @@ on join:
 | `victim()` | `victim` | `%victim%` |
 | `argument(n)`（1始まり） | `arg-<n>` | `%arg-<n>%` |
 | `chatMessage()` | `message` | `%message%` |
-| `variable(name)` | `{name}` | `{name}` |
-| `variable(name, index)` | `{name::%<index>%}` | `{name::%<index>%}` |
+| `variable(name)` | `{name}` | `%{name}%` |
+| `variable(name, index)` | `{name::%<index>%}` | `%{name::%<index>%}%` |
 | `str(s)` | `"<s>"` | 素のテキスト |
 | `num(n)` / `bool(b)` | `42` / `true` | 同じ |
 | `item(name)` | `diamond sword` | 同じ |
@@ -104,6 +104,12 @@ on join:
 弾かれます（"There's no player in an on death event"）。死亡したプレイヤーは
 `victim()` で表します。これは Skript 2.17.1 での実サーバー検証で見つかった
 もので、まさにその検証段の存在理由です。
+
+注意: 文字列の中で変数の値を展開するには `%...%` で囲む必要があります。
+文字列内の素の `{...}` は Skript ではリテラル文字列として扱われます
+（エラーにはならず、誤ったテキストがそのまま送信されます）。この囲みは
+エミッタが行います。この問題は読み込み確認ではなく、後述の振る舞い
+テストで検出されました。
 
 ### 条件
 | TypeScript | Skript |
@@ -129,6 +135,50 @@ on join:
    Paper 1.21.11、Skript 2.17.1、Temurin JDK 21。
    `pnpm exec tsx examples/to-sk-files.ts` で `.sk` を
    `server/plugins/Skript/scripts/` へ再生成できます。
+
+## ビルド／検証 CLI
+
+`bin/skript-ts.mjs`（プロジェクトルートで実行）がパイプライン全体を
+駆動します。進捗表示はステージごとに1行で、実行中のステージは TTY では
+その行をその場で更新し、終わったステージは ✓／✗ 付きで残ります。
+非 TTY では行の追記形式にフォールバックします。
+
+```sh
+# 型チェック → build/ へ変換（--deploy でサーバーへも配置）
+bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--server-dir server]
+
+# server/ の使い捨てサンドボックスに対する全検証
+bin/skript-ts.mjs verify [--no-behavior] [--no-fresh] [--json]
+```
+
+`verify` のステージは、型チェック → 変換 → 配置 → サーバー起動 →
+読み込み確認（初回読み込み＋ `skript reload all`）→ 振る舞いテスト →
+停止、です。`--json` では進捗は標準エラーへ出て、標準出力には
+ステージ別成否・マッピング済みエラー・振る舞い結果を含む JSON が
+1つだけ出ます。終了コードは全合格時のみ 0 です。
+
+変換時には各 `.sk` の隣にソースマップ（`<name>.sk.map.json`）も出力され、
+各行について生成元の AST ノードパスと TypeScript の呼び出し位置を
+記録します。Skript がパースエラーを出した場合、`verify` はそれを
+TypeScript 側の位置へ変換して報告します
+（例: `death.sk:2 → examples/death.ts:5:5 (body[0].body[0])`）。
+
+起動前に、`verify` はサンドボックスのプレイヤー状態（playerdata、
+Skript の `variables.csv`、`ops.json`）を消去し、振る舞いテストが
+まっさらな状態から始まるようにします。残す場合は `--no-fresh` を
+指定します。
+
+### 振る舞いテスト
+
+読み込み確認は「パースできること」の証明で、振る舞いテストは
+「実際に動くこと」の証明です。テストは `<src>/behavior/*.behavior.ts`
+の TypeScript モジュールで、デフォルトエクスポートがコンテキスト
+（`src/behavior.ts`）を受け取ります。[mineflayer](https://github.com/PrismarineJS/mineflayer)
+のボットを実接続させ、チャットメッセージの到着、コンソールコマンド、
+インベントリの内容を検証できます。同梱のサンプルは、参加時の
+ブロードキャストと初回アイテム、`/kit` の権限フロー、OP 向け
+チャットログ中継、死亡カウンタをテストします。`examples/behavior/`
+を参照してください。
 
 ## 開発
 
