@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -232,6 +232,132 @@ export function ifElse(cond: Cond, then: readonly Stmt[], elseBody?: readonly St
 /** Construct a loop-players statement. */
 export function loopPlayers(body: readonly Stmt[]): Stmt {
   return withLoc({ kind: "loopPlayers", body });
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 12): list variables, more loops, while, wait
+//
+// List semantics mirror the real Skript 2.17.1, verified against
+// the sandbox server with hand-written probe scripts (see the
+// development log): a list variable {name::*} holds entries under
+// indices addressed by their string form — a number and a numeric
+// text are the same index (an entry set through a numeric
+// expression index reads back through the text "5") — and text
+// indices are case-insensitive. Iteration visits text indices
+// first (numeric texts by value, then alphabetically), then
+// numeric indices in ascending order. Adding appends at the
+// smallest unused positive integer index; deleting an entry
+// leaves a hole (no renumbering); removing a value deletes only
+// the first matching entry. A list used as text reads
+// "a, b and c" (two entries: "a and b"); an empty list — like
+// any missing value inside a string — reads <none>. size of an
+// unset list is 0.
+//
+// Loops: loopList exposes loopValue() and loopIndex(); loopTimes
+// and loopRange expose loopValue() only (the counter / the current
+// number) — Skript rejects loop-index in them ("There's no loop
+// that matches 'loop-index'"), so loopIndex() outside a list loop
+// is an invalid program in this subset. A range runs from the
+// first bound to the second, in whichever direction that is.
+//
+// wait suspends the rest of the trigger: statements after it —
+// including the rest of enclosing if branches, the remaining loop
+// iterations, and statements after the loop — run once the
+// duration has passed, in order (Skript's continuation semantics,
+// verified by timed probes). Durations may be fractional.
+// ---------------------------------------------------------------------------
+
+/** Construct a whole-list expression: the entries of {name::*} in iteration order. */
+export function listVar(name: string): ListExpr {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new RangeError("list variable name must be a non-empty string");
+  }
+  return { kind: "variableList", name };
+}
+
+/** Construct a list-size expression: the number of entries in the list (0 when unset). */
+export function listSize(list: ListExpr): Expr {
+  return { kind: "listSize", list };
+}
+
+/** Construct a loop-value expression: the element (or number / player) the enclosing loop is visiting. */
+export function loopValue(): Expr {
+  return { kind: "loopValue" };
+}
+
+/** Construct a loop-index expression: the index of the element the enclosing list loop is visiting. */
+export function loopIndex(): Expr {
+  return { kind: "loopIndex" };
+}
+
+/** Construct a list-add statement: append the value at the smallest unused positive integer index. */
+export function listAdd(list: ListExpr, value: Expr): Stmt {
+  return withLoc({ kind: "listAdd", list, value });
+}
+
+/** Construct a list-remove statement: delete the first entry (in iteration order) equal to the value. */
+export function listRemove(list: ListExpr, value: Expr): Stmt {
+  return withLoc({ kind: "listRemove", list, value });
+}
+
+/**
+ * Construct a delete statement: remove a variable, one list entry
+ * (an indexed variable), or a whole list (a list variable — the
+ * bare variable of the same name is a different node and stays).
+ */
+export function deleteVar(target: VariableExpr | ListExpr): Stmt {
+  return withLoc({ kind: "deleteVar", target });
+}
+
+/** Construct a loop over a list variable's entries, exposing loopValue() and loopIndex(). */
+export function loopList(list: ListExpr, body: readonly Stmt[]): Stmt {
+  return withLoc({ kind: "loopList", list, body });
+}
+
+/** Construct a counted loop: runs the body count times with loopValue() as the 1-based counter. */
+export function loopTimes(count: Expr, body: readonly Stmt[]): Stmt {
+  return withLoc({ kind: "loopTimes", count, body });
+}
+
+/** Construct a numeric range loop: loopValue() runs from `from` to `to`, step 1, in either direction. */
+export function loopRange(from: Expr, to: Expr, body: readonly Stmt[]): Stmt {
+  return withLoc({ kind: "loopRange", from, to, body });
+}
+
+const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
+  "hasPermission",
+  "isOp",
+  "equals",
+  "notEquals",
+  "greaterThan",
+  "greaterOrEqual",
+  "lessThan",
+  "lessOrEqual",
+  "timerActive",
+  "fileExists",
+]);
+
+/**
+ * Construct a while loop. The condition must be a leaf condition
+ * or the negation of one: an if head can lower and/or/not to
+ * control flow, but a loop head cannot, and Skript has no textual
+ * conjunction form — so composite conditions are rejected here
+ * instead of diverging between the two runtimes.
+ */
+export function whileLoop(cond: Cond, body: readonly Stmt[]): Stmt {
+  const inner = cond.kind === "not" ? cond.cond : cond;
+  if (!WHILE_LEAF_KINDS.has(inner.kind)) {
+    throw new RangeError(
+      "whileLoop condition must be a leaf condition or not(leaf): " +
+        "and/or conditions cannot head a while loop in this subset",
+    );
+  }
+  return withLoc({ kind: "while", cond, body });
+}
+
+/** Construct a wait statement: suspend the rest of the trigger for the given duration. */
+export function wait(amount: Expr, unit: TimeUnit): Stmt {
+  return withLoc({ kind: "wait", amount, unit });
 }
 
 /** Construct an on-join event. */

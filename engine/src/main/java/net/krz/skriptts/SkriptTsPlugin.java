@@ -133,6 +133,10 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
             }
         });
         timers.start();
+        // The wait statement's continuations run on the main thread
+        // through the Bukkit scheduler (phase 12).
+        engine.setDelayHost((ticks, task) ->
+                getServer().getScheduler().runTaskLater(this, task, ticks));
         // PlaceholderAPI is an optional external plugin (softdepend).
         // The bridge class is the only one touching its API, and it
         // is instantiated only when the plugin is actually present,

@@ -21,6 +21,14 @@ function emitValue(e: Expr): string {
             return "message";
         case "variable":
             return `{${e.name}${e.index !== undefined ? `::%${emitValue(e.index)}%` : ""}}`;
+        case "variableList":
+            return `{${e.name}::*}`;
+        case "listSize":
+            return `size of ${emitValue(e.list)}`;
+        case "loopValue":
+            return "loop-value";
+        case "loopIndex":
+            return "loop-index";
         case "string":
             return `"${escapeText(e.value)}"`;
         case "number":
@@ -84,6 +92,11 @@ function emitString(e: Expr): string {
         case "variable":
             // Inside a string, a variable must be %-wrapped to interpolate
             // its value; a bare {..} would be literal text in Skript.
+            return `%${emitValue(e)}%`;
+        case "variableList":
+        case "listSize":
+        case "loopValue":
+        case "loopIndex":
             return `%${emitValue(e)}%`;
         case "string":
             return escapeText(e.value);
@@ -294,6 +307,18 @@ function emitIfLines(
     }
 }
 
+/**
+ * Emit a while-loop head condition. A while head cannot lower
+ * logic to control flow the way emitIfLines does, and Skript has
+ * no textual conjunction, so only leaf conditions and not(leaf)
+ * have a .sk form (the whileLoop builder rejects the rest; the
+ * emitLeafCond calls below reject them again for hand-built ASTs).
+ */
+function emitWhileCond(c: Cond): string {
+    if (c.kind === "not") return emitLeafCond(c.cond, true);
+    return emitLeafCond(c, false);
+}
+
 function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     const prefix = " ".repeat(4 * level);
     switch (s.kind) {
@@ -316,6 +341,34 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             lines.push(...emitBlock(s.body, level + 1, path, "body"));
             return lines;
         }
+        case "listAdd":
+            return [own(`${prefix}add ${emitValue(s.value)} to ${emitValue(s.list)}`, path, s.loc)];
+        case "listRemove":
+            return [own(`${prefix}remove ${emitValue(s.value)} from ${emitValue(s.list)}`, path, s.loc)];
+        case "deleteVar":
+            return [own(`${prefix}delete ${emitValue(s.target)}`, path, s.loc)];
+        case "loopList": {
+            const lines = [own(`${prefix}loop ${emitValue(s.list)}:`, path, s.loc)];
+            lines.push(...emitBlock(s.body, level + 1, path, "body"));
+            return lines;
+        }
+        case "loopTimes": {
+            const lines = [own(`${prefix}loop ${emitValue(s.count)} times:`, path, s.loc)];
+            lines.push(...emitBlock(s.body, level + 1, path, "body"));
+            return lines;
+        }
+        case "loopRange": {
+            const lines = [own(`${prefix}loop numbers from ${emitValue(s.from)} to ${emitValue(s.to)}:`, path, s.loc)];
+            lines.push(...emitBlock(s.body, level + 1, path, "body"));
+            return lines;
+        }
+        case "while": {
+            const lines = [own(`${prefix}while ${emitWhileCond(s.cond)}:`, path, s.loc)];
+            lines.push(...emitBlock(s.body, level + 1, path, "body"));
+            return lines;
+        }
+        case "wait":
+            return [own(`${prefix}wait ${emitValue(s.amount)} ${s.unit}`, path, s.loc)];
         case "wsConnect":
         case "wsSend":
         case "wsDisconnect":

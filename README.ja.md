@@ -51,8 +51,9 @@ on join:
 
 サンプルプログラムは [`examples/`](examples/) にあります。v0 の5本
 （参加ウェルカム、キットコマンド、チャットログ中継、死亡カウンタ、
-スポーンコマンド）、エンジン内蔵機能ごとのサンプル、そしてコア言語
-（比較・論理・算術）の `logic.ts` です。ゴールデンテストのフィクスチャ
+スポーンコマンド）、エンジン内蔵機能ごとのサンプル、コア言語
+（比較・論理・算術）の `logic.ts`、そしてリスト変数・拡張ループ・
+`while`・`wait` の `lists.ts` です。ゴールデンテストのフィクスチャ
 も兼ねています。
 
 ## 対応サブセット（SPEC、v0）
@@ -84,6 +85,14 @@ on join:
 | `add(variable, value)` | `add <value> to {var}` |
 | `ifElse(cond, then, else?)` | `if <cond>:` … `else:` |
 | `loopPlayers(body)` | `loop all players:` |
+| `listAdd(list, value)` | `add <value> to {list::*}` |
+| `listRemove(list, value)` | `remove <value> from {list::*}` |
+| `deleteVar(target)` | `delete {var}` / `delete {list::*}` |
+| `loopList(list, body)` | `loop {list::*}:` |
+| `loopTimes(count, body)` | `loop <n> times:` |
+| `loopRange(from, to, body)` | `loop numbers from <a> to <b>:` |
+| `whileLoop(cond, body)` | `while <cond>:`（葉条件のみ、下記） |
+| `wait(amount, unit)` | `wait <n> ticks` / `seconds` / `minutes` |
 
 ### 式
 | TypeScript | 値の位置 | 文字列の中 |
@@ -96,6 +105,10 @@ on join:
 | `chatMessage()` | `message` | `%message%` |
 | `variable(name)` | `{name}` | `%{name}%` |
 | `variable(name, index)` | `{name::%<index>%}` | `%{name::%<index>%}%` |
+| `listVar(name)` | `{name::*}` | `%{name::*}%` |
+| `listSize(list)` | `size of {name::*}` | `%size of {name::*}%` |
+| `loopValue()` | `loop-value` | `%loop-value%` |
+| `loopIndex()` | `loop-index` | `%loop-index%` |
 | `str(s)` | `"<s>"` | 素のテキスト |
 | `num(n)` / `bool(b)` | `42` / `true` | 同じ |
 | `item(name)` | `diamond sword` | 同じ |
@@ -158,6 +171,51 @@ Skript 自身の演算子優先順位に依存しません。剰余は Skript �
 `does not have permission`）を使い分けます。このサブセットの条件は
 純粋（副作用なし）なので、この展開は意味論的に厳密です。エンジン
 側は `and`/`or`/`not` を直接評価します。
+
+### リスト・ループ・while・wait
+
+リストの意味論（推測ではなく、本家 Skript 2.17.1 へのプローブで
+裏取り済み）。リストは独立した値ではなく、通常の変数ストアにある
+`{name::<index>}` エントリの集合です。そのため永続化もスカラーと
+同じ経路に乗り、エンジンでは `variables.json` に `name::index`
+キーとして個別に保存されます。
+
+- **添字の同定**: 式で計算された添字では、数値 `5` と文字列 `"5"` は
+  **同じエントリ**です（同定は文字列表現によります）。変数名と
+  文字列添字は大文字小文字を区別しません（小文字化して格納）。
+- **走査順**: 文字列添字が先（数値らしい文字列は値の順、それ以外は
+  アルファベット順）、その後に数値添字の昇順です。`loopList` は
+  `loopValue()` と `loopIndex()` の両方を設定し、添字をテキストとして
+  描くときは素の形（`color`、`1`）になります。
+- **`listAdd`** は未使用の最小の正整数添字へ追加します。添字を指定して
+  消すと**穴が残り**、詰め直しはされません。`deleteVar(listVar(name))`
+  でリスト全体を消去しますが、素の `{name}` の削除では消えません。
+- **`listRemove`** は一致する要素のうち**最初の1つだけ**（走査順）を
+  消します。等値判定はフェーズ11の規則に従います。
+- リストをテキストとして使うと `a, b and c` の形に連結されます
+  （2要素なら `a and b`、1要素なら要素そのもの）。文字列の中で
+  値が無い箇所は `<none>` と描かれます。未設定のスカラーや存在しない
+  添字についても同様で、両ランタイム共通です。
+
+ループの形： `loopTimes` は `loopValue()` を 1 から回数まで数え
+（小数の回数は切り捨て）、`loopIndex()` は**持ちません**。Skript は
+この位置の loop-index をパースエラーとして拒否し（"There's no loop
+that matches 'loop-index'"）、プレイヤーループも同様です。添字を
+持つのはリストループだけです。`loopRange` は両端を含み、開始が
+終了より大きいと降順になります（`numbers from 4 to 2` は 4, 3, 2）。
+
+`whileLoop` は反復のたびに条件を再評価します。ヘッドに置けるのは
+葉条件か `not(葉条件)` のみです。`while` のヘッドは `if` のように
+制御フローへ展開できず、Skript にはテキストの接続表現が存在しない
+（フェーズ11の知見）ため、複合条件の `and`/`or`/`not` はビルダが
+構築時に拒否します。
+
+`wait` はトリガの残りを suspend します。後続の処理——囲んでいる
+ブロックの残り、囲んでいるループの残りの反復、ループの後の文——は
+指定時間の後に順序通り実行されます。Skript 側ではランタイム自身の
+遅延挙動、エンジン側では Bukkit スケジューラ上の継続
+（continuation）として同じ意味論を実装しています。量は小数も可
+（`wait 0.5 seconds`）で、単位は `ticks` / `seconds` / `minutes` です。
 
 ### 文字列のエスケープ
 リテラルテキストは Skript の規則に従います。`"` は `""` に、リテラルな `%` は `%%` に

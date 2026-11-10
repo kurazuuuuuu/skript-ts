@@ -9,6 +9,7 @@ import {
   broadcast,
   chatMessage,
   command,
+  deleteVar,
   dividedBy,
   emit,
   equals,
@@ -23,9 +24,18 @@ import {
   item,
   lessOrEqual,
   lessThan,
+  listAdd,
+  listRemove,
+  listSize,
+  listVar,
   locationOf,
+  loopIndex,
+  loopList,
   loopPlayer,
   loopPlayers,
+  loopRange,
+  loopTimes,
+  loopValue,
   minus,
   not,
   notEquals,
@@ -47,6 +57,8 @@ import {
   times,
   variable,
   victim,
+  wait,
+  whileLoop,
 } from "../src/index.js";
 import { welcomeScript } from "../examples/welcome.js";
 import { kitScript } from "../examples/kit.js";
@@ -54,6 +66,7 @@ import { chatLogScript } from "../examples/chatlog.js";
 import { deathScript } from "../examples/death.js";
 import { spawnScript } from "../examples/spawn.js";
 import { logicScript } from "../examples/logic.js";
+import { listsScript } from "../examples/lists.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -80,6 +93,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("logic", () => {
     expect(emit(logicScript)).toBe(fixture("logic.sk"));
+  });
+  it("lists", () => {
+    expect(emit(listsScript)).toBe(fixture("lists.sk"));
   });
 });
 
@@ -419,7 +435,98 @@ describe("arithmetic expressions (phase 11)", () => {
   });
 });
 
+describe("list variables (phase 12)", () => {
+  it("add / remove / delete statements", () => {
+    expect(emit(script(onJoin([listAdd(listVar("groceries"), str("milk"))])))).toBe(
+      'on join:\n    add "milk" to {groceries::*}\n',
+    );
+    expect(emit(script(onJoin([listRemove(listVar("groceries"), argument(1))])))).toBe(
+      "on join:\n    remove arg-1 from {groceries::*}\n",
+    );
+    expect(emit(script(onJoin([deleteVar(variable("groceries", num(2)))])))).toBe(
+      "on join:\n    delete {groceries::%2%}\n",
+    );
+    expect(emit(script(onJoin([deleteVar(listVar("groceries"))])))).toBe(
+      "on join:\n    delete {groceries::*}\n",
+    );
+    expect(emit(script(onJoin([deleteVar(variable("plain"))])))).toBe(
+      "on join:\n    delete {plain}\n",
+    );
+  });
+  it("size and whole-list expressions in value and string positions", () => {
+    expect(emit(script(onJoin([set(variable("n"), listSize(listVar("groceries")))])))).toBe(
+      "on join:\n    set {n} to size of {groceries::*}\n",
+    );
+    expect(
+      emit(script(onJoin([broadcast(fmt("n=", listSize(listVar("groceries")), " all=", listVar("groceries")))]))),
+    ).toBe('on join:\n    broadcast "n=%size of {groceries::*}% all=%{groceries::*}%"\n');
+  });
+  it("list loop exposes loop-index and loop-value", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            loopList(listVar("groceries"), [
+              send(player(), fmt("item ", loopIndex(), ": ", loopValue())),
+            ]),
+          ]),
+        ),
+      ),
+    ).toBe(
+      'on join:\n    loop {groceries::*}:\n        send "item %loop-index%: %loop-value%" to player\n',
+    );
+  });
+});
+
+describe("loops, while and wait (phase 12)", () => {
+  it("times loop and range loop", () => {
+    expect(
+      emit(script(onJoin([loopTimes(num(3), [broadcast(str("x"))])]))),
+    ).toBe('on join:\n    loop 3 times:\n        broadcast "x"\n');
+    expect(
+      emit(script(onJoin([loopTimes(argument(1), [broadcast(str("x"))])]))),
+    ).toBe('on join:\n    loop arg-1 times:\n        broadcast "x"\n');
+    expect(
+      emit(script(onJoin([loopRange(num(2), num(4), [broadcast(fmt("v=", loopValue()))])]))),
+    ).toBe('on join:\n    loop numbers from 2 to 4:\n        broadcast "v=%loop-value%"\n');
+  });
+  it("while with a leaf condition and with not(leaf)", () => {
+    expect(
+      emit(script(onJoin([whileLoop(lessThan(variable("n"), num(3)), [add(variable("n"), num(1))])]))),
+    ).toBe("on join:\n    while {n} is less than 3:\n        add 1 to {n}\n");
+    expect(
+      emit(script(onJoin([whileLoop(not(equals(variable("n"), num(3))), [add(variable("n"), num(1))])]))),
+    ).toBe("on join:\n    while {n} is not 3:\n        add 1 to {n}\n");
+  });
+  it("wait in each unit", () => {
+    expect(emit(script(onJoin([wait(num(20), "ticks")])))).toBe(
+      "on join:\n    wait 20 ticks\n",
+    );
+    expect(emit(script(onJoin([wait(num(2), "seconds")])))).toBe(
+      "on join:\n    wait 2 seconds\n",
+    );
+    expect(emit(script(onJoin([wait(num(1), "minutes")])))).toBe(
+      "on join:\n    wait 1 minutes\n",
+    );
+    expect(emit(script(onJoin([wait(variable("delay"), "seconds")])))).toBe(
+      "on join:\n    wait {delay} seconds\n",
+    );
+  });
+});
+
 describe("api guards", () => {
+  it("whileLoop rejects composite conditions", () => {
+    expect(() =>
+      whileLoop(and(isOp(player()), equals(variable("a"), num(1))), []),
+    ).toThrow(RangeError);
+    expect(() => whileLoop(or(isOp(player()), isOp(player())), [])).toThrow(RangeError);
+    expect(() => whileLoop(not(and(isOp(player()), isOp(player()))), [])).toThrow(RangeError);
+    expect(() => whileLoop(not(not(isOp(player()))), [])).toThrow(RangeError);
+  });
+  it("listVar rejects an empty name", () => {
+    expect(() => listVar("")).toThrow(RangeError);
+    expect(() => listVar("  ")).toThrow(RangeError);
+  });
   it("and()/or() reject fewer than two conditions", () => {
     expect(() => and(isOp(player()))).toThrow(RangeError);
     expect(() => or()).toThrow(RangeError);

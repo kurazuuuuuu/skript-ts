@@ -8,7 +8,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -60,13 +62,23 @@ final class Variables {
     /** Put all entries and save once (used for database result cells). */
     synchronized void setAll(Map<String, Object> entries) {
         for (Map.Entry<String, Object> e : entries.entrySet()) {
-            if (e.getValue() == null) {
+            Object value = e.getValue();
+            if (value == null) {
                 values.remove(e.getKey());
             } else {
-                values.put(e.getKey(), e.getValue());
+                values.put(e.getKey(), value);
             }
         }
         save();
+    }
+
+    /** Snapshot of the raw keys starting with the given prefix (used for list enumeration). */
+    synchronized List<String> keysWithPrefix(String prefix) {
+        List<String> out = new ArrayList<>();
+        for (String key : values.keySet()) {
+            if (key.startsWith(prefix)) out.add(key);
+        }
+        return out;
     }
 
     /** Remove every key starting with the given prefix and save once. */

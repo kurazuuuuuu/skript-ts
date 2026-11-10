@@ -9,9 +9,12 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -54,6 +57,20 @@ import java.util.logging.Logger;
  * compare semantics, and/or/not composition, and binary arithmetic
  * whose "+" concatenates two texts and whose remainder is the
  * mathematical modulo of Skript's mod() function.
+ * Phase 12 adds core-language list variables and the remaining
+ * control flow (no addon scope): {name::*} lists whose indices
+ * are addressed by their string form — a number and a numeric
+ * text are the same index, as probed against the real Skript —
+ * with Skript's iteration order (text indices first — numeric
+ * texts by value, then alphabetically — then numeric indices
+ * ascending; text indices are case-insensitive and stored
+ * lowercased, as in Skript), list
+ * add (smallest unused positive integer index) / remove (first
+ * match) / delete (holes stay), list size, loops over lists,
+ * counted loops, numeric range loops, while loops over leaf
+ * conditions, and wait — which suspends the rest of the trigger
+ * through the continuation-based executor below, matching the
+ * timed behavior probed against the real Skript.
  */
 final class Engine {
 
@@ -62,6 +79,8 @@ final class Engine {
         Player player;      // "player": event player, or the command executor
         Player eventPlayer; // "event-player"
         Player loopPlayer;  // "loop-player" inside loop all players
+        Object loopValue;   // "loop-value": element / counter / player of the enclosing loop
+        Object loopIndex;   // "loop-index" (a Double or String) inside list loops; null elsewhere
         Player victim;      // "victim" in death events
         String chatMessage; // "message" in chat events
         String wsId;        // websocket connection id in websocket events
@@ -78,6 +97,8 @@ final class Engine {
             c.player = player;
             c.eventPlayer = eventPlayer;
             c.loopPlayer = loopPlayer;
+            c.loopValue = loopValue;
+            c.loopIndex = loopIndex;
             c.victim = victim;
             c.chatMessage = chatMessage;
             c.wsId = wsId;
@@ -116,6 +137,14 @@ final class Engine {
     }
 
     /**
+     * Bridge to the server scheduler for the wait statement: run a
+     * continuation after a number of ticks, on the main thread.
+     */
+    interface DelayHost {
+        void runLater(long ticks, Runnable task);
+    }
+
+    /**
      * Bridge to the plugin's named-timer manager. Statements command
      * the manager through this interface; tick and complete events
      * come back as engine events fired by the plugin.
@@ -135,6 +164,7 @@ final class Engine {
     private List<Map<String, Object>> topLevels = List.of();
     private WsHost wsHost;
     private TimerHost timerHost;
+    private DelayHost delayHost;
     private PlaceholderHost placeholderHost;
     private Database database;
     private Files files;
@@ -152,6 +182,11 @@ final class Engine {
     /** Install the timer host (called by the plugin on enable). */
     void setTimerHost(TimerHost timerHost) {
         this.timerHost = timerHost;
+    }
+
+    /** Install the delay host (called by the plugin on enable). */
+    void setDelayHost(DelayHost delayHost) {
+        this.delayHost = delayHost;
     }
 
     /**
@@ -233,6 +268,10 @@ final class Engine {
      * value inside the handler.
      */
     String firePlaceholderRequest(String prefix, String identifier, Player player) {
+        // Note: execution is continuation-based (phase 12), so a
+        // handler that waits suspends the rest of its body; the
+        // result read here is whatever the handler set before any
+        // wait — placeholder answers are synchronous by contract.
         Ctx ctx = new Ctx();
         ctx.player = player;
         ctx.eventPlayer = player;
@@ -263,20 +302,74 @@ final class Engine {
     // ------------------------------------------------------------------
 
     private void execBlock(List<Object> body, Ctx ctx) {
-        for (Object stmt : body) {
-            if (stmt instanceof Map<?, ?>) execStmt(node(stmt), ctx);
-        }
+        execRange(body, 0, ctx, () -> {
+        });
     }
 
-    private void execStmt(Map<String, Object> stmt, Ctx ctx) {
+    /**
+     * Execute the statements from index {@code start}, then run
+     * {@code done}. Statement execution is continuation-based: a
+     * statement receives the continuation of everything that
+     * follows it (the rest of its block, then the rest of every
+     * enclosing block, through the nested {@code done} chain), and
+     * a wait suspends that chain through the delay host. This is
+     * what makes a wait delay not just the next statement but the
+     * rest of enclosing if branches, the remaining loop iterations
+     * and the statements after the loop — Skript's continuation
+     * semantics, verified with timed probes against the real
+     * Skript 2.17.1. Synchronous statements invoke their
+     * continuation before returning, so plain programs run exactly
+     * as the old sequential executor ran them.
+     */
+    private void execRange(List<Object> body, int start, Ctx ctx, Runnable done) {
+        int i = start;
+        while (i < body.size()) {
+            Object raw = body.get(i);
+            i++;
+            if (!(raw instanceof Map<?, ?>)) continue;
+            Map<String, Object> stmt = node(raw);
+            if ("wait".equals(kind(stmt))) {
+                long ticks = waitTicks(stmt, ctx);
+                if (ticks <= 0) continue;
+                if (delayHost == null) {
+                    logger.warning("skript-ts: wait without a delay host installed");
+                    continue;
+                }
+                final int resume = i;
+                delayHost.runLater(ticks, () -> execRange(body, resume, ctx, done));
+                return;
+            }
+            final int resume = i;
+            execStmt(stmt, ctx, () -> execRange(body, resume, ctx, done));
+            return;
+        }
+        done.run();
+    }
+
+    /** The wait duration of a wait statement in ticks (0 for a missing or non-numeric amount). */
+    private long waitTicks(Map<String, Object> stmt, Ctx ctx) {
+        Object amount = evalExpr(node(stmt.get("amount")), ctx);
+        if (!(amount instanceof Number n)) return 0;
+        double perUnit = switch (str(stmt.get("unit"))) {
+            case "seconds" -> 20.0;
+            case "minutes" -> 1200.0;
+            default -> 1.0; // ticks
+        };
+        return Math.max(0, Math.round(n.doubleValue() * perUnit));
+    }
+
+    private void execStmt(Map<String, Object> stmt, Ctx ctx, Runnable cont) {
         switch (kind(stmt)) {
             case "send" -> {
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
                     target.sendMessage(renderText(node(stmt.get("message")), ctx));
                 }
+                cont.run();
             }
-            case "broadcast" ->
+            case "broadcast" -> {
                 Bukkit.getServer().broadcast(Component.text(renderText(node(stmt.get("message")), ctx)));
+                cont.run();
+            }
             case "give" -> {
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
                     Material mat = resolveMaterial(str(stmt.get("itemName")));
@@ -287,6 +380,7 @@ final class Engine {
                         target.getInventory().addItem(new ItemStack(mat, amount));
                     }
                 }
+                cont.run();
             }
             case "teleport" -> {
                 Object target = evalExpr(node(stmt.get("target")), ctx);
@@ -294,36 +388,97 @@ final class Engine {
                 if (target instanceof Player p && loc instanceof Location l) {
                     p.teleport(l);
                 }
+                cont.run();
             }
-            case "setVar" ->
+            case "setVar" -> {
                 variables.set(varKey(node(stmt.get("variable")), ctx), evalExpr(node(stmt.get("value")), ctx));
+                cont.run();
+            }
             case "addVar" -> {
                 Object v = evalExpr(node(stmt.get("value")), ctx);
                 if (v instanceof Number n) {
                     variables.add(varKey(node(stmt.get("variable")), ctx), n.doubleValue());
                 }
+                cont.run();
             }
             case "if" -> {
                 if (evalCond(node(stmt.get("cond")), ctx)) {
-                    execBlock(list(stmt.get("then")), ctx);
+                    execRange(list(stmt.get("then")), 0, ctx, cont);
                 } else if (stmt.get("else") != null) {
-                    execBlock(list(stmt.get("else")), ctx);
+                    execRange(list(stmt.get("else")), 0, ctx, cont);
+                } else {
+                    cont.run();
                 }
             }
             case "loopPlayers" -> {
                 // Snapshot: bodies may change the online set (kicks, quits).
-                for (Player p : new ArrayList<>(Bukkit.getOnlinePlayers())) {
-                    Ctx inner = ctx.copy();
-                    inner.loopPlayer = p;
-                    execBlock(list(stmt.get("body")), inner);
-                }
+                loopPlayersStep(stmt, new ArrayList<>(Bukkit.getOnlinePlayers()), 0, ctx, cont);
             }
+            case "listAdd" -> {
+                // Append at the smallest unused positive integer
+                // index (verified against the real Skript: a list
+                // holding indices 2 and 3 gains the new entry at 1).
+                String name = str(node(stmt.get("list")).get("name"));
+                Object value = evalExpr(node(stmt.get("value")), ctx);
+                if (value != null) {
+                    variables.set(listBase(name) + "::" + nextListIndex(name), value);
+                }
+                cont.run();
+            }
+            case "listRemove" -> {
+                // Remove only the first matching entry, in
+                // iteration order (verified against the real Skript).
+                String name = str(node(stmt.get("list")).get("name"));
+                Object value = evalExpr(node(stmt.get("value")), ctx);
+                if (value != null) {
+                    for (Map.Entry<Object, Object> entry : listEntries(name)) {
+                        if (valuesEqual(entry.getValue(), value)) {
+                            variables.set(listBase(name) + "::" + indexSegment(entry.getKey()), null);
+                            break;
+                        }
+                    }
+                }
+                cont.run();
+            }
+            case "deleteVar" -> {
+                Map<String, Object> target = node(stmt.get("target"));
+                if ("variableList".equals(kind(target))) {
+                    // Delete the list's entries; the bare variable
+                    // of the same name is a different node and
+                    // stays (verified against the real Skript).
+                    variables.removePrefix(listBase(str(target.get("name"))) + "::");
+                } else {
+                    variables.set(varKey(target, ctx), null);
+                }
+                cont.run();
+            }
+            case "loopList" ->
+                // Snapshot the entries: bodies may change the list
+                // while it is being visited.
+                loopListStep(stmt, listEntries(str(node(stmt.get("list")).get("name"))), 0, ctx, cont);
+            case "loopTimes" -> {
+                Object count = evalExpr(node(stmt.get("count")), ctx);
+                loopTimesStep(stmt, count instanceof Number n ? n.doubleValue() : 0, 1, ctx, cont);
+            }
+            case "loopRange" -> {
+                Object from = evalExpr(node(stmt.get("from")), ctx);
+                Object to = evalExpr(node(stmt.get("to")), ctx);
+                double f = from instanceof Number n ? n.doubleValue() : 0;
+                double t = to instanceof Number n ? n.doubleValue() : 0;
+                loopRangeStep(stmt, f, t, f <= t ? 1 : -1, ctx, cont);
+            }
+            case "while" -> whileStep(stmt, ctx, cont);
+            case "wait" ->
+                // Handled in execRange, which owns scheduling; a
+                // wait reaching here is simply complete.
+                cont.run();
             case "wsConnect" -> {
                 if (wsHost == null) {
                     logger.warning("skript-ts: wsConnect without a websocket host installed");
                 } else {
                     wsHost.connect(str(stmt.get("id")), renderText(node(stmt.get("url")), ctx));
                 }
+                cont.run();
             }
             case "wsSend" -> {
                 if (wsHost == null) {
@@ -331,6 +486,7 @@ final class Engine {
                 } else {
                     wsHost.send(str(stmt.get("id")), renderText(node(stmt.get("message")), ctx));
                 }
+                cont.run();
             }
             case "wsDisconnect" -> {
                 if (wsHost == null) {
@@ -338,6 +494,7 @@ final class Engine {
                 } else {
                     wsHost.disconnect(str(stmt.get("id")));
                 }
+                cont.run();
             }
             case "setBorderSize" -> {
                 Object w = evalExpr(node(stmt.get("world")), ctx);
@@ -345,6 +502,7 @@ final class Engine {
                 if (w instanceof World world && size instanceof Number n) {
                     world.getWorldBorder().setSize(n.doubleValue());
                 }
+                cont.run();
             }
             case "setBorderCenter" -> {
                 Object w = evalExpr(node(stmt.get("world")), ctx);
@@ -352,6 +510,7 @@ final class Engine {
                 if (w instanceof World world && center instanceof Location loc) {
                     world.getWorldBorder().setCenter(loc);
                 }
+                cont.run();
             }
             case "timerCreate" -> {
                 if (timerHost == null) {
@@ -359,6 +518,7 @@ final class Engine {
                 } else if (evalExpr(node(stmt.get("seconds")), ctx) instanceof Number n) {
                     timerHost.create(str(stmt.get("id")), n.doubleValue());
                 }
+                cont.run();
             }
             case "timerStop" -> {
                 if (timerHost == null) {
@@ -366,6 +526,7 @@ final class Engine {
                 } else {
                     timerHost.stop(str(stmt.get("id")));
                 }
+                cont.run();
             }
             case "timerPause" -> {
                 if (timerHost == null) {
@@ -373,6 +534,7 @@ final class Engine {
                 } else {
                     timerHost.pause(str(stmt.get("id")));
                 }
+                cont.run();
             }
             case "timerResume" -> {
                 if (timerHost == null) {
@@ -380,6 +542,7 @@ final class Engine {
                 } else {
                     timerHost.resume(str(stmt.get("id")));
                 }
+                cont.run();
             }
             case "dbExecute" -> {
                 if (database == null) {
@@ -393,6 +556,7 @@ final class Engine {
                 } else {
                     logger.warning("skript-ts: dbExecute target is not a data source");
                 }
+                cont.run();
             }
             case "fileCreate" -> {
                 if (files == null) {
@@ -400,6 +564,7 @@ final class Engine {
                 } else {
                     files.createFile(renderText(node(stmt.get("path")), ctx));
                 }
+                cont.run();
             }
             case "dirCreate" -> {
                 if (files == null) {
@@ -407,6 +572,7 @@ final class Engine {
                 } else {
                     files.createDirectory(renderText(node(stmt.get("path")), ctx));
                 }
+                cont.run();
             }
             case "fileDelete" -> {
                 if (files == null) {
@@ -414,6 +580,7 @@ final class Engine {
                 } else {
                     files.delete(renderText(node(stmt.get("path")), ctx));
                 }
+                cont.run();
             }
             case "fileWrite" -> {
                 if (files == null) {
@@ -421,6 +588,7 @@ final class Engine {
                 } else {
                     files.write(renderText(node(stmt.get("path")), ctx), renderText(node(stmt.get("text")), ctx));
                 }
+                cont.run();
             }
             case "fileAppend" -> {
                 if (files == null) {
@@ -428,13 +596,79 @@ final class Engine {
                 } else {
                     files.appendLine(renderText(node(stmt.get("path")), ctx), renderText(node(stmt.get("text")), ctx));
                 }
+                cont.run();
             }
-            case "setPlaceholderResult" ->
+            case "setPlaceholderResult" -> {
                 // Only meaningful while a placeholder request is being
                 // served; anywhere else the value is simply dropped.
                 ctx.papiResult = renderText(node(stmt.get("text")), ctx);
-            default -> logger.warning("skript-ts: unknown statement kind '" + kind(stmt) + "'");
+                cont.run();
+            }
+            default -> {
+                logger.warning("skript-ts: unknown statement kind '" + kind(stmt) + "'");
+                cont.run();
+            }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Loop drivers (all continuation-based, like execRange)
+    // ------------------------------------------------------------------
+
+    private void loopPlayersStep(Map<String, Object> stmt, List<Player> players, int idx, Ctx ctx, Runnable cont) {
+        if (idx >= players.size()) {
+            cont.run();
+            return;
+        }
+        Player p = players.get(idx);
+        Ctx inner = ctx.copy();
+        inner.loopPlayer = p;
+        inner.loopValue = p;
+        execRange(list(stmt.get("body")), 0, inner,
+                () -> loopPlayersStep(stmt, players, idx + 1, ctx, cont));
+    }
+
+    private void loopListStep(Map<String, Object> stmt, List<Map.Entry<Object, Object>> entries, int idx, Ctx ctx, Runnable cont) {
+        if (idx >= entries.size()) {
+            cont.run();
+            return;
+        }
+        Map.Entry<Object, Object> entry = entries.get(idx);
+        Ctx inner = ctx.copy();
+        inner.loopValue = entry.getValue();
+        inner.loopIndex = entry.getKey();
+        execRange(list(stmt.get("body")), 0, inner,
+                () -> loopListStep(stmt, entries, idx + 1, ctx, cont));
+    }
+
+    private void loopTimesStep(Map<String, Object> stmt, double count, long value, Ctx ctx, Runnable cont) {
+        if (value > count) {
+            cont.run();
+            return;
+        }
+        Ctx inner = ctx.copy();
+        inner.loopValue = (double) value;
+        execRange(list(stmt.get("body")), 0, inner,
+                () -> loopTimesStep(stmt, count, value + 1, ctx, cont));
+    }
+
+    private void loopRangeStep(Map<String, Object> stmt, double value, double to, double step, Ctx ctx, Runnable cont) {
+        if (step > 0 ? value > to : value < to) {
+            cont.run();
+            return;
+        }
+        Ctx inner = ctx.copy();
+        inner.loopValue = value;
+        execRange(list(stmt.get("body")), 0, inner,
+                () -> loopRangeStep(stmt, value + step, to, step, ctx, cont));
+    }
+
+    private void whileStep(Map<String, Object> stmt, Ctx ctx, Runnable cont) {
+        if (!evalCond(node(stmt.get("cond")), ctx)) {
+            cont.run();
+            return;
+        }
+        execRange(list(stmt.get("body")), 0, ctx, () -> whileStep(stmt, ctx, cont));
     }
 
     // ------------------------------------------------------------------
@@ -542,6 +776,19 @@ final class Engine {
             case "argument" -> resolveArgument((int) num(expr.get("index")), ctx);
             case "chatMessage" -> ctx.chatMessage;
             case "variable" -> variables.get(varKey(expr, ctx));
+            case "variableList" -> {
+                // The list's values in iteration order, snapshotted;
+                // an empty (or unset) list has no value, like any
+                // other missing value in Skript.
+                List<Object> values = new ArrayList<>();
+                for (Map.Entry<Object, Object> entry : listEntries(str(expr.get("name")))) {
+                    values.add(entry.getValue());
+                }
+                yield values.isEmpty() ? null : values;
+            }
+            case "listSize" -> (double) listEntries(str(node(expr.get("list")).get("name"))).size();
+            case "loopValue" -> ctx.loopValue;
+            case "loopIndex" -> ctx.loopIndex;
             case "string" -> str(expr.get("value"));
             case "number" -> num(expr.get("value"));
             case "boolean" -> Boolean.TRUE.equals(expr.get("value"));
@@ -729,15 +976,26 @@ final class Engine {
             if (part instanceof String s) {
                 sb.append(s);
             } else if (part instanceof Map<?, ?>) {
-                sb.append(stringify(evalExpr(node(part), ctx)));
+                sb.append(stringifyText(evalExpr(node(part), ctx)));
             }
         }
         return sb.toString();
     }
 
+    /**
+     * String form of a value inside script text. A missing value
+     * renders as {@code <none>} — verified against the real Skript
+     * 2.17.1 (an unset variable, a missing list entry and an empty
+     * list all read "<none>" inside a string).
+     */
+    private static String stringifyText(Object value) {
+        return value == null ? "<none>" : stringify(value);
+    }
+
     /** String form of a value inside messages and variable indices. */
     static String stringify(Object value) {
         if (value == null) return "";
+        if (value instanceof List<?> list) return joinList(list);
         if (value instanceof Database.DataSource ds) return ds.display();
         if (value instanceof Player p) return p.getName();
         if (value instanceof World w) return w.getName();
@@ -758,12 +1016,124 @@ final class Engine {
         return Double.toString(d);
     }
 
-    /** Variable storage key: "name" or "name::index" with the index in its string form. */
+    /**
+     * Skript's list text form, verified against the real Skript
+     * 2.17.1: one value reads as itself, two read "a and b", and
+     * longer lists read "a, b and c" (comma-separated, "and"
+     * before the last). An empty list never reaches here — it has
+     * no value and renders as a missing value instead.
+     */
+    private static String joinList(List<?> values) {
+        List<String> parts = new ArrayList<>();
+        for (Object v : values) parts.add(stringify(v));
+        if (parts.isEmpty()) return "";
+        if (parts.size() == 1) return parts.get(0);
+        if (parts.size() == 2) return parts.get(0) + " and " + parts.get(1);
+        return String.join(", ", parts.subList(0, parts.size() - 1))
+                + " and " + parts.get(parts.size() - 1);
+    }
+
+    /**
+     * Variable storage key: "name" or "name::index". Names and text
+     * indices are lowercased, matching Skript (its variable store
+     * is case-insensitive: {l::"B"} and {l::"b"} are one entry, and
+     * a player-named index does not depend on the name's case).
+     */
     private String varKey(Map<String, Object> varNode, Ctx ctx) {
-        String name = str(varNode.get("name"));
+        String name = str(varNode.get("name")).toLowerCase(Locale.ROOT);
         Object index = varNode.get("index");
         if (index == null) return name;
-        return name + "::" + stringify(evalExpr(node(index), ctx));
+        return name + "::" + indexSegment(evalExpr(node(index), ctx));
+    }
+
+    /** The storage base of a list variable (its name, lowercased like variable names). */
+    private static String listBase(String name) {
+        return name.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * The storage segment for one variable index: the index's
+     * string form, canonicalized. A number stores as its plain
+     * form ("5", "2.5"), and a text index that reads as a number
+     * stores as that number's form too — verified against the
+     * real Skript 2.17.1, where an entry set through a numeric
+     * expression index is read back through the text "5", i.e.
+     * expression indices address entries by their string form.
+     * Other texts store lowercased (Skript's variable store is
+     * case-insensitive). (Indices written as quoted literals in
+     * hand-written .sk text are a different node in Skript — its
+     * name keeps the quotes — but the emitter only ever produces
+     * expression indices, so that world is unreachable here.)
+     */
+    static String indexSegment(Object index) {
+        if (index == null) return "";
+        if (index instanceof Number n) return formatNumber(n.doubleValue());
+        String s = stringify(index).toLowerCase(Locale.ROOT);
+        Double numeric = parseNumberText(s);
+        return numeric != null ? formatNumber(numeric) : s;
+    }
+
+    /** Inverse of indexSegment: a numeric segment decodes to a number, anything else to text. */
+    static Object decodeIndex(String segment) {
+        Double n = parseNumberText(segment);
+        return n != null ? n : segment;
+    }
+
+    /** Parse a finite number from text, or null (used for index typing and ordering). */
+    private static Double parseNumberText(String s) {
+        try {
+            double d = Double.parseDouble(s);
+            return Double.isFinite(d) ? d : null;
+        } catch (NumberFormatException | NullPointerException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The entries of a list variable, decoded and in Skript's
+     * iteration order (verified against the real Skript 2.17.1):
+     * text indices first — numeric texts by value, then the rest
+     * alphabetically — then numeric indices in ascending order.
+     */
+    private List<Map.Entry<Object, Object>> listEntries(String rawName) {
+        String prefix = listBase(rawName) + "::";
+        List<Map.Entry<Object, Object>> out = new ArrayList<>();
+        for (String key : variables.keysWithPrefix(prefix)) {
+            Object index = decodeIndex(key.substring(prefix.length()));
+            out.add(new AbstractMap.SimpleEntry<>(index, variables.get(key)));
+        }
+        out.sort((a, b) -> compareIndices(a.getKey(), b.getKey()));
+        return out;
+    }
+
+    private static int compareIndices(Object a, Object b) {
+        boolean aNum = a instanceof Number;
+        boolean bNum = b instanceof Number;
+        if (aNum && bNum) {
+            return Double.compare(((Number) a).doubleValue(), ((Number) b).doubleValue());
+        }
+        if (aNum) return 1; // numeric indices iterate after text indices
+        if (bNum) return -1;
+        String sa = (String) a;
+        String sb = (String) b;
+        Double na = parseNumberText(sa);
+        Double nb = parseNumberText(sb);
+        if (na != null && nb != null) return Double.compare(na, nb);
+        if (na != null) return -1; // numeric texts before alphabetic ones
+        if (nb != null) return 1;
+        int c = sa.compareToIgnoreCase(sb);
+        return c != 0 ? c : sa.compareTo(sb);
+    }
+
+    /** The smallest positive integer not used as a numeric index of the list. */
+    private int nextListIndex(String rawName) {
+        Set<Double> used = new HashSet<>();
+        for (Map.Entry<Object, Object> entry : listEntries(rawName)) {
+            if (entry.getKey() instanceof Number n) used.add(n.doubleValue());
+        }
+        int i = 1;
+        while (used.contains((double) i)) i++;
+        return i;
     }
 
     private static Material resolveMaterial(String itemName) {

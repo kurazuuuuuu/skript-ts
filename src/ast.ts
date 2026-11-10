@@ -7,6 +7,17 @@ export type Expr =
   | { kind: "argument"; index: number }
   | { kind: "chatMessage" }
   | { kind: "variable"; name: string; index?: Expr }
+  // Core-language list support (phase 12): the whole list {name::*}
+  // as a value (its entries in iteration order), and its size.
+  | { kind: "variableList"; name: string }
+  | { kind: "listSize"; list: ListExpr }
+  // Loop expressions (phase 12): the element a list loop is
+  // visiting (in times/range loops, the current number; in player
+  // loops, the player), and the index of a list loop (a number or
+  // a text). loopIndex has no value outside list loops — Skript
+  // rejects it there at parse time.
+  | { kind: "loopValue" }
+  | { kind: "loopIndex" }
   | { kind: "string"; value: string }
   | { kind: "number"; value: number }
   | { kind: "boolean"; value: boolean }
@@ -81,6 +92,12 @@ export type Cond =
 /** Represents a Skript variable expression. */
 export type VariableExpr = Extract<Expr, { kind: "variable" }>;
 
+/** Represents a whole-list variable expression ({name::*}). */
+export type ListExpr = Extract<Expr, { kind: "variableList" }>;
+
+/** Represents a wait duration unit (phase 12). */
+export type TimeUnit = "ticks" | "seconds" | "minutes";
+
 /** Source position in the TypeScript file where a builder call was made. */
 export interface SourceLoc { file: string; line: number; column: number }
 
@@ -94,6 +111,22 @@ export type Stmt =
   | { kind: "addVar"; variable: VariableExpr; value: Expr; loc?: SourceLoc }
   | { kind: "if"; cond: Cond; then: readonly Stmt[]; else?: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "loopPlayers"; body: readonly Stmt[]; loc?: SourceLoc }
+  // Core-language list statements and control flow (phase 12).
+  // listAdd appends at the smallest unused positive integer index;
+  // listRemove deletes the first matching entry (in iteration
+  // order); deleteVar removes a variable, one list entry, or a
+  // whole list; the loops expose loopValue (and list loops also
+  // loopIndex); while accepts leaf conditions only (the builder
+  // enforces it — a while head has no control-flow lowering);
+  // wait suspends the rest of the trigger for the duration.
+  | { kind: "listAdd"; list: ListExpr; value: Expr; loc?: SourceLoc }
+  | { kind: "listRemove"; list: ListExpr; value: Expr; loc?: SourceLoc }
+  | { kind: "deleteVar"; target: VariableExpr | ListExpr; loc?: SourceLoc }
+  | { kind: "loopList"; list: ListExpr; body: readonly Stmt[]; loc?: SourceLoc }
+  | { kind: "loopTimes"; count: Expr; body: readonly Stmt[]; loc?: SourceLoc }
+  | { kind: "loopRange"; from: Expr; to: Expr; body: readonly Stmt[]; loc?: SourceLoc }
+  | { kind: "while"; cond: Cond; body: readonly Stmt[]; loc?: SourceLoc }
+  | { kind: "wait"; amount: Expr; unit: TimeUnit; loc?: SourceLoc }
   // Engine-builtin statements (MundoSK slice, phase 6): no .sk equivalent.
   | { kind: "wsConnect"; id: string; url: TextExpr; loc?: SourceLoc }
   | { kind: "wsSend"; id: string; message: TextExpr; loc?: SourceLoc }

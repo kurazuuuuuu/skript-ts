@@ -55,9 +55,10 @@ on join:
 
 Sample programs live in [`examples/`](examples/): the five v0
 programs (welcome, kit command, chat log relay, death counter, spawn
-commands), one per engine builtin, and `logic.ts` for the core
-language (comparisons, logic, arithmetic). They double as
-golden-test fixtures.
+commands), one per engine builtin, `logic.ts` for the core language
+(comparisons, logic, arithmetic), and `lists.ts` for list variables,
+the extended loops, `while` and `wait`. They double as golden-test
+fixtures.
 
 ## Supported subset (SPEC, v0)
 
@@ -89,6 +90,14 @@ section.
 | `add(variable, value)` | `add <value> to {var}` |
 | `ifElse(cond, then, else?)` | `if <cond>:` … `else:` |
 | `loopPlayers(body)` | `loop all players:` |
+| `listAdd(list, value)` | `add <value> to {list::*}` |
+| `listRemove(list, value)` | `remove <value> from {list::*}` |
+| `deleteVar(target)` | `delete {var}` / `delete {list::*}` |
+| `loopList(list, body)` | `loop {list::*}:` |
+| `loopTimes(count, body)` | `loop <n> times:` |
+| `loopRange(from, to, body)` | `loop numbers from <a> to <b>:` |
+| `whileLoop(cond, body)` | `while <cond>:` (leaf conditions only, see below) |
+| `wait(amount, unit)` | `wait <n> ticks` / `seconds` / `minutes` |
 
 ### Expressions
 | TypeScript | value position | inside a string |
@@ -101,6 +110,10 @@ section.
 | `chatMessage()` | `message` | `%message%` |
 | `variable(name)` | `{name}` | `%{name}%` |
 | `variable(name, index)` | `{name::%<index>%}` | `%{name::%<index>%}%` |
+| `listVar(name)` | `{name::*}` | `%{name::*}%` |
+| `listSize(list)` | `size of {name::*}` | `%size of {name::*}%` |
+| `loopValue()` | `loop-value` | `%loop-value%` |
+| `loopIndex()` | `loop-index` | `%loop-index%` |
 | `str(s)` | `"<s>"` | raw text |
 | `num(n)` / `bool(b)` | `42` / `true` | same |
 | `item(name)` | `diamond sword` | same |
@@ -168,6 +181,55 @@ swaps branches when an else exists, applies De Morgan over
 (`is not ...`, `does not have permission`). Conditions in this
 subset are pure, so the lowering is semantically exact; the
 engine evaluates `and`/`or`/`not` directly.
+
+### Lists, loops, while and wait
+
+List semantics (verified against the real Skript 2.17.1 with
+probe scripts, not assumed). A list is not a separate value: it is
+the set of `{name::<index>}` entries in the ordinary variable
+store, so lists persist exactly like scalars (in the engine, as
+individual `name::index` keys in `variables.json`).
+
+- **Index identity**: for indices computed by an expression, the
+  number `5` and the text `"5"` are the *same* entry — identity is
+  by string form. Variable names and text indices are
+  case-insensitive (stored lowercased).
+- **Iteration order**: text indices first (numeric-looking texts
+  ordered by value, then the rest alphabetically), then numeric
+  indices ascending. `loopList` sets both `loopValue()` and
+  `loopIndex()`; rendered as text, an index appears in its plain
+  form (`color`, `1`).
+- **`listAdd`** appends at the smallest unused positive integer
+  index. Deleting an index leaves a **hole** — entries are never
+  renumbered. `deleteVar(listVar(name))` clears the whole list;
+  deleting the bare `{name}` variable does not.
+- **`listRemove`** deletes only the *first* matching element (in
+  iteration order), using the phase-11 equality rules.
+- A list used as text joins as `a, b and c` (`a and b` for two, the
+  element itself for one). A missing value inside a string renders
+  as `<none>` — this applies to unset scalars and missing indices
+  too, in both runtimes.
+
+Loop forms: `loopTimes` counts `loopValue()` from 1 to the count
+(a fractional count floors) and has **no** `loopIndex()` — Skript
+rejects it there ("There's no loop that matches 'loop-index'"),
+and the player loop is the same; only the list loop provides an
+index. `loopRange` is inclusive and descends when the start is
+greater than the end (`numbers from 4 to 2` yields 4, 3, 2).
+
+`whileLoop` re-evaluates its condition before every iteration.
+The head accepts a leaf condition or `not(leaf)` only: a `while`
+head cannot be lowered to control flow the way an `if` can, and
+Skript has no textual conjunction (the phase-11 finding), so the
+builder rejects `and`/`or`/`not` of a composite at build time.
+
+`wait` suspends the rest of the trigger: everything after it —
+the remainder of enclosing blocks, the remaining iterations of an
+enclosing loop, the statements after the loop — runs after the
+duration, in order. In Skript this is the runtime's own delay
+behavior; the engine implements the same continuation semantics
+on the Bukkit scheduler. Amounts may be fractional (`wait 0.5
+seconds`); units are `ticks`, `seconds` and `minutes`.
 
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal

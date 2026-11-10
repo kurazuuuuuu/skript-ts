@@ -1,0 +1,79 @@
+on join:
+    set {labels::%"color"%} to "red"
+
+command /listadd [<text>]:
+    trigger:
+        add arg-1 to {groceries::*}
+        send "added %arg-1%; size=%size of {groceries::*}%" to player
+
+command /listshow:
+    trigger:
+        if size of {groceries::*} is 0:
+            send "list is empty" to player
+        else:
+            loop {groceries::*}:
+                send "item %loop-index%: %loop-value%" to player
+
+command /listall:
+    trigger:
+        send "all: %{groceries::*}%" to player
+
+command /listremove [<text>]:
+    trigger:
+        remove arg-1 from {groceries::*}
+        send "removed %arg-1%; size=%size of {groceries::*}%" to player
+
+command /listdel [<integer>]:
+    trigger:
+        delete {groceries::%arg-1%}
+        send "size=%size of {groceries::*}%" to player
+
+command /listclear:
+    trigger:
+        delete {groceries::*}
+        send "cleared" to player
+
+command /tagshow:
+    trigger:
+        loop {labels::*}:
+            send "tag %loop-index%: %loop-value%" to player
+
+command /tagadd:
+    trigger:
+        add "misc" to {labels::*}
+        send "tag added; size=%size of {labels::*}%" to player
+
+command /countup [<integer>]:
+    trigger:
+        set {total} to 0
+        loop arg-1 times:
+            add loop-value to {total}
+        send "sum=%{total}%" to player
+
+command /rangesum [<integer>]:
+    trigger:
+        set {total} to 0
+        loop numbers from 1 to arg-1:
+            add loop-value to {total}
+        send "rangesum=%{total}%" to player
+
+command /whilesum [<integer>]:
+    trigger:
+        set {n} to 0
+        set {total} to 0
+        while {n} is less than arg-1:
+            add 1 to {n}
+            add {n} to {total}
+        send "whilesum=%{total}%" to player
+
+command /delayed:
+    trigger:
+        send "start" to player
+        wait 2 seconds
+        send "done" to player
+
+command /delayloop:
+    trigger:
+        loop 2 times:
+            wait 1 seconds
+            send "tick %loop-value%" to player
