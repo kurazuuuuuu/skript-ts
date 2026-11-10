@@ -15,6 +15,11 @@ export function loopPlayer(): Expr {
   return { kind: "loopPlayer" };
 }
 
+/** Construct a victim expression (the entity that died / was damaged, in death and damage events). */
+export function victim(): Expr {
+  return { kind: "victim" };
+}
+
 /** Construct an argument expression with a 1-based index. */
 export function argument(index: number): Expr {
   if (!Number.isInteger(index) || index < 1) throw new RangeError("argument index must be a positive integer");

@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "type": "module",
-  "version": "0.1.0",
+  "version": "2026.11.11",
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"

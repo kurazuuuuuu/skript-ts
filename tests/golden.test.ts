@@ -32,6 +32,7 @@ import {
   str,
   teleport,
   variable,
+  victim,
 } from "../src/index.js";
 import { welcomeScript } from "../examples/welcome.js";
 import { kitScript } from "../examples/kit.js";
@@ -244,6 +245,23 @@ describe("string escaping", () => {
       ),
     ).toBe(
       'on join:\n    if player has permission "we""ird":\n        broadcast "y"\n',
+    );
+  });
+});
+
+describe("victim expression (death events have no player)", () => {
+  it("emits victim in value and string positions", () => {
+    expect(
+      emit(
+        script(
+          onDeath([
+            add(variable("deaths", victim()), num(1)),
+            send(victim(), fmt("total: ", variable("deaths", victim()))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      'on death:\n    add 1 to {deaths::%victim%}\n    send "total: {deaths::%victim%}" to victim\n',
     );
   });
 });

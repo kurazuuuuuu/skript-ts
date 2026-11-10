@@ -3,6 +3,7 @@ export type Expr =
   | { kind: "player" }
   | { kind: "eventPlayer" }
   | { kind: "loopPlayer" }
+  | { kind: "victim" }
   | { kind: "argument"; index: number }
   | { kind: "chatMessage" }
   | { kind: "variable"; name: string; index?: Expr }

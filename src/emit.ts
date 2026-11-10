@@ -12,6 +12,8 @@ function emitValue(e: Expr): string {
             return "event-player";
         case "loopPlayer":
             return "loop-player";
+        case "victim":
+            return "victim";
         case "argument":
             return `arg-${e.index}`;
         case "chatMessage":
@@ -46,6 +48,8 @@ function emitString(e: Expr): string {
             return "%event-player%";
         case "loopPlayer":
             return "%loop-player%";
+        case "victim":
+            return "%victim%";
         case "argument":
             return `%arg-${e.index}%`;
         case "chatMessage":
