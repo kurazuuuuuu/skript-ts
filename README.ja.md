@@ -13,7 +13,7 @@ English: [README.md](README.md)
 
 ## 状態
 
-試作（v0）。バージョニングは日付形式 `vYYYY.MM.DD`（例: `v2026.11.11`）で統一します。
+試作（v0）。これに加えて、同じサブセットを Skript プラグインなしで Paper 上で直接実行するクリーンルーム実装の**エンジン jar**があります（後述の「エンジン jar」節）。バージョニングは日付形式 `vYYYY.MM.DD`（例: `v2026.11.11`）で統一します。
 
 ## クイックスタート
 
@@ -179,6 +179,33 @@ Skript の `variables.csv`、`ops.json`）を消去し、振る舞いテスト�
 ブロードキャストと初回アイテム、`/kit` の権限フロー、OP 向け
 チャットログ中継、死亡カウンタをテストします。`examples/behavior/`
 を参照してください。
+
+## エンジン jar（Skript プラグインなし）
+
+目標像は「TS で書ける実質的な Skript 本体」であり、単なる変換層ではありません。`engine/` は skript-ts のプログラムを単独で実行する Paper プラグイン（`skript-ts.jar`）です。
+
+- TS 側のビルドは各 `.sk` の隣に **IR** ファイル（`<name>.ir.json`）を出力します。スクリプト AST の JSON で、TS の呼び出し位置情報は含みません
+- エンジンは `plugins/skript-ts/scripts/` の IR を読み込み、スクリプトのコマンドをサーバーのコマンドマップへ登録し、サブセットのイベントを受けてエフェクト・式・条件を解釈実行します。変数は `plugins/skript-ts/variables.json` に永続化します
+- `/skript-ts reload` で IR フォルダを再読み込みします。読み込みのたびに `Loaded N script(s), M top-level structure(s)` をログに出し、失敗したファイルは `Failed to load <file>: ...` と記録します
+
+エンジンは**クリーンルーム再実装**です。Skript は GPL のためコードは持ち込まず、v0 サブセットの振る舞い契約だけを共有します。その契約は上記 SPEC で規定し、変換された `.sk` を検証するのと同じ mineflayer 振る舞いテスト4本で固定しています。解釈の余地がある点の確定事項: 初回参加では `on first join` と `on join` の両方が発火する（Skript と同じ）、プレイヤーをキーにする変数はプレイヤー名で引く、整数の数値は小数部なしで表示する（`1.0` ではなく `1`）。
+
+### jar のビルド
+
+VM には Java がないため、`~/workspace/tools` の Temurin JDK 21 を使います。コンパイル用ライブラリは `engine/libs/`（gitignore 対象）に置き、初回だけチェックサム検証つきで取得します。Java の HTTPS はこの VM のプロキシを通れないため、取得は curl で行います。
+
+```sh
+engine/fetch-libs.sh   # paper-api 等をダウンロード＋SHA-512 検証
+engine/build.sh        # -> engine/build/skript-ts.jar
+```
+
+### エンジンの検証
+
+```sh
+bin/skript-ts.mjs verify --engine [--json]
+```
+
+ステージ構成は通常の verify と同じですが、配置で IR を `plugins/skript-ts/scripts/` に置き、`skript-ts.jar` を導入して `Skript.jar` を退避します。つまりサンドボックスは**エンジンだけ**で起動します。読み込み確認は `skript-ts reload` を実行し、エンジンの要約行が配置したスクリプト数と一致し、読み込み失敗がないことを要求します。通常の `verify` を後から実行すると `Skript.jar` が復帰しエンジン jar が除去されるため、2つのモードが混ざることはありません。
 
 ## 開発
 

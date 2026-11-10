@@ -14,7 +14,9 @@ source from it.
 
 ## Status
 
-Prototype (v0). Versioning uses the date format `vYYYY.MM.DD`
+Prototype (v0), plus a clean-room **engine jar** that executes the
+same subset directly on Paper with no Skript plugin involved (see
+*Engine jar* below). Versioning uses the date format `vYYYY.MM.DD`
 (e.g. `v2026.11.11`).
 
 ## Quick start
@@ -180,6 +182,62 @@ real connection, wait for chat messages, run console commands, and
 assert on inventory. The bundled samples test the welcome broadcast +
 first-join item, the `/kit` permission flow, the op chat-log relay, and
 the death counter. See `examples/behavior/`.
+
+## Engine jar (no Skript plugin)
+
+The long-term target is a Skript you write in TypeScript — not just a
+transpiler feeding the original plugin. `engine/` is a Paper plugin
+(`skript-ts.jar`) that executes skript-ts programs by itself:
+
+- The TypeScript build emits an **IR** file next to every `.sk` file
+  (`<name>.ir.json`): the script AST as JSON, with TypeScript
+  call-site info stripped.
+- The engine loads IR files from `plugins/skript-ts/scripts/`,
+  registers the script commands on the server command map, listens
+  for the subset's events, and interprets effects, expressions, and
+  conditions on the server. Variables persist to
+  `plugins/skript-ts/variables.json`.
+- `/skript-ts reload` re-reads the IR folder; every load logs
+  `Loaded N script(s), M top-level structure(s)` (per-file failures
+  are logged as `Failed to load <file>: ...`).
+
+The engine is a **clean-room reimplementation**: Skript is GPL, so no
+Skript code is used — only the behavior contract of the v0 subset,
+which is specified by the SPEC above and locked in by the same
+mineflayer behavior tests that validate the transpiled `.sk` files.
+The four behavior tests are the specification both runtimes must
+satisfy. Documented interpretation choices where the subset leaves
+room: a first join fires both `on first join` and `on join` handlers
+(as under Skript); player-keyed variables use the player's name;
+whole numbers render without a fraction (`1`, not `1.0`).
+
+### Building the jar
+
+The VM ships no Java; the build uses the Temurin JDK 21 in
+`~/workspace/tools`. Compile-time libraries live in `engine/libs/`
+(gitignored) and are fetched once with checksum verification —
+Java's HTTPS cannot traverse this VM's proxy, which is why the fetch
+is done with curl:
+
+```sh
+engine/fetch-libs.sh   # download + SHA-512-verify paper-api and friends
+engine/build.sh        # -> engine/build/skript-ts.jar
+```
+
+### Verifying the engine
+
+```sh
+bin/skript-ts.mjs verify --engine [--json]
+```
+
+Same stages as the default verify, but deployment puts the IR files
+in `plugins/skript-ts/scripts/`, installs `skript-ts.jar`, and
+renames `Skript.jar` aside — the sandbox boots with **only** the
+engine. The load check runs `skript-ts reload` and requires the
+engine's summary line to report exactly the deployed script count
+with no load failures. Running a plain `verify` afterwards restores
+`Skript.jar` and removes the engine jar, so the two modes never leak
+into each other.
 
 ## Development
 

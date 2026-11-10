@@ -1,0 +1,328 @@
+package net.krz.skriptts;
+
+import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Logger;
+
+/**
+ * Interpreter for skript-ts IR programs, covering exactly the v0
+ * subset from the project SPEC (README): events join / first join /
+ * quit / chat / death, commands with at most one argument, the effects
+ * send / broadcast / give / teleport / set / add / if-else / loop all
+ * players, the documented expressions, and the conditions
+ * has permission / is op.
+ *
+ * Clean-room: every semantic here is specified by the SPEC and locked
+ * in by the mineflayer behavior tests. No code is taken from the
+ * Skript project (GPL); this engine only shares the *behavior
+ * contract* of the subset, the same contract the .sk emitter targets.
+ *
+ * Value model (plain Java objects):
+ *   Player, String, Double, Boolean, Location, or null (no value).
+ * Item expressions evaluate to their type name as a String; items only
+ * become real ItemStacks inside the give effect.
+ */
+final class Engine {
+
+    /** Execution context: the entities and data the running code is attached to. */
+    static final class Ctx {
+        Player player;      // "player": event player, or the command executor
+        Player eventPlayer; // "event-player"
+        Player loopPlayer;  // "loop-player" inside loop all players
+        Player victim;      // "victim" in death events
+        String chatMessage; // "message" in chat events
+        String argType;     // command argument type ("text"/"player"/"integer") or null
+        String[] rawArgs = new String[0];
+
+        Ctx copy() {
+            Ctx c = new Ctx();
+            c.player = player;
+            c.eventPlayer = eventPlayer;
+            c.loopPlayer = loopPlayer;
+            c.victim = victim;
+            c.chatMessage = chatMessage;
+            c.argType = argType;
+            c.rawArgs = rawArgs;
+            return c;
+        }
+    }
+
+    private final Variables variables;
+    private final Logger logger;
+    private List<Map<String, Object>> topLevels = List.of();
+
+    Engine(Variables variables, Logger logger) {
+        this.variables = variables;
+        this.logger = logger;
+    }
+
+    /** Replace the running program (flat list of top-level IR nodes, in load order). */
+    void setProgram(List<Map<String, Object>> topLevels) {
+        this.topLevels = topLevels;
+    }
+
+    List<Map<String, Object>> topLevels() {
+        return topLevels;
+    }
+
+    // ------------------------------------------------------------------
+    // Events and commands
+    // ------------------------------------------------------------------
+
+    /**
+     * Fire an event. A first join matches both "firstJoin" and "join"
+     * handlers, in program declaration order — the same contract the
+     * transpiled .sk files have under Skript.
+     */
+    void fireEvent(String event, Ctx ctx, boolean firstJoin) {
+        for (Map<String, Object> top : topLevels) {
+            if (!"event".equals(kind(top))) continue;
+            String ev = str(top.get("event"));
+            boolean match = ev.equals(event) || (firstJoin && "join".equals(event) && "firstJoin".equals(ev));
+            if (match) execBlock(list(top.get("body")), ctx);
+        }
+    }
+
+    void runCommand(Map<String, Object> node, CommandSender sender, String[] args) {
+        Ctx ctx = new Ctx();
+        if (sender instanceof Player p) {
+            ctx.player = p;
+            ctx.eventPlayer = p;
+        }
+        ctx.argType = str(node.get("argType"));
+        ctx.rawArgs = args;
+        execBlock(list(node.get("body")), ctx);
+    }
+
+    // ------------------------------------------------------------------
+    // Statements
+    // ------------------------------------------------------------------
+
+    private void execBlock(List<Object> body, Ctx ctx) {
+        for (Object stmt : body) {
+            if (stmt instanceof Map<?, ?>) execStmt(node(stmt), ctx);
+        }
+    }
+
+    private void execStmt(Map<String, Object> stmt, Ctx ctx) {
+        switch (kind(stmt)) {
+            case "send" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    target.sendMessage(renderText(node(stmt.get("message")), ctx));
+                }
+            }
+            case "broadcast" ->
+                Bukkit.getServer().broadcast(Component.text(renderText(node(stmt.get("message")), ctx)));
+            case "give" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    Material mat = resolveMaterial(str(stmt.get("itemName")));
+                    int amount = (int) num(stmt.get("amount"));
+                    if (mat == null) {
+                        logger.warning("skript-ts: unknown item '" + stmt.get("itemName") + "' in give effect");
+                    } else if (amount > 0) {
+                        target.getInventory().addItem(new ItemStack(mat, amount));
+                    }
+                }
+            }
+            case "teleport" -> {
+                Object target = evalExpr(node(stmt.get("target")), ctx);
+                Object loc = evalExpr(node(stmt.get("location")), ctx);
+                if (target instanceof Player p && loc instanceof Location l) {
+                    p.teleport(l);
+                }
+            }
+            case "setVar" ->
+                variables.set(varKey(node(stmt.get("variable")), ctx), evalExpr(node(stmt.get("value")), ctx));
+            case "addVar" -> {
+                Object v = evalExpr(node(stmt.get("value")), ctx);
+                if (v instanceof Number n) {
+                    variables.add(varKey(node(stmt.get("variable")), ctx), n.doubleValue());
+                }
+            }
+            case "if" -> {
+                if (evalCond(node(stmt.get("cond")), ctx)) {
+                    execBlock(list(stmt.get("then")), ctx);
+                } else if (stmt.get("else") != null) {
+                    execBlock(list(stmt.get("else")), ctx);
+                }
+            }
+            case "loopPlayers" -> {
+                // Snapshot: bodies may change the online set (kicks, quits).
+                for (Player p : new ArrayList<>(Bukkit.getOnlinePlayers())) {
+                    Ctx inner = ctx.copy();
+                    inner.loopPlayer = p;
+                    execBlock(list(stmt.get("body")), inner);
+                }
+            }
+            default -> logger.warning("skript-ts: unknown statement kind '" + kind(stmt) + "'");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Conditions
+    // ------------------------------------------------------------------
+
+    private boolean evalCond(Map<String, Object> cond, Ctx ctx) {
+        return switch (kind(cond)) {
+            case "hasPermission" -> {
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                yield target instanceof Player p && p.hasPermission(str(cond.get("permission")));
+            }
+            case "isOp" -> {
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                yield target instanceof Player p && p.isOp();
+            }
+            default -> {
+                logger.warning("skript-ts: unknown condition kind '" + kind(cond) + "'");
+                yield false;
+            }
+        };
+    }
+
+    // ------------------------------------------------------------------
+    // Expressions
+    // ------------------------------------------------------------------
+
+    private Object evalExpr(Map<String, Object> expr, Ctx ctx) {
+        return switch (kind(expr)) {
+            case "player" -> ctx.player;
+            case "eventPlayer" -> ctx.eventPlayer != null ? ctx.eventPlayer : ctx.player;
+            case "loopPlayer" -> ctx.loopPlayer;
+            case "victim" -> ctx.victim;
+            case "argument" -> resolveArgument((int) num(expr.get("index")), ctx);
+            case "chatMessage" -> ctx.chatMessage;
+            case "variable" -> variables.get(varKey(expr, ctx));
+            case "string" -> str(expr.get("value"));
+            case "number" -> num(expr.get("value"));
+            case "boolean" -> Boolean.TRUE.equals(expr.get("value"));
+            case "item" -> str(expr.get("name"));
+            case "locationOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof Player p ? p.getLocation() : null;
+            }
+            case "format" -> renderParts(list(expr.get("parts")), ctx);
+            default -> {
+                logger.warning("skript-ts: unknown expression kind '" + kind(expr) + "'");
+                yield null;
+            }
+        };
+    }
+
+    /** Skript text arguments swallow the rest of the line; player/integer args parse one token. */
+    private Object resolveArgument(int index, Ctx ctx) {
+        if (ctx.argType == null || index < 1 || ctx.rawArgs.length < index) return null;
+        return switch (ctx.argType) {
+            case "text" -> String.join(" ", List.of(ctx.rawArgs).subList(index - 1, ctx.rawArgs.length));
+            case "integer" -> {
+                try {
+                    yield Double.parseDouble(ctx.rawArgs[index - 1]);
+                } catch (NumberFormatException e) {
+                    yield null;
+                }
+            }
+            case "player" -> Bukkit.getPlayerExact(ctx.rawArgs[index - 1]);
+            default -> null;
+        };
+    }
+
+    // ------------------------------------------------------------------
+    // Text rendering and value formatting
+    // ------------------------------------------------------------------
+
+    /** Render a text expression (string literal or format) to a plain string. */
+    private String renderText(Map<String, Object> text, Ctx ctx) {
+        return switch (kind(text)) {
+            case "string" -> str(text.get("value"));
+            case "format" -> renderParts(list(text.get("parts")), ctx);
+            default -> stringify(evalExpr(text, ctx));
+        };
+    }
+
+    private String renderParts(List<Object> parts, Ctx ctx) {
+        StringBuilder sb = new StringBuilder();
+        for (Object part : parts) {
+            if (part instanceof String s) {
+                sb.append(s);
+            } else if (part instanceof Map<?, ?>) {
+                sb.append(stringify(evalExpr(node(part), ctx)));
+            }
+        }
+        return sb.toString();
+    }
+
+    /** String form of a value inside messages and variable indices. */
+    static String stringify(Object value) {
+        if (value == null) return "";
+        if (value instanceof Player p) return p.getName();
+        if (value instanceof Number n) return formatNumber(n.doubleValue());
+        if (value instanceof Boolean b) return b.toString();
+        if (value instanceof Location l) {
+            String world = l.getWorld() == null ? "" : l.getWorld().getName();
+            return world + ": " + formatNumber(l.getX()) + ", " + formatNumber(l.getY()) + ", " + formatNumber(l.getZ());
+        }
+        return String.valueOf(value);
+    }
+
+    /** Whole numbers print without a fraction (1, not 1.0), matching the SPEC's message examples. */
+    static String formatNumber(double d) {
+        if (Double.isFinite(d) && d == Math.rint(d) && Math.abs(d) < 1e15) {
+            return Long.toString((long) d);
+        }
+        return Double.toString(d);
+    }
+
+    /** Variable storage key: "name" or "name::index" with the index in its string form. */
+    private String varKey(Map<String, Object> varNode, Ctx ctx) {
+        String name = str(varNode.get("name"));
+        Object index = varNode.get("index");
+        if (index == null) return name;
+        return name + "::" + stringify(evalExpr(node(index), ctx));
+    }
+
+    private static Material resolveMaterial(String itemName) {
+        if (itemName == null) return null;
+        Material m = Material.matchMaterial(itemName.trim());
+        if (m != null) return m;
+        try {
+            return Material.valueOf(itemName.trim().replace(' ', '_').toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // IR node access helpers (nodes are Json DOM maps)
+    // ------------------------------------------------------------------
+
+    private static String kind(Map<String, Object> node) {
+        Object k = node.get("kind");
+        return k instanceof String s ? s : "";
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> node(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> list(Object value) {
+        return value instanceof List ? (List<Object>) value : List.of();
+    }
+
+    private static String str(Object value) {
+        return value instanceof String s ? s : null;
+    }
+
+    private static double num(Object value) {
+        return value instanceof Number n ? n.doubleValue() : 0.0;
+    }
+}

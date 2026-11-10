@@ -1,0 +1,15 @@
+name: skript-ts
+version: 2026.11.11
+main: net.krz.skriptts.SkriptTsPlugin
+api-version: "1.21"
+description: Clean-room engine that executes skript-ts IR programs on Paper, without the Skript plugin.
+author: kurazuuuuuu
+commands:
+  skript-ts:
+    description: skript-ts engine control
+    usage: /skript-ts reload
+    permission: skript-ts.admin
+permissions:
+  skript-ts.admin:
+    description: Allows controlling the skript-ts engine
+    default: op

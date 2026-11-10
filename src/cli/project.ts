@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { emitWithMap, type Script } from "../index.js";
+import { emitIr, emitWithMap, type Script } from "../index.js";
 import type { SourceMapFile } from "../source-map.js";
 
 export interface BuiltScript {
@@ -23,6 +23,10 @@ export interface BuiltScript {
   /** Absolute path of the source map JSON next to the .sk. */
   mapPath: string;
   map: SourceMapFile;
+  /** Path of the IR file relative to the engine scripts folder, e.g. "welcome.ir.json". */
+  irRel: string;
+  /** Absolute path of the emitted IR JSON in the output dir. */
+  irPath: string;
 }
 
 export interface BuildResult {
@@ -112,7 +116,10 @@ export async function buildProject(opts: {
     writeFileSync(skPath, code, "utf8");
     const mapPath = `${skPath}.map.json`;
     writeFileSync(mapPath, JSON.stringify(map, null, 2) + "\n", "utf8");
-    scripts.push({ rel: relSk, skPath, mapPath, map });
+    const irRel = relSk.replace(/\.sk$/, ".ir.json");
+    const irPath = join(outDir, irRel);
+    writeFileSync(irPath, emitIr(prog), "utf8");
+    scripts.push({ rel: relSk, skPath, mapPath, map, irRel, irPath });
     maps.set(relSk, map);
   }
   return { scripts, skipped, maps };
@@ -171,6 +178,53 @@ export function deployScripts(opts: {
     mkdirSync(dirname(target), { recursive: true });
     copyFileSync(s.skPath, target);
     deployed.push(s.rel);
+  }
+  writeFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n", "utf8");
+  return { deployed, removed };
+}
+
+const IR_MANIFEST_NAME = ".skript-ts-ir-manifest.json";
+
+/**
+ * Copy built IR files into the engine plugin's scripts folder
+ * (`plugins/skript-ts/scripts`). Same manifest discipline as
+ * deployScripts: files deployed by a previous run but no longer built
+ * are removed. The manifest name does not end in `.ir.json`, so the
+ * engine never tries to load it as a script.
+ */
+export function deployEngineScripts(opts: {
+  scripts: readonly BuiltScript[];
+  engineScriptsDir: string;
+}): { deployed: string[]; removed: string[] } {
+  const { engineScriptsDir } = opts;
+  mkdirSync(engineScriptsDir, { recursive: true });
+  const manifestPath = join(engineScriptsDir, IR_MANIFEST_NAME);
+  let previous: string[] = [];
+  if (existsSync(manifestPath)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (Array.isArray(parsed)) previous = parsed.filter((x): x is string => typeof x === "string");
+    } catch {
+      previous = [];
+    }
+  }
+  const next = opts.scripts.map((s) => s.irRel);
+  const removed: string[] = [];
+  for (const rel of previous) {
+    if (!next.includes(rel)) {
+      const target = join(engineScriptsDir, rel);
+      if (existsSync(target)) {
+        rmSync(target);
+        removed.push(rel);
+      }
+    }
+  }
+  const deployed: string[] = [];
+  for (const s of opts.scripts) {
+    const target = join(engineScriptsDir, s.irRel);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(s.irPath, target);
+    deployed.push(s.irRel);
   }
   writeFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n", "utf8");
   return { deployed, removed };

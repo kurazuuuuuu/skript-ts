@@ -2,14 +2,20 @@
 /**
  * skript-ts CLI.
  *
- *   skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--server-dir <dir>] [--json]
+ *   skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--server-dir <dir>] [--json]
  *   skript-ts verify [--src <dir>] [--out <dir>] [--server-dir <dir>] [--java <path>]
- *                    [--no-behavior] [--no-fresh] [--json]
+ *                    [--engine] [--no-behavior] [--no-fresh] [--json]
  *
  * build:  typecheck -> transpile -> deploy (with --deploy)
  * verify: typecheck -> transpile -> deploy -> server start -> script load
- *         check (incl. `skript reload all`) -> behavior tests -> stop.
+ *         check -> behavior tests -> stop.
  *         Runs against the throwaway sandbox server in --server-dir only.
+ *         Default mode loads the emitted .sk files with the real Skript
+ *         plugin; --engine instead deploys the IR files plus the
+ *         skript-ts.jar engine and disables Skript.jar, so the same
+ *         programs run with no Skript plugin present. The load check is
+ *         `skript reload all` in Skript mode and `skript-ts reload`
+ *         (engine summary line) in engine mode.
  *
  * With --json, progress is written to stderr and a single JSON result
  * object is printed to stdout. Exit code is 0 on success, 1 on failure.
@@ -19,8 +25,9 @@ import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createBehaviorContext, type BehaviorTest } from "./behavior.js";
+import { installEngine, uninstallEngine } from "./cli/engine.js";
 import { createProgress, type StageHandle } from "./cli/progress.js";
-import { buildProject, deployScripts, runTypecheck, type BuildResult } from "./cli/project.js";
+import { buildProject, deployEngineScripts, deployScripts, runTypecheck, type BuildResult } from "./cli/project.js";
 import { SandboxServer } from "./cli/server.js";
 import { SkriptLogParser, mapError, type MappedError } from "./cli/skript-log.js";
 
@@ -32,6 +39,7 @@ interface CliOptions {
   java: string | null;
   json: boolean;
   deploy: boolean;
+  engine: boolean;
   behavior: boolean;
   fresh: boolean;
 }
@@ -52,6 +60,7 @@ interface BehaviorResult {
 
 interface RunResult {
   command: string;
+  mode: "skript" | "engine";
   ok: boolean;
   durationMs: number;
   stages: StageResult[];
@@ -60,9 +69,9 @@ interface RunResult {
 }
 
 const USAGE = `usage:
-  skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--server-dir <dir>] [--json]
+  skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--server-dir <dir>] [--json]
   skript-ts verify [--src <dir>] [--out <dir>] [--server-dir <dir>] [--java <path>]
-                   [--no-behavior] [--no-fresh] [--json]`;
+                   [--engine] [--no-behavior] [--no-fresh] [--json]`;
 
 function parseArgs(argv: string[]): CliOptions {
   const [command, ...rest] = argv;
@@ -77,6 +86,7 @@ function parseArgs(argv: string[]): CliOptions {
     java: null,
     json: false,
     deploy: false,
+    engine: false,
     behavior: true,
     fresh: true,
   };
@@ -94,6 +104,7 @@ function parseArgs(argv: string[]): CliOptions {
       case "--java": opts.java = value(); break;
       case "--json": opts.json = true; break;
       case "--deploy": opts.deploy = true; break;
+      case "--engine": opts.engine = true; break;
       case "--no-behavior": opts.behavior = false; break;
       case "--no-fresh": opts.fresh = false; break;
       case "--help":
@@ -148,6 +159,9 @@ function wipeSandboxState(serverDir: string): void {
   }
   const variables = join(serverDir, "plugins", "Skript", "variables.csv");
   if (existsSync(variables)) rmSync(variables);
+  // Engine-mode variables live in the engine plugin's own store file.
+  const engineVariables = join(serverDir, "plugins", "skript-ts", "variables.json");
+  if (existsSync(engineVariables)) rmSync(engineVariables);
   // Op status persists across runs and would change behavior-test
   // preconditions (e.g. a bot opped by an earlier run stays op).
   const ops = join(serverDir, "ops.json");
@@ -229,9 +243,23 @@ async function main(): Promise<number> {
   const wantDeploy = opts.command === "verify" || opts.deploy;
   if (!wantDeploy) {
     skipStage("配置", "--deploy なし");
+  } else if (opts.engine) {
+    await runStage("配置", async () => {
+      if (build === null) throw new Error("build result missing");
+      const res = deployEngineScripts({
+        scripts: build.scripts,
+        engineScriptsDir: join(serverDir, "plugins", "skript-ts", "scripts"),
+      });
+      const set = installEngine(rootDir, serverDir);
+      const removedNote = res.removed.length > 0 ? `、${res.removed.length} 件削除` : "";
+      return { note: `IR ${res.deployed.length} ファイル${removedNote}、${set.note}` };
+    });
   } else {
     await runStage("配置", async () => {
       if (build === null) throw new Error("build result missing");
+      // Deterministic plugin set: a previous engine run must not leak
+      // skript-ts.jar (or a disabled Skript.jar) into Skript mode.
+      uninstallEngine(rootDir, serverDir);
       const res = deployScripts({ scripts: build.scripts, serverScriptsDir: join(serverDir, "plugins", "Skript", "scripts") });
       const removedNote = res.removed.length > 0 ? `、${res.removed.length} 件削除` : "";
       return { note: `${res.deployed.length} ファイル${removedNote}` };
@@ -255,12 +283,35 @@ async function main(): Promise<number> {
       serverStarted = true;
       h.update("Paper 起動待ち");
       await server.waitForLine(/Done \([0-9.]+s\)!/, 240_000);
+      if (opts.engine) return { note: "skript-ts エンジンで起動" };
       return { note: `スクリプト ${parser.loadedScriptCount ?? "?"} 件読み込み` };
     });
 
     // 5. Script load check (initial load + explicit reload)
     await runStage("読み込み確認", async (h) => {
       if (build === null) throw new Error("build result missing");
+      if (opts.engine) {
+        h.update("skript-ts reload 実行");
+        const mark = server.mark();
+        server.sendCommand("skript-ts reload");
+        const m = await server.waitForLine(
+          /\[skript-ts\] Loaded (\d+) script\(s\), (\d+) top-level structure\(s\)/,
+          120_000,
+          mark,
+        );
+        const loadedCount = Number(m[1]);
+        const expected = build.scripts.length;
+        const failures = server.logLines
+          .slice(mark)
+          .filter((l) => l.includes("[skript-ts]") && l.includes("Failed to load"));
+        if (failures.length > 0) {
+          throw new Error(`エンジン読み込みエラー: ${failures[0]?.trim()}`);
+        }
+        if (loadedCount !== expected) {
+          throw new Error(`エンジン読み込み数 ${loadedCount} 件（期待 ${expected} 件）`);
+        }
+        return { note: `エンジン ${loadedCount} スクリプト、エラー 0 件` };
+      }
       h.update("skript reload all 実行");
       const mark = server.mark();
       server.sendCommand("skript reload all");
@@ -343,6 +394,7 @@ async function main(): Promise<number> {
   const ok = stages.every((s) => s.status !== "failed");
   const result: RunResult = {
     command: opts.command,
+    mode: opts.engine ? "engine" : "skript",
     ok,
     durationMs: Date.now() - startedAt,
     stages,
