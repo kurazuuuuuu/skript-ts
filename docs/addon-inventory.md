@@ -1,0 +1,175 @@
+# Skript アドオン棚卸し（移植判断材料）
+
+調査日: 2026-11-11
+調査方法: 各アドオンの GitHub リポジトリを一次情報として確認した。保守状況は GitHub API の
+`pushed_at`（リポジトリへの最終プッシュ日時）と最新リリースの公開日、リポジトリの
+アーカイブ状態から判定した。ライセンスは各リポジトリのライセンスファイル本文を実際に
+読み、名称を同定した（ファイル名が標準と異なる場合はその旨を記す）。機能範囲は
+リポジトリの説明文と README の要約である。
+
+判定ルール:
+
+- ライセンスファイル（またはそれに相当するライセンス表記）のないものは **移植不可**。
+- ここでの「移植」はコードのコピーではなく、機能・構文仕様を観察して skript-ts 側で
+  新規に書き起こす**再実装**を指す。
+- skript-ts 本体は MIT ライセンス。コピーレフト（GPL 等）の扱いは末尾の節にまとめる。
+
+## 一覧
+
+| アドオン | リポジトリ | 保守状況 | 最終プッシュ | 最新リリース | ライセンス | 移植可否 |
+| --- | --- | --- | --- | --- | --- | --- |
+| SkBee | [ShaneBeee/SkBee](https://github.com/ShaneBeee/SkBee) | 継続中（活発） | 2026-09-26 | 3.26.0（2026-09-26） | GPL-3.0 | 再実装のみ可 |
+| SkQuery | [SkQuery/SkQuery](https://github.com/SkQuery/SkQuery) | 継続中 | 2026-09-28 | 4.3.2（2025-02-27） | Apache-2.0 | 可 |
+| TuSKe | [Tuke-Nuke/TuSKe](https://github.com/Tuke-Nuke/TuSKe) | 終了（アーカイブ済み） | 2022-01-26 | 1.8.2（2017-11-05） | なし | **不可** |
+| Skellett | [TheLimeGlass/Skellett](https://github.com/TheLimeGlass/Skellett) | 継続中（低頻度） | 2026-03-19 | 2.0.10（2024-02-21） | Apache-2.0 | 可 |
+| MundoSK | [MundoSK/MundoSK](https://github.com/MundoSK/MundoSK) | 停滞（2019年以降動きなし） | 2019-06-02 | 1.8.5（2018-02-18） | MIT | 可 |
+| Vixio | [iBlitzkriegi/Vixio](https://github.com/iBlitzkriegi/Vixio) | 停滞（2021年以降動きなし） | 2021-06-10 | v2.0.7（2020-10-02） | なし | **不可** |
+| skRayFall | [eyesniper2/skRayFall](https://github.com/eyesniper2/skRayFall) | 継続中（GitHub リリースは古い） | 2026-05-02 | 1.3（2015-03-19）※下記注記 | GPL-3.0 | 再実装のみ可 |
+| skript-mirror | [btk5h/skript-mirror](https://github.com/btk5h/skript-mirror) | 停滞（後継 reflect へ移行） | 2019-09-08 | v1.0.0（2018-11-16） | MIT | 可 |
+| skript-reflect | [SkriptLang/skript-reflect](https://github.com/SkriptLang/skript-reflect) | 継続中（活発） | 2026-11-10 | v2.6.3（2026-02-01） | MIT | 可 |
+| skUtilities | [tim740/skUtilities](https://github.com/tim740/skUtilities) | 停滞（2022年以降動きなし） | 2022-11-25 | v0.9.2（2018-04-08） | GPL-3.0 | 再実装のみ可 |
+| SharpSK | [Sharpjaws/SharpSK](https://github.com/Sharpjaws/SharpSK) | 終了（アーカイブ済み） | 2019-04-22 | 1.6.3（2017-10-20） | MIT | 可 |
+| DiSky | [DiSkyOrg/DiSky](https://github.com/DiSkyOrg/DiSky) | 継続中（活発） | 2026-05-24 | 4.29.0（2026-05-24） | Apache-2.0 | 可 |
+| skript-yaml | [Sashie/skript-yaml](https://github.com/Sashie/skript-yaml) | 継続中 | 2026-09-29 | v1.7.2（2025-07-23） | MIT | 可 |
+| SkVault | [OfficialDonut/SkVault](https://github.com/OfficialDonut/SkVault) | 停滞（2020年以降動きなし） | 2020-03-22 | v2.0（2020-03-22） | なし | **不可** |
+| skript-db | [btk5h/skript-db](https://github.com/btk5h/skript-db) | 停滞気味（2023年以降動きなし） | 2023-02-09 | v0.2.1（2019-06-26） | MIT | 可 |
+| Ersatz | [abandonedaccount6235/Ersatz](https://github.com/abandonedaccount6235/Ersatz) ※下記注記 | 停滞（2019年以降動きなし） | 2019-12-30 | GitHub リリースなし | GPL-3.0 | 再実装のみ可 |
+
+## 個別メモ
+
+### SkBee — GPL-3.0 / 継続中（活発）
+NBT の取得・設定、スコアボード（FastBoard）、カスタムレシピ、BlockData、構造物の
+保存・配置、テキストコンポーネント、ワールド生成、領域（Bounds）、GameEvent 連携など、
+汎用要素を広く追加する現役アドオン。ライセンスファイル `LICENSE` の本文で GPL v3 を確認。
+活発に保守されているため、現時点で移植の必要性は低い。
+
+### SkQuery — Apache-2.0 / 継続中
+「オリジナルの Skript アドオン」を名乗る初期からの汎用アドオン。MIDI 再生、ファイル
+存在チェックなど雑多な構文群を持つ（現在の README は変更履歴が中心）。`LICENSE` の
+本文で Apache License 2.0 を確認。2025年にリリース、2026年にもプッシュがあり継続中。
+
+### TuSKe — ライセンスなし / 終了 → 移植不可
+インベントリ GUI 管理などで知られたアドオン。作者が README で 2022-01-26 の
+アーカイブとサポート終了を宣言し、リポジトリもアーカイブ済み。ライセンスファイルは
+存在せず（ルートのファイル一覧でも確認）、判定ルールにより **移植不可**。
+なお README には「開発者は自由にコードを使ってよい」趣旨の一文があるが、正式な
+ライセンスの付与としては曖昧なため、ルール通り不可として扱う。この扱いを変える場合は
+法的な確認が別途必要。
+
+### Skellett — Apache-2.0 / 継続中（低頻度）
+「最も人気のある Skript アドオン」を名乗る多機能アドオン（ソケット通信や外部連携を
+含む）。ライセンスはファイル名 `licence` に格納され、本文で Apache License 2.0 を確認。
+リリースは 2024年が最後だが 2026年にもプッシュがあり、低頻度で継続中と判断した。
+
+### MundoSK — MIT / 停滞
+通信やデータ操作など広い機能を追加した汎用アドオン。2019年を最後に動きがなく停滞。
+ライセンスはファイル名 `license.yml` に MIT の本文を確認した。ただし著作権表示の
+名義が「Rahul Daniel Mittal」となっており、MundoSK の作者名義と一致しない
+（テンプレート流用の可能性）。移植着手時にこの点を確認事項とする。
+
+### Vixio — ライセンスなし / 停滞 → 移植不可
+Discord Bot 連携アドオン（JDA ベース）。2021年以降動きなし。ライセンスファイルは
+存在せず（ルートのファイル一覧でも確認）、判定ルールにより **移植不可**。
+Discord 連携の需要自体は後継格の DiSky（Apache-2.0、活発に継続中）が担っている。
+
+### skRayFall — GPL-3.0 / 継続中（GitHub リリースは古い）
+Citizens、EffectLib、CrackShot など他プラグインとの連携を中心に 100 以上の構文を
+追加するアドオン。`LICENSE.txt` の本文で GPL v3 を確認。2026年にもプッシュがあり
+継続中だが、GitHub 上の最新リリースは 2015年の 1.3 のままで、配布は Bukkit 等の
+外部チャネルが中心とみられる。
+
+### skript-mirror — MIT / 停滞（後継へ移行）
+Java リフレクションを Skript から使うためのアドオン（カスタム構文の定義、Java の
+フィールド・メソッドへのアクセス）。`LICENSE` の本文で MIT を確認。2019年以降は
+停滞し、開発の中心は後継の skript-reflect に移っている。
+
+### skript-reflect — MIT / 継続中（活発）
+skript-mirror のフォークとして始まり、カスタムイベント、非同期イベント対応などを
+追加した現行のリフレクションアドオン。リポジトリは旧 TPGamesNL/skript-reflect から
+SkriptLang 組織へ移管されている（リダイレクトで確認）。`LICENSE` の本文で MIT を
+確認。2026-11-10 にもプッシュがあり活発。
+
+### skUtilities — GPL-3.0 / 停滞
+ファイル操作や文字列処理などのユーティリティ構文集。`LICENSE` の本文で GPL v3 を
+確認。最終リリースは 2018年、プッシュも 2022年が最後で停滞している。
+
+### SharpSK — MIT / 終了
+多数の他プラグイン（権限、WorldGuard 系など）との連携と機能追加を行ったアドオン。
+README に "no longer maintained" の明記があり、リポジトリもアーカイブ済み。
+`LICENSE.md` の本文で MIT を確認。開発終了が確定しており、MIT のため再実装の
+障害がない。
+
+### DiSky — Apache-2.0 / 継続中（活発）
+Discord Bot の作成・管理を行うアドオン。600 以上の構文を持ち、スラッシュコマンド、
+インタラクション（ボタン、モーダル等）、フォーラム等に対応。`LICENSE` の本文で
+Apache License 2.0 を確認。2026年にもリリースがあり活発。
+
+### skript-yaml — MIT / 継続中
+YAML ファイルをメモリにキャッシュして読み書きするアドオン。`LICENSE` の本文で
+MIT を確認。2026年にもプッシュがあり継続中。
+
+### SkVault — ライセンスなし / 停滞 → 移植不可
+Skript で作った自作経済システムを Vault 経由で他プラグインに公開するためのアドオン。
+2020年以降動きなし。ライセンスファイルは存在せず（ルートのファイル一覧でも確認）、
+判定ルールにより **移植不可**。
+
+### skript-db — MIT / 停滞気味
+SQL を実行し結果を Skript の変数へ格納するアドオン。`LICENSE` の本文で MIT を確認。
+本家は 2023年以降動きがない。なお保守フォーク byPixelTV/skript-db（2025年にも
+プッシュあり）が存在するため、「本家は停滞、フォークが継続中」という状態である。
+
+### Ersatz — GPL-3.0 / 停滞（リポジトリ同定に注意）
+PlaceholderAPI のプレースホルダを Skript から使うための連携アドオン。調査上の注意と
+して、本家とされていた TheLimeGlass/Ersatz は現在存在せず（404）、説明文
+「PlaceholderAPI integration for Skript」が一致する abandonedaccount6235/Ersatz を
+調査対象とした。このリポジトリは再アップロード／ミラーの可能性があり、原著作者の
+公式リポジトリかどうかは **未確認**。同リポジトリの `LICENSE.md` の本文では GPL v3
+を確認した。GitHub リリースはなく、プッシュは 2019年が最後。
+
+## ライセンスと skript-ts（MIT）の関係
+
+- **MIT / Apache-2.0 のアドオン**: 再実装に障害はない。仮にコード自体を利用する場合
+  でも、著作権表示などの条件を満たせば MIT プロジェクトと両立する（本プロジェクトでは
+  コードはコピーせず再実装する方針）。
+- **GPL-3.0 のアドオン（SkBee、skRayFall、skUtilities、Ersatz）**: GPL はコピーレフト
+  であり、GPL コードの複製物・改変物を配布する場合は全体を GPL で公開する義務が
+  生じる。GPL コードを skript-ts 本体へ持ち込むと、プロジェクト全体の MIT 方針と
+  衝突する。一方、コードを複写せず、ドキュメントと振る舞い（仕様）だけを手がかりに
+  独立に書き起こす再実装は、元のコードの複製・翻案には当たらず、原則として MIT の
+  まま公開できると考えられる。したがって GPL 組の「移植可否」は **再実装のみ可** と
+  し、着手時はソースコードを参照しながらの書き写しや構造の模倣を避け、参照した
+  資料（ドキュメント等）を記録すること。
+- **ライセンスなしのアドオン（TuSKe、Vixio、SkVault）**: 権利はデフォルトで全て
+  留保される。プロジェクトの判定ルールにより **移植不可**。
+
+## 移植の優先順位案
+
+前提として、ユーザーの関心は「開発が終了していそうなアドオン」の移植にあるため、
+優先度は（1）ライセンス上問題がないこと、（2）開発が停滞・終了していること、
+（3）機能の需要と範囲、の順で評価した。継続中のアドオンは移植ではなく併用・参照の
+対象とする。
+
+### 第1群（MIT / Apache-2.0 かつ停滞〜終了。再実装を先行させる候補）
+1. **MundoSK**（MIT、2019年から停滞）— 汎用要素の範囲が広く、API 拡張の題材として
+   大きい。着手時に `license.yml` の名義不一致の確認が必要。
+2. **SharpSK**（MIT、アーカイブ済みで終了確定）— 他プラグイン連携系の要素が豊富で、
+   終了が確定している分だけ判断がぶれない。
+3. **skript-db**（MIT、本家は2023年から停滞）— SQL 連携は実需が高い。ただし保守
+   フォークが存在するため、本家の停滞だけを理由に急ぐ必要はない。
+
+### 第2群（GPL-3.0 のためクリーンルーム的な再実装の手順を踏む候補）
+4. **skUtilities**（GPL-3.0、2022年から停滞）— ファイル・文字列ユーティリティは
+   需要が高く、仕様も比較的素直で再実装しやすい。
+5. **Ersatz**（GPL-3.0、2019年から停滞）— PlaceholderAPI 連携の需要は大きい。
+   ただしリポジトリの出所確認が未了のため、着手前に原著作者と公式の所在を確認する
+   ことが先決。
+
+### 優先度が低いもの
+- **skript-mirror**（MIT）— 後継の skript-reflect が活発に継続中であり、mirror
+  自体の移植ではなく reflect の仕様を互換・参照対象とするのが妥当。
+
+### 対象外
+- **移植不可**: TuSKe、Vixio、SkVault（ライセンスなし）。Vixio の Discord 機能は
+  DiSky が実質的に後継を担っている。
+- **現役継続中のため移植不要（併用・参照対象）**: SkBee、SkQuery、Skellett、
+  skRayFall、skript-yaml、DiSky、skript-reflect。
