@@ -1,0 +1,65 @@
+command /shout [<text>]:
+    trigger:
+        if arg-1 starts with "!":
+            send "loud: %substring of arg-1 from 2 to length of arg-1 in uppercase%" to player
+        else:
+            send "plain: %arg-1 in uppercase%" to player
+
+command /initial [<text>]:
+    trigger:
+        send "first=%character at 1 in arg-1% last=%character at length of arg-1 in arg-1% mid=%substring of arg-1 from 2 to 3%" to player
+        send "head=%first 2 characters of arg-1% tail=%last 2 characters of arg-1% lower=%arg-1 in lowercase%" to player
+
+command /csv [<text>]:
+    trigger:
+        set {_parts::*} to split arg-1 at ","
+        send "parts=%size of {_parts::*}%" to player
+        loop {_parts::*}:
+            send "part %loop-index%=%loop-value%" to player
+        set {_j} to join {_parts::*} with " | "
+        send "joined=%{_j}%" to player
+        set {_n} to join split arg-1 at "," with "+"
+        send "nested=%{_n}%" to player
+
+command /swap [<text>]:
+    trigger:
+        set {_t} to arg-1
+        replace first "a" in {_t} with "o"
+        send "first=%{_t}%" to player
+        set {_t} to arg-1
+        replace all "A" in {_t} with "0"
+        send "ci=%{_t}%" to player
+
+command /check [<text>]:
+    trigger:
+        if arg-1 contains "ELL":
+            send "has-ell" to player
+        if arg-1 starts with "he":
+            send "starts-he" to player
+        if arg-1 ends with "lo":
+            send "ends-lo" to player
+        if arg-1 does not contain "z":
+            send "no-z" to player
+
+command /paint:
+    trigger:
+        set {_c} to colored "&aOK"
+        broadcast "paint: %{_c}%"
+        set {_u} to uncolored "§cRed"
+        broadcast "plain: %{_u}%"
+        set {_l} to length of "Hello"
+        broadcast "len: %{_l}%"
+
+command /paeq [<text>]:
+    trigger:
+        if colored arg-1 is "§aX":
+            broadcast "paint-eq=T"
+        else:
+            broadcast "paint-eq=F"
+
+command /fmteq [<text>]:
+    trigger:
+        if formatted arg-1 is "§lBold":
+            broadcast "fmt-eq=T"
+        else:
+            broadcast "fmt-eq=F"

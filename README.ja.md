@@ -106,6 +106,8 @@ on join:
 | `cancelEvent()` | `cancel event`（キャンセル可能なイベントのハンドラ内） |
 | `uncancelEvent()` | `uncancel event` |
 | `setDamage(value)` | `set damage to <value>`（`onDamage` 内） |
+| `replaceAllIn(var, find, repl, caseSensitive?)` | `replace all <find> in {var} with <repl>`（指定時は `with case sensitivity`） |
+| `replaceFirstIn(var, find, repl, caseSensitive?)` | `replace first <find> in {var} with <repl>` |
 
 ### 式
 | TypeScript | 値の位置 | 文字列の中 |
@@ -138,6 +140,15 @@ on join:
 | `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` など | `%(<a> + <b>)%` など |
 | `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可） | `mod(<a>, <b>)` | `%mod(<a>, <b>)%` |
 | `fmt(...parts)` | `"<parts>"` | 外側の文字列に平坦化 |
+| `textLength(t)` | `length of <t>` | `%length of <t>%` |
+| `substring(t, from, to)` | `substring of <t> from <a> to <b>` | `%substring of <t> from <a> to <b>%` |
+| `firstChars(t, n)` / `lastChars(t, n)` | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` など |
+| `charAt(t, i)` | `character at <i> in <t>` | `%character at <i> in <t>%` |
+| `upperCase(t)` / `lowerCase(t)` | `<t> in uppercase` / `<t> in lowercase` | `%<t> in uppercase%` など |
+| `splitText(t, delim, caseSensitive?)` | `split <t> at <d>`（指定時は `with case sensitivity`） | `%split <t> at <d>%` |
+| `joinText(list, delim?)` | `join <list>` / `join <list> with <d>` | `%join <list> with <d>%` |
+| `colored(t)` / `formatted(t)` | `colored <t>` / `formatted <t>` | `%colored <t>%` など |
+| `uncolored(t)` / `unformatted(t)` | `uncolored <t>` / `unformatted <t>` | `%uncolored <t>%` など |
 
 算術の意味論（本家 Skript 2.17.1 の実挙動で裏取り済み）: 被演算子は
 原則として両方とも数値です。例外は `+` で、両方が文字列なら連結に
@@ -177,6 +188,9 @@ on join:
 | `greaterOrEqual(a, b)` | `<a> is greater than or equal to <b>` |
 | `lessThan(a, b)` | `<a> is less than <b>` |
 | `lessOrEqual(a, b)` | `<a> is less than or equal to <b>` |
+| `contains(a, b)` | `<a> contains <b>` |
+| `startsWith(t, prefix)` | `<t> starts with <prefix>` |
+| `endsWith(t, suffix)` | `<t> ends with <suffix>` |
 | `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | 入れ子の `if`/`else` へ展開（下記） |
 
 比較の意味論（推測ではなく本家 Skript 2.17.1 の実挙動で裏取り済み）:
@@ -384,6 +398,88 @@ player by zombie:`）はこのスライスの範囲外です。汎用の
 置く・クリックする・戦わせ、メッセージと結果のワールド状態
 （ブロックが消えたか残ったか、体力が減ったか否か）の両方を
 両ランタイムで検証します。
+
+### テキスト操作
+
+テキストはコア言語です。同じスクリプトが Skript（出力された
+`.sk`）でもエンジン jar でも動きます。以下の意味論はすべて
+本家 Skript 2.17.1 へのプローブで裏取り済みで（開発ログ参照）、
+いくつかは「当然」の挙動と異なります。
+
+- `textLength(t)` は UTF-16 コードユニット数で数えます
+  （絵文字は 2）。対象が値なしなら結果も値なし、空文字列の
+  長さは 0 です。
+- `substring(t, from, to)` は 1 始まりで両端を含みます。
+  範囲は「適合」されます。`from` は 1 へ切り上げ、`to` は
+  長さへ切り下げ、適合後の `from` が `to` を超えたら結果は
+  **値なし**です（空文字列にはならず、交換もされません）。
+  `firstChars(t, n)` / `lastChars(t, n)` は反対側の端を固定
+  した同じ規則で、個数 0 以下は値なしです。`charAt(t, i)` は
+  厳格で、1..長さ の範囲外は値なし、結果は UTF-16 コード
+  ユニット1つです。
+- `upperCase(t)` / `lowerCase(t)` は大小変換です。対象が
+  値なしなら結果も値なし。単一テキストの操作は、本家の
+  複数形と同じく、テキストのリストには要素ごとに適用
+  されます。
+- `splitText(t, delim[, caseSensitive])` は**リスト**を
+  返します。区切りはリテラル照合（正規表現では決してない）
+  で、既定は大文字小文字を**区別しません**。末尾の空要素は
+  残り（`a,b,,c,` は5要素）、空文字列は空要素1つ、空の
+  区切りは1文字ずつの要素＋末尾の空要素、対象が値なしなら
+  要素なしです。結果はリスト機構と合成できます。リスト
+  変数へ代入すれば、ループ（`loopIndex()` つき）、要素数、
+  添字読みが、手で作ったリストとまったく同じに使えます。
+  （本家では `size of` や `loop` も split を直接受けます
+  —— split へのループには loop-index がありません —— が、
+  本サブセットでは要素数とループはリスト変数の形に
+  統一しています。）
+- `joinText(list[, delim])` はリストの**テキスト要素**を
+  連結します（プレイヤーは名前として数えます）。数値など
+  テキストでない要素は変換されず**読み飛ばされます**
+  （`(1, "x")` の結合は `"x"`）。残りが空なら値なし、
+  既定の区切りは `""` です。split の結果を直接結合する
+  こともできます: `joinText(splitText(t, str(",")),
+  str("+"))`。
+- `contains(a, b)` は、テキスト同士では大文字小文字を
+  **区別しない**部分文字列テスト（空の部分は常に対象に
+  含まれます）、リストに対しては比較規則による要素の
+  所属テストです。`startsWith` / `endsWith` は大文字
+  小文字を**区別します**。この非対称は本家自身のもので、
+  プローブで固定しました。被演算子が値なしなら偽です。
+  3つとも葉条件でネイティブの否定形を持つため、
+  `whileLoop` の頭でも使えます。
+- `replaceAllIn(var, find, repl[, caseSensitive])` /
+  `replaceFirstIn(...)` はスカラー変数の持つテキストを
+  書き換えます。リテラル照合で、既定は大文字小文字を
+  区別しません。空の検索文字列は全ての隙間（all）または
+  先頭（first）への挿入になります。対象が値なし・
+  テキストでない場合は何もしません。
+- 色: `colored(t)` / `formatted(t)` は `&` コード
+  （`&x` の16進数並びを含む）と名前つき MiniMessage 式
+  タグ（`<red>`、`<bold>`、閉じタグ、`<reset>`）を書式
+  として解釈し、`uncolored(t)` / `unformatted(t)` は
+  書式コードを**全て**取り除きます（色もスタイルも）。
+  未知のタグ、対応のない閉じタグ、`&#RRGGBB` の形は
+  リテラルのまま残ります。文字列リテラル自体も両ラン
+  タイムで同じように解釈されます。Skript 2.17 は
+  リテラルをテキストコンポーネントとして読み、エンジン
+  はリテラルを § コード文字列へ変換します。一方、実行時
+  に届く値（チャット文、計算された文字列）の生の `&` は
+  `colored` / `formatted` を適用するまでそのままです。
+  モデルの境界が1つあります。本家のテキストは
+  コンポーネントで、エンジンのテキストは § コード文字列
+  です。プレーンテキストの挙動とプレイヤーが目にする
+  書式は一致し、解釈済みの値は等価な § リテラルと両
+  ランタイムで等しくなりますが（サンプルの `/paeq` と
+  `/fmteq` がこれを固定しています）、§ の文字数を数える
+  式（色つきチャット文の長さなど）は、コンポーネントに
+  数える § が存在しないため、異なり得ます。
+
+`examples/text.ts` がこれら全てを exercised します
+（`!` 接頭辞ルールつきの shout コマンド、文字の切り取り、
+CSV の分割と結合、テキスト検査、置き換えデモ、paint 系
+コマンド）。`examples/behavior/text.behavior.ts` が
+観測可能な挙動を両ランタイムで検証します。
 
 ### 文字列のエスケープ
 リテラルテキストは Skript の規則に従います。`"` は `""` に、リテラルな `%` は `%%` に

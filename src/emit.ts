@@ -61,6 +61,34 @@ function emitValue(e: Expr): string {
             return e.target.kind === "arith"
                 ? `type of (${emitValue(e.target)})`
                 : `type of ${emitValue(e.target)}`;
+        case "textLength":
+            return `length of ${emitValue(e.target)}`;
+        case "substring":
+            return `substring of ${emitValue(e.target)} from ${emitValue(e.from)} to ${emitValue(e.to)}`;
+        case "firstChars":
+            return `first ${emitValue(e.count)} characters of ${emitValue(e.target)}`;
+        case "lastChars":
+            return `last ${emitValue(e.count)} characters of ${emitValue(e.target)}`;
+        case "charAt":
+            return `character at ${emitValue(e.index)} in ${emitValue(e.target)}`;
+        case "upperCase":
+            return `${emitValue(e.target)} in uppercase`;
+        case "lowerCase":
+            return `${emitValue(e.target)} in lowercase`;
+        case "splitText":
+            return `split ${emitValue(e.target)} at ${emitValue(e.delimiter)}${e.caseSensitive ? " with case sensitivity" : ""}`;
+        case "joinText":
+            return e.delimiter === null
+                ? `join ${emitValue(e.source)}`
+                : `join ${emitValue(e.source)} with ${emitValue(e.delimiter)}`;
+        case "coloredText":
+            return `colored ${emitValue(e.target)}`;
+        case "formattedText":
+            return `formatted ${emitValue(e.target)}`;
+        case "uncoloredText":
+            return `uncolored ${emitValue(e.target)}`;
+        case "unformattedText":
+            return `unformatted ${emitValue(e.target)}`;
         case "arith":
             // Arithmetic is always parenthesized so the emitted tree
             // means the same thing regardless of Skript's own
@@ -139,6 +167,19 @@ function emitString(e: Expr): string {
         case "damageAmount":
         case "damageCause":
         case "typeOf":
+        case "textLength":
+        case "substring":
+        case "firstChars":
+        case "lastChars":
+        case "charAt":
+        case "upperCase":
+        case "lowerCase":
+        case "splitText":
+        case "joinText":
+        case "coloredText":
+        case "formattedText":
+        case "uncoloredText":
+        case "unformattedText":
             return `%${emitValue(e)}%`;
         case "arith":
             return `%${emitValue(e)}%`;
@@ -236,6 +277,18 @@ function emitLeafCond(c: Cond, negated: boolean): string {
             return negated
                 ? `${emitValue(c.left)} is not less than or equal to ${emitValue(c.right)}`
                 : `${emitValue(c.left)} is less than or equal to ${emitValue(c.right)}`;
+        case "contains":
+            return negated
+                ? `${emitValue(c.container)} does not contain ${emitValue(c.item)}`
+                : `${emitValue(c.container)} contains ${emitValue(c.item)}`;
+        case "startsWith":
+            return negated
+                ? `${emitValue(c.target)} does not start with ${emitValue(c.prefix)}`
+                : `${emitValue(c.target)} starts with ${emitValue(c.prefix)}`;
+        case "endsWith":
+            return negated
+                ? `${emitValue(c.target)} does not end with ${emitValue(c.suffix)}`
+                : `${emitValue(c.target)} ends with ${emitValue(c.suffix)}`;
         case "timerActive":
         case "fileExists":
             throw new Error(`Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`);
@@ -412,6 +465,12 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             return [own(`${prefix}uncancel event`, path, s.loc)];
         case "setDamage":
             return [own(`${prefix}set damage to ${emitValue(s.value)}`, path, s.loc)];
+        case "textReplace":
+            return [own(
+                `${prefix}replace ${s.firstOnly ? "first" : "all"} ${emitValue(s.find)} in ${emitValue(s.target)} with ${emitValue(s.replacement)}${s.caseSensitive ? " with case sensitivity" : ""}`,
+                path,
+                s.loc,
+            )];
         case "stop":
             return [own(`${prefix}stop`, path, s.loc)];
         case "callStmt":

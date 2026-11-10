@@ -110,6 +110,8 @@ section.
 | `cancelEvent()` | `cancel event` (in a cancellable event handler) |
 | `uncancelEvent()` | `uncancel event` |
 | `setDamage(value)` | `set damage to <value>` (inside `onDamage`) |
+| `replaceAllIn(var, find, repl, caseSensitive?)` | `replace all <find> in {var} with <repl>` (`with case sensitivity` when asked) |
+| `replaceFirstIn(var, find, repl, caseSensitive?)` | `replace first <find> in {var} with <repl>` |
 
 ### Expressions
 | TypeScript | value position | inside a string |
@@ -142,6 +144,15 @@ section.
 | `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc. | `%(<a> + <b>)%` etc. |
 | `remainder(a, b)` (or `arith(op, a, b)` for any of the five) | `mod(<a>, <b>)` | `%mod(<a>, <b>)%` |
 | `fmt(...parts)` | `"<parts>"` | flattened into the enclosing string |
+| `textLength(t)` | `length of <t>` | `%length of <t>%` |
+| `substring(t, from, to)` | `substring of <t> from <a> to <b>` | `%substring of <t> from <a> to <b>%` |
+| `firstChars(t, n)` / `lastChars(t, n)` | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` etc. |
+| `charAt(t, i)` | `character at <i> in <t>` | `%character at <i> in <t>%` |
+| `upperCase(t)` / `lowerCase(t)` | `<t> in uppercase` / `<t> in lowercase` | `%<t> in uppercase%` etc. |
+| `splitText(t, delim, caseSensitive?)` | `split <t> at <d>` (`with case sensitivity` when asked) | `%split <t> at <d>%` |
+| `joinText(list, delim?)` | `join <list>` / `join <list> with <d>` | `%join <list> with <d>%` |
+| `colored(t)` / `formatted(t)` | `colored <t>` / `formatted <t>` | `%colored <t>%` etc. |
+| `uncolored(t)` / `unformatted(t)` | `uncolored <t>` / `unformatted <t>` | `%uncolored <t>%` etc. |
 
 Arithmetic semantics (verified against the real Skript 2.17.1):
 operands must both be numbers, except that `+` over two texts
@@ -184,6 +195,9 @@ below, not by load checks.
 | `greaterOrEqual(a, b)` | `<a> is greater than or equal to <b>` |
 | `lessThan(a, b)` | `<a> is less than <b>` |
 | `lessOrEqual(a, b)` | `<a> is less than or equal to <b>` |
+| `contains(a, b)` | `<a> contains <b>` |
+| `startsWith(t, prefix)` | `<t> starts with <prefix>` |
+| `endsWith(t, suffix)` | `<t> ends with <suffix>` |
 | `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | lowered to nested `if`/`else` (see below) |
 
 Comparison semantics (verified against the real Skript 2.17.1,
@@ -405,6 +419,90 @@ and `examples/behavior/gameplay.behavior.ts` drives real bots
 through it (digging, placing, clicking, fighting) and asserts
 both the messages and the resulting world state (block gone or
 still there, health lost or not) under both runtimes.
+
+### Text operations
+
+Texts are core language: the same script runs under Skript
+(as emitted `.sk`) and under the engine jar. Every semantic
+below was probed against the real Skript 2.17.1 (see the
+development log) — several differ from the "obvious" behavior:
+
+- `textLength(t)` counts UTF-16 code units (an emoji counts
+  2), like Java strings. A missing text yields no value; an
+  empty text has length 0.
+- `substring(t, from, to)` is 1-based and inclusive at both
+  ends. The range is *fitted*: `from` is clamped up to 1 and
+  `to` down to the length, and when the fitted `from` exceeds
+  the fitted `to` the result is **no value** (not an empty
+  text, never swapped). `firstChars(t, n)` / `lastChars(t, n)`
+  are the same rule with the other end pinned, so a count of
+  0 or less yields no value. `charAt(t, i)` is strict instead:
+  an index outside 1..length yields no value, and the result
+  is a single UTF-16 code unit.
+- `upperCase(t)` / `lowerCase(t)` convert case; a missing
+  text yields no value. The single-text operations map
+  element-wise over a list of texts, like the original's
+  plural forms.
+- `splitText(t, delim[, caseSensitive])` yields a **list**:
+  the delimiter matches literally (never a regex) and
+  case-**insensitively** by default; the trailing empty part
+  is kept (`a,b,,c,` → 5 parts); an empty text is one empty
+  part; an empty delimiter yields one part per character
+  plus a trailing empty part; a missing text yields no
+  values. The result composes with the list machinery —
+  assign it to a list variable to loop it (with
+  `loopIndex()`), size it, or read its entries, exactly like
+  a list built by hand. (In Skript itself, `size of` and
+  `loop` also accept a split directly — a loop over a split
+  has no loop-index there; this subset keeps sizes and
+  loops list-variable-shaped.)
+- `joinText(list[, delim])` concatenates a list's **text**
+  elements (players count as their name). Numbers and other
+  non-text elements are **skipped**, not converted — joining
+  `(1, "x")` yields `"x"`. An empty remainder yields no
+  value; the default delimiter is `""`. A split result can
+  be joined directly: `joinText(splitText(t, str(",")),
+  str("+"))`.
+- `contains(a, b)`: for texts, a case-**insensitive**
+  substring test (an empty part is always contained); for a
+  list container, element membership under the comparison
+  rules. `startsWith` / `endsWith` are case-**sensitive** —
+  the asymmetry is the original's own, pinned by probes.
+  Missing operands are false. All three are leaf conditions
+  with native negated forms, so they work in `whileLoop`
+  heads too.
+- `replaceAllIn(var, find, repl[, caseSensitive])` /
+  `replaceFirstIn(...)` rewrite the text a scalar variable
+  holds: literal, case-insensitive matching by default; an
+  empty search text inserts the replacement at every gap
+  (all) or at the start (first); a missing or non-text
+  target is left untouched.
+- Colors: `colored(t)` / `formatted(t)` parse `&` codes
+  (including the `&x` hex sequence) and the named
+  MiniMessage-style tags (`<red>`, `<bold>`, closing tags,
+  `<reset>`) into formatting; `uncolored(t)` /
+  `unformatted(t)` strip **all** formatting codes (colors
+  and styles alike). Unknown tags, stray closing tags and
+  the `&#RRGGBB` form stay literal. String literals are
+  parsed the same way in both runtimes — Skript 2.17 reads
+  literals as text components, and the engine converts
+  literals to §-coded strings — while values that arrive at
+  runtime (chat text, computed strings) keep their raw `&`
+  characters until `colored` / `formatted` is applied.
+  One model boundary: Skript's texts are components and the
+  engine's are §-coded strings. Plain-text behavior and the
+  formatting a player sees agree, and a parsed value
+  compares equal to the equivalent § literal in both
+  runtimes (the `/paeq` and `/fmteq` commands of the sample
+  pin this), but an expression that *counts* § characters —
+  the length of a color-coded chat message, say — can
+  differ, because a component has no § characters to count.
+
+`examples/text.ts` exercises all of it — a shout command
+with a `!` prefix rule, character surgery, CSV splitting and
+joining, text checks, replace demos and the paint commands —
+and `examples/behavior/text.behavior.ts` asserts the
+observable behavior under both runtimes.
 
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal

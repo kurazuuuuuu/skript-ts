@@ -11,19 +11,25 @@ import {
   call,
   callStmt,
   cancelEvent,
+  charAt,
   chatMessage,
+  colored,
   command,
+  contains,
   damageAmount,
   damageCause,
   defineFunction,
   deleteVar,
   dividedBy,
   emit,
+  endsWith,
   equals,
   eventBlock,
   eventItem,
   eventPlayer,
+  firstChars,
   fmt,
+  formatted,
   give,
   greaterOrEqual,
   greaterThan,
@@ -32,6 +38,8 @@ import {
   isEngineOnlyScript,
   isOp,
   item,
+  joinText,
+  lastChars,
   lessOrEqual,
   lessThan,
   listAdd,
@@ -48,6 +56,7 @@ import {
   loopRange,
   loopTimes,
   loopValue,
+  lowerCase,
   minus,
   not,
   notEquals,
@@ -67,17 +76,26 @@ import {
   player,
   plus,
   remainder,
+  replaceAllIn,
+  replaceFirstIn,
   returnValue,
   script,
   send,
   set,
   setDamage,
+  splitText,
+  startsWith,
   stopTrigger,
   str,
+  substring,
   teleport,
+  textLength,
   times,
   typeOf,
   uncancelEvent,
+  uncolored,
+  unformatted,
+  upperCase,
   variable,
   victim,
   wait,
@@ -92,6 +110,7 @@ import { logicScript } from "../examples/logic.js";
 import { listsScript } from "../examples/lists.js";
 import { functionsScript } from "../examples/functions.js";
 import { gameplayScript } from "../examples/gameplay.js";
+import { textScript } from "../examples/text.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -127,6 +146,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("gameplay", () => {
     expect(emit(gameplayScript)).toBe(fixture("gameplay.sk"));
+  });
+  it("text", () => {
+    expect(emit(textScript)).toBe(fixture("text.sk"));
   });
 });
 
@@ -756,5 +778,171 @@ describe("api guards", () => {
       script(onJoin([broadcast(str("a"))]), onQuit([broadcast(str("b"))])),
     );
     expect(out).toBe('on join:\n    broadcast "a"\n\non quit:\n    broadcast "b"\n');
+  });
+});
+
+describe("text operations (phase 15)", () => {
+  it("length, substring family and case conversion in value position", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(variable("a"), textLength(str("hello"))),
+            set(variable("b"), substring(localVar("s"), num(2), num(4))),
+            set(variable("c"), firstChars(localVar("s"), num(2))),
+            set(variable("d"), lastChars(localVar("s"), num(2))),
+            set(variable("e"), charAt(localVar("s"), num(1))),
+            set(variable("f"), upperCase(localVar("s"))),
+            set(variable("g"), lowerCase(localVar("s"))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {a} to length of \"hello\"\n" +
+        "    set {b} to substring of {_s} from 2 to 4\n" +
+        "    set {c} to first 2 characters of {_s}\n" +
+        "    set {d} to last 2 characters of {_s}\n" +
+        "    set {e} to character at 1 in {_s}\n" +
+        "    set {f} to {_s} in uppercase\n" +
+        "    set {g} to {_s} in lowercase\n",
+    );
+  });
+  it("split and join forms", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localList("p"), splitText(str("a,b"), str(","))),
+            set(localList("q"), splitText(str("aAb"), str("a"), true)),
+            set(variable("a"), joinText(localList("p"), str("-"))),
+            set(variable("b"), joinText(localList("p"))),
+            set(variable("c"), joinText(splitText(argument(1), str(",")), str("+"))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_p::*} to split \"a,b\" at \",\"\n" +
+        "    set {_q::*} to split \"aAb\" at \"a\" with case sensitivity\n" +
+        "    set {a} to join {_p::*} with \"-\"\n" +
+        "    set {b} to join {_p::*}\n" +
+        "    set {c} to join split arg-1 at \",\" with \"+\"\n",
+    );
+  });
+  it("color expressions in value position", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(variable("a"), colored(str("&aX"))),
+            set(variable("b"), formatted(str("<b>Bold</b>"))),
+            set(variable("c"), uncolored(variable("a"))),
+            set(variable("d"), unformatted(variable("a"))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {a} to colored \"&aX\"\n" +
+        "    set {b} to formatted \"<b>Bold</b>\"\n" +
+        "    set {c} to uncolored {a}\n" +
+        "    set {d} to unformatted {a}\n",
+    );
+  });
+  it("text conditions and their native negations", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            ifElse(contains(localVar("s"), str("ell")), [broadcast(str("y"))]),
+            ifElse(not(contains(localVar("s"), str("z"))), [broadcast(str("y"))]),
+            ifElse(startsWith(localVar("s"), str("he")), [broadcast(str("y"))]),
+            ifElse(not(startsWith(localVar("s"), str("x"))), [broadcast(str("y"))]),
+            ifElse(endsWith(localVar("s"), str("lo")), [broadcast(str("y"))]),
+            ifElse(not(endsWith(localVar("s"), str("x"))), [broadcast(str("y"))]),
+            ifElse(contains(listVar("l"), str("banana")), [broadcast(str("y"))]),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    if {_s} contains \"ell\":\n" +
+        "        broadcast \"y\"\n" +
+        "    if {_s} does not contain \"z\":\n" +
+        "        broadcast \"y\"\n" +
+        "    if {_s} starts with \"he\":\n" +
+        "        broadcast \"y\"\n" +
+        "    if {_s} does not start with \"x\":\n" +
+        "        broadcast \"y\"\n" +
+        "    if {_s} ends with \"lo\":\n" +
+        "        broadcast \"y\"\n" +
+        "    if {_s} does not end with \"x\":\n" +
+        "        broadcast \"y\"\n" +
+        "    if {l::*} contains \"banana\":\n" +
+        "        broadcast \"y\"\n",
+    );
+  });
+  it("text conditions can head a while loop", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            whileLoop(contains(localVar("s"), str("x")), [broadcast(str("y"))]),
+            whileLoop(not(startsWith(localVar("s"), str("x"))), [broadcast(str("y"))]),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    while {_s} contains \"x\":\n" +
+        "        broadcast \"y\"\n" +
+        "    while {_s} does not start with \"x\":\n" +
+        "        broadcast \"y\"\n",
+    );
+  });
+  it("replace statements", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            replaceAllIn(localVar("t"), str("a"), str("o")),
+            replaceFirstIn(localVar("t"), str("a"), str("o")),
+            replaceAllIn(variable("g"), str("a"), str("o"), true),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    replace all \"a\" in {_t} with \"o\"\n" +
+        "    replace first \"a\" in {_t} with \"o\"\n" +
+        "    replace all \"a\" in {g} with \"o\" with case sensitivity\n",
+    );
+  });
+  it("text expressions interpolate into format strings", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            broadcast(
+              fmt(
+                "len=",
+                textLength(localVar("s")),
+                " up=",
+                upperCase(localVar("s")),
+                " has=",
+                joinText(splitText(localVar("s"), str(",")), str("+")),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    broadcast \"len=%length of {_s}% up=%{_s} in uppercase% has=%join split {_s} at \",\" with \"+\"%\"\n",
+    );
+  });
+  it("the text sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(textScript)).toBe(false);
   });
 });

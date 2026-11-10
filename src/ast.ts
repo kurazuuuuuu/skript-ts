@@ -87,7 +87,59 @@ export type Expr =
   | { kind: "attacker" }
   | { kind: "damageAmount" }
   | { kind: "damageCause" }
-  | { kind: "typeOf"; target: Expr };
+  | { kind: "typeOf"; target: Expr }
+  // Core-language text operations (phase 15). All semantics were
+  // probed against the real Skript 2.17.1 in the sandbox (see the
+  // development log for the probe rounds):
+  //
+  // - textLength counts UTF-16 code units (an emoji counts 2);
+  //   a missing text yields no value, an empty text has length 0.
+  // - substring is 1-based and inclusive at both ends; `from` is
+  //   fitted UP to 1 and `to` DOWN to the length, and when the
+  //   fitted from exceeds the fitted to the result is no value
+  //   (never an empty text, never swapped). firstChars / lastChars
+  //   are the same rule with the other end pinned to the text's
+  //   edge, so a count of 0 or less yields no value. charAt is
+  //   strict instead: an index outside 1..length yields no value,
+  //   and the result is a single UTF-16 code unit.
+  // - upperCase / lowerCase convert case; a missing text yields
+  //   no value. The single-text operations above map element-wise
+  //   over a list target, like Skript's plural %texts% forms.
+  // - splitText yields a LIST of texts: delimiter matching is
+  //   literal (never a regex) and case-insensitive unless
+  //   caseSensitive; the trailing empty part is kept, a text
+  //   without the delimiter is one part, an empty text is one
+  //   empty part, and an empty delimiter yields one part per
+  //   character plus a trailing empty part. A missing text yields
+  //   no values. The result composes with the list machinery, and
+  //   `loop <split>` works but has NO loop-index (probed).
+  // - joinText concatenates a list's TEXT elements (players count
+  //   as their name); numbers and other non-text elements are
+  //   skipped — Skript does not convert them here (probed: joining
+  //   (1, "x") yields "x"). An empty or all-non-text source yields
+  //   no value; the default delimiter is "".
+  // - coloredText / formattedText parse & codes (including the
+  //   &x hex sequence) and the named MiniMessage-style tags
+  //   Skript accepts into real formatting; unknown tags, stray
+  //   closing tags and the &#RRGGBB form stay literal (probed).
+  //   uncoloredText / unformattedText strip ALL formatting codes
+  //   (colors and styles alike — probed). Engine values are
+  //   legacy-coded strings, so parsed formatting is carried as §
+  //   codes; plain-text behavior and the formatting a player sees
+  //   match Skript's component model.
+  | { kind: "textLength"; target: Expr }
+  | { kind: "substring"; target: Expr; from: Expr; to: Expr }
+  | { kind: "firstChars"; target: Expr; count: Expr }
+  | { kind: "lastChars"; target: Expr; count: Expr }
+  | { kind: "charAt"; target: Expr; index: Expr }
+  | { kind: "upperCase"; target: Expr }
+  | { kind: "lowerCase"; target: Expr }
+  | { kind: "splitText"; target: Expr; delimiter: Expr; caseSensitive: boolean }
+  | { kind: "joinText"; source: Expr; delimiter: Expr | null }
+  | { kind: "coloredText"; target: Expr }
+  | { kind: "formattedText"; target: Expr }
+  | { kind: "uncoloredText"; target: Expr }
+  | { kind: "unformattedText"; target: Expr };
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
@@ -113,6 +165,18 @@ export type Cond =
   | { kind: "and"; left: Cond; right: Cond }
   | { kind: "or"; left: Cond; right: Cond }
   | { kind: "not"; cond: Cond }
+  // Core-language text conditions (phase 15), probed against the
+  // real Skript 2.17.1: `contains` on texts is a case-INSENSITIVE
+  // substring test (an empty part is always contained), while
+  // startsWith / endsWith are case-SENSITIVE. On a list container,
+  // contains is element membership under the phase-11 equality
+  // rules. A missing operand makes every form false. All three
+  // have native negated .sk forms ("does not contain", "does not
+  // start with", "does not end with"), so they are leaf conditions
+  // usable in while heads too.
+  | { kind: "contains"; container: Expr; item: Expr }
+  | { kind: "startsWith"; target: Expr; prefix: Expr }
+  | { kind: "endsWith"; target: Expr; suffix: Expr }
   // Engine-builtin condition (SharpSK slice, phase 7): a named timer exists.
   | { kind: "timerActive"; name: TextExpr }
   // Engine-builtin condition (skUtilities slice, phase 9): a file or
@@ -215,6 +279,15 @@ export type Stmt =
   | { kind: "cancelEvent"; loc?: SourceLoc }
   | { kind: "uncancelEvent"; loc?: SourceLoc }
   | { kind: "setDamage"; value: Expr; loc?: SourceLoc }
+  // Core-language text replacement (phase 15): Skript's replace
+  // effect, applied to the text held by a scalar variable. Probed
+  // semantics: matching is literal (never a regex) and
+  // case-insensitive unless caseSensitive; plain `replace` and
+  // replaceAllIn replace every occurrence, replaceFirstIn only
+  // the first; an empty search text inserts the replacement at
+  // every gap (all) or at the start (first); a missing or
+  // non-text target is left untouched.
+  | { kind: "textReplace"; target: ScalarVarExpr; find: Expr; replacement: Expr; firstOnly: boolean; caseSensitive: boolean; loc?: SourceLoc }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration

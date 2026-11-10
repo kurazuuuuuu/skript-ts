@@ -356,6 +356,9 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "greaterOrEqual",
   "lessThan",
   "lessOrEqual",
+  "contains",
+  "startsWith",
+  "endsWith",
   "timerActive",
   "fileExists",
 ]);
@@ -982,4 +985,157 @@ export function placeholderPrefix(): Expr {
 /** Construct a set-placeholder-result statement (engine builtin): answer the placeholder request being handled. */
 export function setPlaceholderResult(text: TextExpr): Stmt {
   return withLoc({ kind: "setPlaceholderResult", text });
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 15): text operations
+//
+// Semantics mirror the real Skript 2.17.1, verified against the
+// sandbox server with hand-written probe scripts (five rounds;
+// see the development log):
+//
+// - Lengths and indices count UTF-16 code units (an emoji counts
+//   2), like Java strings — this is what Skript itself computes.
+// - substring is 1-based and inclusive at both ends; `from` is
+//   fitted UP to 1 and `to` DOWN to the length, and a fitted range
+//   with from > to yields NO value (not an empty text). firstChars
+//   and lastChars share the rule with one end pinned, so a count
+//   of 0 or less yields no value. charAt is strict: an index
+//   outside 1..length yields no value. A missing text yields no
+//   value everywhere; an empty text is a real value (length 0).
+// - split yields a list: delimiter matching is literal (never a
+//   regex) and case-insensitive unless asked otherwise; the
+//   trailing empty part is kept, and an empty delimiter yields
+//   one part per character plus a trailing empty part. join
+//   concatenates a list's text elements only — numbers and other
+//   non-text elements are skipped (Skript converts nothing here),
+//   players count as their name, and an empty remainder means no
+//   value. The default join delimiter is "".
+// - contains on texts is a case-INSENSITIVE substring test while
+//   startsWith / endsWith are case-SENSITIVE (probed asymmetry of
+//   the original); on a list, contains is element membership
+//   under the phase-11 equality rules. Missing operands are false.
+// - replace rewrites the text held by a scalar variable: literal,
+//   case-insensitive matching unless asked otherwise; empty search
+//   text inserts at every gap (all) or the start (first); a
+//   missing or non-text target is left untouched.
+// - colored / formatted parse & codes (including the &x hex
+//   sequence) and named MiniMessage-style tags into formatting;
+//   uncolored / unformatted strip every formatting code. String
+//   literals go through the same parsing in both runtimes
+//   (Skript parses literals into components; the engine converts
+//   literals to §-coded strings), while values that arrive at
+//   runtime — chat text, variable contents — keep their raw &
+//   characters until colored / formatted is applied.
+// ---------------------------------------------------------------------------
+
+/** Construct a text-length expression: the number of characters (UTF-16 code units) of a text. */
+export function textLength(target: Expr): Expr {
+  return { kind: "textLength", target };
+}
+
+/** Construct a substring expression: characters `from`..`to` of a text, 1-based and inclusive. */
+export function substring(target: Expr, from: Expr, to: Expr): Expr {
+  return { kind: "substring", target, from, to };
+}
+
+/** Construct a first-characters expression: the first `count` characters of a text. */
+export function firstChars(target: Expr, count: Expr): Expr {
+  return { kind: "firstChars", target, count };
+}
+
+/** Construct a last-characters expression: the last `count` characters of a text. */
+export function lastChars(target: Expr, count: Expr): Expr {
+  return { kind: "lastChars", target, count };
+}
+
+/** Construct a character-at expression: the character at a 1-based index of a text. */
+export function charAt(target: Expr, index: Expr): Expr {
+  return { kind: "charAt", target, index };
+}
+
+/** Construct an uppercase expression: a text converted to upper case. */
+export function upperCase(target: Expr): Expr {
+  return { kind: "upperCase", target };
+}
+
+/** Construct a lowercase expression: a text converted to lower case. */
+export function lowerCase(target: Expr): Expr {
+  return { kind: "lowerCase", target };
+}
+
+/**
+ * Construct a split expression: split a text at a literal
+ * delimiter into a list of texts. Matching is case-insensitive
+ * unless `caseSensitive` is true.
+ */
+export function splitText(target: Expr, delimiter: Expr, caseSensitive = false): Expr {
+  return { kind: "splitText", target, delimiter, caseSensitive };
+}
+
+/**
+ * Construct a join expression: concatenate the text elements of
+ * a list (or of a split result) into one text, with an optional
+ * delimiter (default "").
+ */
+export function joinText(source: Expr, delimiter?: Expr): Expr {
+  return { kind: "joinText", source, delimiter: delimiter ?? null };
+}
+
+/** Construct a colored expression: parse & codes and named tags in a text into formatting. */
+export function colored(target: Expr): Expr {
+  return { kind: "coloredText", target };
+}
+
+/** Construct a formatted expression: like colored(), with Skript's full tag parser. */
+export function formatted(target: Expr): Expr {
+  return { kind: "formattedText", target };
+}
+
+/** Construct an uncolored expression: strip all formatting codes (colors and styles) from a text. */
+export function uncolored(target: Expr): Expr {
+  return { kind: "uncoloredText", target };
+}
+
+/** Construct an unformatted expression: strip all formatting from a text. */
+export function unformatted(target: Expr): Expr {
+  return { kind: "unformattedText", target };
+}
+
+/**
+ * Construct a contains condition: for a text container, a
+ * case-insensitive substring test; for a list container, element
+ * membership under the equality rules.
+ */
+export function contains(container: Expr, item: Expr): Cond {
+  return { kind: "contains", container, item };
+}
+
+/** Construct a starts-with condition: a case-sensitive prefix test on a text. */
+export function startsWith(target: Expr, prefix: Expr): Cond {
+  return { kind: "startsWith", target, prefix };
+}
+
+/** Construct an ends-with condition: a case-sensitive suffix test on a text. */
+export function endsWith(target: Expr, suffix: Expr): Cond {
+  return { kind: "endsWith", target, suffix };
+}
+
+/**
+ * Construct a replace-all statement: rewrite every occurrence of
+ * `find` in the text held by a scalar variable. Matching is
+ * literal and case-insensitive unless `caseSensitive` is true.
+ */
+export function replaceAllIn(target: ScalarVarExpr, find: Expr, replacement: Expr, caseSensitive = false): Stmt {
+  return withLoc({ kind: "textReplace", target, find, replacement, firstOnly: false, caseSensitive });
+}
+
+/**
+ * Construct a replace-first statement: rewrite only the first
+ * occurrence of `find` in the text held by a scalar variable.
+ * Matching is literal and case-insensitive unless
+ * `caseSensitive` is true.
+ */
+export function replaceFirstIn(target: ScalarVarExpr, find: Expr, replacement: Expr, caseSensitive = false): Stmt {
+  return withLoc({ kind: "textReplace", target, find, replacement, firstOnly: true, caseSensitive });
 }

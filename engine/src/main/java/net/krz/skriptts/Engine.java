@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.logging.Logger;
 
 /**
@@ -99,6 +100,16 @@ import java.util.logging.Logger;
  * amount write through to the underlying Bukkit event, so a
  * cancelled break leaves the block standing and setDamage changes
  * what the victim actually takes.
+ * Phase 15 adds core-language text operations (no addon scope):
+ * length, fitted substring / first / last, strict character-at,
+ * case conversion, split (a list value) and join, the contains /
+ * starts-with / ends-with conditions, replace, and the color
+ * expressions. Skript 2.17 texts are components; this engine's
+ * values stay legacy-coded strings, so color parsing (of literals
+ * too — Skript parses literals into components) converts & codes
+ * and the named tags to § codes, and the strip expressions remove
+ * them. All semantics were probed against the real Skript 2.17.1
+ * (see the project development log).
  */
 final class Engine {
 
@@ -597,6 +608,24 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "textReplace" -> {
+                // Rewrite the text a scalar variable holds
+                // (phase 15). A missing or non-text current value,
+                // or a non-text search / replacement, leaves the
+                // variable untouched (probed: a replace in an
+                // unset variable is a no-op).
+                Map<String, Object> target = node(stmt.get("target"));
+                Object current = evalExpr(target, ctx);
+                Object find = evalExpr(node(stmt.get("find")), ctx);
+                Object repl = evalExpr(node(stmt.get("replacement")), ctx);
+                if (current instanceof String s && find instanceof String f && repl instanceof String r) {
+                    boolean firstOnly = Boolean.TRUE.equals(stmt.get("firstOnly"));
+                    boolean caseSensitive = Boolean.TRUE.equals(stmt.get("caseSensitive"));
+                    storeFor(target, ctx).set(varKey(target, ctx),
+                            replaceText(s, f, r, firstOnly, caseSensitive));
+                }
+                cont.run();
+            }
             case "if" -> {
                 if (evalCond(node(stmt.get("cond")), ctx)) {
                     execRange(list(stmt.get("then")), 0, ctx, cont);
@@ -605,8 +634,7 @@ final class Engine {
                 } else {
                     cont.run();
                 }
-            }
-            case "loopPlayers" -> {
+            }            case "loopPlayers" -> {
                 // Snapshot: bodies may change the online set (kicks, quits).
                 loopPlayersStep(stmt, new ArrayList<>(Bukkit.getOnlinePlayers()), 0, ctx, cont);
             }
@@ -1189,6 +1217,18 @@ final class Engine {
             case "and" -> evalCond(node(cond.get("left")), ctx) && evalCond(node(cond.get("right")), ctx);
             case "or" -> evalCond(node(cond.get("left")), ctx) || evalCond(node(cond.get("right")), ctx);
             case "not" -> !evalCond(node(cond.get("cond")), ctx);
+            case "contains" -> evalContains(
+                    evalExpr(node(cond.get("container")), ctx), evalExpr(node(cond.get("item")), ctx));
+            case "startsWith" -> {
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                Object prefix = evalExpr(node(cond.get("prefix")), ctx);
+                yield target instanceof String s && prefix instanceof String p && s.startsWith(p);
+            }
+            case "endsWith" -> {
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                Object suffix = evalExpr(node(cond.get("suffix")), ctx);
+                yield target instanceof String s && suffix instanceof String p && s.endsWith(p);
+            }
             case "timerActive" -> {
                 String name = renderText(node(cond.get("name")), ctx);
                 yield timerHost != null && name != null && timerHost.isActive(name);
@@ -1202,6 +1242,29 @@ final class Engine {
                 yield false;
             }
         };
+    }
+
+    /**
+     * The contains condition (phase 15), as probed against the
+     * real Skript 2.17.1: on texts it is a case-INSENSITIVE
+     * substring test (an empty part is always contained) — the
+     * asymmetry with the case-sensitive startsWith / endsWith
+     * conditions is the original's own. On a list container it is
+     * element membership under valuesEqual. A missing operand, or
+     * a non-text item for a text container, is false.
+     */
+    private static boolean evalContains(Object container, Object item) {
+        if (container == null || item == null) return false;
+        if (container instanceof List<?> list) {
+            for (Object el : list) {
+                if (valuesEqual(el, item)) return true;
+            }
+            return false;
+        }
+        if (container instanceof String s && item instanceof String p) {
+            return s.toLowerCase(Locale.ROOT).contains(p.toLowerCase(Locale.ROOT));
+        }
+        return false;
     }
 
     /**
@@ -1326,7 +1389,16 @@ final class Engine {
                 invokeFunction(str(expr.get("name")), evalArgs(list(expr.get("args")), ctx), ctx);
             case "loopValue" -> ctx.loopValue;
             case "loopIndex" -> ctx.loopIndex;
-            case "string" -> str(expr.get("value"));
+            case "string" -> {
+                // String literals are color-parsed, as in Skript:
+                // a literal's & codes and named tags become real
+                // formatting when the literal is written (2.17
+                // parses literals into components). Values that
+                // arrive at runtime (chat text, computed strings)
+                // are NOT parsed — only literals are.
+                String v = str(expr.get("value"));
+                yield v == null ? null : colorize(v);
+            }
             case "number" -> num(expr.get("value"));
             case "boolean" -> Boolean.TRUE.equals(expr.get("value"));
             case "item" -> str(expr.get("name"));
@@ -1348,6 +1420,74 @@ final class Engine {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 yield target == null ? null : typeNameOf(target);
             }
+            case "textLength" -> mapText(evalExpr(node(expr.get("target")), ctx),
+                    s -> (double) s.length());
+            case "substring" -> {
+                Object from = evalExpr(node(expr.get("from")), ctx);
+                Object to = evalExpr(node(expr.get("to")), ctx);
+                if (!(from instanceof Number f) || !(to instanceof Number t)) yield null;
+                yield mapText(evalExpr(node(expr.get("target")), ctx),
+                        s -> substringOf(s, f.doubleValue(), t.doubleValue()));
+            }
+            case "firstChars" -> {
+                Object count = evalExpr(node(expr.get("count")), ctx);
+                if (!(count instanceof Number c)) yield null;
+                yield mapText(evalExpr(node(expr.get("target")), ctx),
+                        s -> substringOf(s, 1, c.doubleValue()));
+            }
+            case "lastChars" -> {
+                Object count = evalExpr(node(expr.get("count")), ctx);
+                if (!(count instanceof Number c)) yield null;
+                yield mapText(evalExpr(node(expr.get("target")), ctx),
+                        s -> substringOf(s, (double) s.length() - c.doubleValue() + 1, s.length()));
+            }
+            case "charAt" -> {
+                Object index = evalExpr(node(expr.get("index")), ctx);
+                if (!(index instanceof Number n)) yield null;
+                long i = (long) n.doubleValue();
+                yield mapText(evalExpr(node(expr.get("target")), ctx),
+                        s -> i >= 1 && i <= s.length() ? s.substring((int) i - 1, (int) i) : null);
+            }
+            case "upperCase" -> mapText(evalExpr(node(expr.get("target")), ctx),
+                    s -> s.toUpperCase(Locale.ROOT));
+            case "lowerCase" -> mapText(evalExpr(node(expr.get("target")), ctx),
+                    s -> s.toLowerCase(Locale.ROOT));
+            case "splitText" -> {
+                Object delim = evalExpr(node(expr.get("delimiter")), ctx);
+                if (!(delim instanceof String d)) yield null;
+                boolean sensitive = Boolean.TRUE.equals(expr.get("caseSensitive"));
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (target instanceof String s) yield splitString(s, d, sensitive);
+                if (target instanceof List<?> list) {
+                    List<Object> out = new ArrayList<>();
+                    for (Object el : list) {
+                        if (el instanceof String s) out.addAll(splitString(s, d, sensitive));
+                    }
+                    yield out.isEmpty() ? null : out;
+                }
+                yield null;
+            }
+            case "joinText" -> {
+                Object source = evalExpr(node(expr.get("source")), ctx);
+                String delim = "";
+                if (expr.get("delimiter") != null) {
+                    Object d = evalExpr(node(expr.get("delimiter")), ctx);
+                    if (!(d instanceof String ds)) yield null;
+                    delim = ds;
+                }
+                List<?> elements = source instanceof List<?> l ? l
+                        : source == null ? List.of() : List.of(source);
+                List<String> parts = new ArrayList<>();
+                for (Object el : elements) {
+                    if (el instanceof String s) parts.add(s);
+                    else if (el instanceof Player p) parts.add(p.getName());
+                }
+                yield parts.isEmpty() ? null : String.join(delim, parts);
+            }
+            case "coloredText", "formattedText" ->
+                mapText(evalExpr(node(expr.get("target")), ctx), Engine::colorize);
+            case "uncoloredText", "unformattedText" ->
+                mapText(evalExpr(node(expr.get("target")), ctx), Engine::stripColors);
             case "wsMessage" -> ctx.wsText;
             case "wsId" -> ctx.wsId;
             case "worldOf" -> {
@@ -1479,6 +1619,303 @@ final class Engine {
     }
 
     // ------------------------------------------------------------------
+    // Text operations (phase 15)
+    // ------------------------------------------------------------------
+
+    /**
+     * Apply a text function to a value: a text maps directly; a
+     * list maps its text elements element-wise, dropping elements
+     * that are not texts and results that have no value (an
+     * all-empty mapping has no value) — the plural %texts%
+     * behavior of the original. Anything else has no value.
+     */
+    private static Object mapText(Object value, Function<String, Object> f) {
+        if (value instanceof String s) return f.apply(s);
+        if (value instanceof List<?> list) {
+            List<Object> out = new ArrayList<>();
+            for (Object el : list) {
+                if (el instanceof String s) {
+                    Object r = f.apply(s);
+                    if (r != null) out.add(r);
+                }
+            }
+            return out.isEmpty() ? null : out;
+        }
+        return null;
+    }
+
+    /**
+     * The fitted substring (probed): `from` is clamped UP to 1 and
+     * `to` DOWN to the length; when the fitted from exceeds the
+     * fitted to there is no value. Indices count UTF-16 code
+     * units, like Java strings — an emoji is 2. Arguments are
+     * truncated toward zero, the engine's usual numeric coercion.
+     */
+    private static String substringOf(String s, double from, double to) {
+        long f = Math.max((long) from, 1L);
+        long t = Math.min((long) to, (long) s.length());
+        if (f > t) return null;
+        return s.substring((int) f - 1, (int) t);
+    }
+
+    /** Index of a literal (never regex) match at or after `from`, or -1. */
+    private static int indexOfLiteral(String text, String delim, int from, boolean caseSensitive) {
+        int max = text.length() - delim.length();
+        for (int i = Math.max(from, 0); i <= max; i++) {
+            if (text.regionMatches(!caseSensitive, i, delim, 0, delim.length())) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * Split with the probed semantics: the delimiter matches
+     * literally and case-insensitively unless caseSensitive; the
+     * trailing empty part is kept (so "a,b,,c," is 5 parts); a
+     * text without the delimiter is one part; an empty text is one
+     * empty part; an empty delimiter yields one part per character
+     * plus a trailing empty part.
+     */
+    private static List<Object> splitString(String text, String delim, boolean caseSensitive) {
+        List<Object> out = new ArrayList<>();
+        if (delim.isEmpty()) {
+            for (int i = 0; i < text.length(); i++) out.add(text.substring(i, i + 1));
+            out.add("");
+            return out;
+        }
+        int pos = 0;
+        while (true) {
+            int hit = indexOfLiteral(text, delim, pos, caseSensitive);
+            if (hit < 0) break;
+            out.add(text.substring(pos, hit));
+            pos = hit + delim.length();
+        }
+        out.add(text.substring(pos));
+        return out;
+    }
+
+    /**
+     * Literal replace with the probed semantics: matching is
+     * case-insensitive unless caseSensitive, the replacement is
+     * used verbatim ("$1" and "\" stay literal), and an empty
+     * search text inserts the replacement at every gap (all) or
+     * only at the start (first).
+     */
+    private static String replaceText(String text, String find, String repl,
+                                      boolean firstOnly, boolean caseSensitive) {
+        if (find.isEmpty()) {
+            if (firstOnly) return repl + text;
+            StringBuilder sb = new StringBuilder();
+            sb.append(repl);
+            for (int i = 0; i < text.length(); i++) sb.append(text.charAt(i)).append(repl);
+            return sb.toString();
+        }
+        StringBuilder sb = new StringBuilder();
+        int pos = 0;
+        while (true) {
+            int hit = indexOfLiteral(text, find, pos, caseSensitive);
+            if (hit < 0) break;
+            sb.append(text, pos, hit).append(repl);
+            pos = hit + find.length();
+            if (firstOnly) break;
+        }
+        sb.append(text, pos, text.length());
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------------
+    // Color parsing (phase 15)
+    //
+    // Skript 2.17 texts are components: literals, `colored` and
+    // `formatted` all parse & codes and MiniMessage-style tags.
+    // This engine's values are legacy-coded strings, so parsing
+    // converts to § codes: & + a valid code char becomes § + the
+    // lowercased code (the &x hex sequence falls out of the same
+    // rule), and tags map through the tables below with a style
+    // stack, so a closing tag restores the formatting that was
+    // active outside it (a §r plus the surviving codes — the
+    // legacy encoding of the component tree). Unknown tags,
+    // stray closing tags and the &#RRGGBB form stay literal
+    // text (all probed). Formatting codes at the very end of a
+    // text format no characters and are dropped, which keeps a
+    // parsed value equal to the equivalent hand-written § literal.
+    // ------------------------------------------------------------------
+
+    /** The sixteen named colors as legacy code chars. */
+    private static final Map<String, Character> COLOR_TAGS = Map.ofEntries(
+            Map.entry("black", '0'), Map.entry("dark_blue", '1'),
+            Map.entry("dark_green", '2'), Map.entry("dark_aqua", '3'),
+            Map.entry("dark_red", '4'), Map.entry("dark_purple", '5'),
+            Map.entry("gold", '6'), Map.entry("gray", '7'),
+            Map.entry("dark_gray", '8'), Map.entry("blue", '9'),
+            Map.entry("green", 'a'), Map.entry("aqua", 'b'),
+            Map.entry("red", 'c'), Map.entry("light_purple", 'd'),
+            Map.entry("yellow", 'e'), Map.entry("white", 'f'));
+
+    /** The named styles (and their MiniMessage aliases) as legacy code chars. */
+    private static final Map<String, Character> STYLE_TAGS = Map.ofEntries(
+            Map.entry("bold", 'l'), Map.entry("b", 'l'),
+            Map.entry("italic", 'o'), Map.entry("i", 'o'), Map.entry("em", 'o'),
+            Map.entry("underlined", 'n'), Map.entry("u", 'n'),
+            Map.entry("strikethrough", 'm'), Map.entry("st", 'm'),
+            Map.entry("obfuscated", 'k'), Map.entry("obf", 'k'));
+
+    private static boolean isCodeChar(char c) {
+        return "0123456789abcdefklmnorx".indexOf(Character.toLowerCase(c)) >= 0;
+    }
+
+    /** One open tag on the color parser's stack. */
+    private record TagFrame(String name, boolean color, char code) {}
+
+    /** Mutable style state for one colorize pass. */
+    private static final class ColorState {
+        Character color = null;
+        final LinkedHashSet<Character> styles = new LinkedHashSet<>();
+        final List<TagFrame> stack = new ArrayList<>();
+
+        /** Recompute color/styles from the surviving stack frames. */
+        void recompute() {
+            color = null;
+            styles.clear();
+            for (TagFrame f : stack) {
+                if (f.color()) color = f.code();
+                else styles.add(f.code());
+            }
+        }
+
+        /** Append the legacy encoding of the full state: §r, then the color, then the styles. */
+        void emitState(StringBuilder out) {
+            out.append('§').append('r');
+            if (color != null) out.append('§').append(color.charValue());
+            for (char s : styles) out.append('§').append(s);
+        }
+    }
+
+    /** Parse & codes and named tags in a text into § formatting codes. */
+    static String colorize(String s) {
+        StringBuilder out = new StringBuilder();
+        ColorState state = new ColorState();
+        int i = 0;
+        while (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '&' && i + 1 < s.length() && isCodeChar(s.charAt(i + 1))) {
+                out.append('§').append(Character.toLowerCase(s.charAt(i + 1)));
+                i += 2;
+                continue;
+            }
+            if (c == '<') {
+                int end = s.indexOf('>', i);
+                if (end > i + 1 && applyTag(s.substring(i + 1, end), state, out)) {
+                    i = end + 1;
+                    continue;
+                }
+            }
+            out.append(c);
+            i++;
+        }
+        return stripTrailingCodes(out.toString());
+    }
+
+    /**
+     * Apply one tag (the text between < and >) to the parser
+     * state, appending any § codes to out. Returns false when the
+     * tag is not one this parser handles — the caller then keeps
+     * it as literal text, as the original does for unknown tags
+     * and stray closing tags.
+     */
+    private static boolean applyTag(String tag, ColorState state, StringBuilder out) {
+        String name = tag.toLowerCase(Locale.ROOT);
+        if (name.startsWith("/")) {
+            String base = name.substring(1);
+            int colon = base.indexOf(':');
+            if (colon >= 0) base = base.substring(0, colon);
+            int at = -1;
+            for (int j = state.stack.size() - 1; j >= 0; j--) {
+                if (state.stack.get(j).name().equals(base)) {
+                    at = j;
+                    break;
+                }
+            }
+            if (at < 0) return false; // stray closing tag: literal text
+            Character oldColor = state.color;
+            Set<Character> oldStyles = new LinkedHashSet<>(state.styles);
+            state.stack.subList(at, state.stack.size()).clear();
+            state.recompute();
+            if (!java.util.Objects.equals(oldColor, state.color) || !oldStyles.equals(state.styles)) {
+                state.emitState(out);
+            }
+            return true;
+        }
+        if (name.equals("reset")) {
+            state.stack.clear();
+            state.color = null;
+            state.styles.clear();
+            out.append('§').append('r');
+            return true;
+        }
+        int colon = name.indexOf(':');
+        if (colon >= 0) {
+            // Only <color:name> / <colour:name> are handled;
+            // richer tags (gradient, click, ...) stay literal.
+            String head = name.substring(0, colon);
+            if (!head.equals("color") && !head.equals("colour")) return false;
+            Character code = COLOR_TAGS.get(name.substring(colon + 1));
+            if (code == null) return false;
+            openTag(state, out, head, true, code);
+            return true;
+        }
+        Character color = COLOR_TAGS.get(name);
+        if (color != null) {
+            openTag(state, out, name, true, color);
+            return true;
+        }
+        Character style = STYLE_TAGS.get(name);
+        if (style != null) {
+            openTag(state, out, name, false, style);
+            return true;
+        }
+        return false;
+    }
+
+    /** Open a color or style tag: update the state and emit what changed. */
+    private static void openTag(ColorState state, StringBuilder out, String name, boolean isColor, char code) {
+        state.stack.add(new TagFrame(name, isColor, code));
+        if (isColor) {
+            if (state.color == null || state.color.charValue() != code) {
+                state.color = code;
+                out.append('§').append(code);
+                // A legacy color code clears styles on the client;
+                // re-assert the active ones so the tag's meaning
+                // (color ADDED to the current styles) survives.
+                for (char s : state.styles) out.append('§').append(s);
+            }
+        } else if (state.styles.add(code)) {
+            out.append('§').append(code);
+        }
+    }
+
+    /** Drop the § codes at the very end of a text: they format no characters. */
+    private static String stripTrailingCodes(String s) {
+        int end = s.length();
+        while (end >= 2 && s.charAt(end - 2) == '§' && isCodeChar(s.charAt(end - 1))) end -= 2;
+        if (end == s.length()) return s;
+        return s.substring(0, end);
+    }
+
+    /** Remove every § formatting code (a § plus a valid code char, Bukkit's stripColor rule). */
+    static String stripColors(String s) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '§' && i + 1 < s.length() && isCodeChar(s.charAt(i + 1))) {
+                i++;
+                continue;
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    // ------------------------------------------------------------------
     // Text rendering and value formatting
     // ------------------------------------------------------------------
 
@@ -1527,7 +1964,12 @@ final class Engine {
     /** Render a text expression (string literal or format) to a plain string. */
     private String renderText(Map<String, Object> text, Ctx ctx) {
         return switch (kind(text)) {
-            case "string" -> str(text.get("value"));
+            case "string" -> {
+                // A literal in text position is color-parsed,
+                // like any other string literal (see evalExpr).
+                String v = str(text.get("value"));
+                yield v == null ? null : colorize(v);
+            }
             case "format" -> renderParts(list(text.get("parts")), ctx);
             default -> stringify(evalExpr(text, ctx));
         };
@@ -1537,7 +1979,9 @@ final class Engine {
         StringBuilder sb = new StringBuilder();
         for (Object part : parts) {
             if (part instanceof String s) {
-                sb.append(s);
+                // Literal parts of a format are string literals:
+                // color-parsed like any other (see evalExpr).
+                sb.append(colorize(s));
             } else if (part instanceof Map<?, ?>) {
                 sb.append(stringifyText(evalExpr(node(part), ctx)));
             }
