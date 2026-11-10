@@ -148,6 +148,10 @@ function wipeSandboxState(serverDir: string): void {
   }
   const variables = join(serverDir, "plugins", "Skript", "variables.csv");
   if (existsSync(variables)) rmSync(variables);
+  // Op status persists across runs and would change behavior-test
+  // preconditions (e.g. a bot opped by an earlier run stays op).
+  const ops = join(serverDir, "ops.json");
+  if (existsSync(ops)) rmSync(ops);
 }
 
 async function main(): Promise<number> {

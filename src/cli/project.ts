@@ -93,12 +93,13 @@ export async function buildProject(opts: {
     }
     const prog = found[0] as Script;
     const { code, lines } = emitWithMap(prog);
-    // Relativize captured TS call sites against the project root for readable maps/reports.
-    const relLines = lines.map((l) =>
-      l.ts === undefined
-        ? l
-        : { ...l, ts: { ...l.ts, file: toPosix(relative(rootDir, resolve(l.ts.file))) } },
-    );
+    // Relativize captured TS call sites against the project root for readable
+    // maps/reports; keep the absolute path for sources outside the root.
+    const relLines = lines.map((l) => {
+      if (l.ts === undefined) return l;
+      const rel = toPosix(relative(rootDir, resolve(l.ts.file)));
+      return { ...l, ts: { ...l.ts, file: rel.startsWith("../") ? l.ts.file : rel } };
+    });
     const relSk = toPosix(relative(srcDir, absFile)).replace(/\.ts$/, ".sk");
     const map: SourceMapFile = {
       version: 1,

@@ -6,6 +6,11 @@ import { defineBehavior } from "../../src/behavior.js";
 export default defineBehavior(async (t) => {
   const bot = await t.connect("DeathBot");
   try {
+    // Let the join sequence fully flush before dying: a kill landing in
+    // the same instant as the spawn can race the client's load-in and
+    // the death packets are then never delivered to the bot.
+    await bot.waitForMessage(/joined the game/);
+    await t.sleep(2000);
     await t.console("kill DeathBot");
     await bot.waitForMessage(/死亡回数は 1 回です/);
   } finally {

@@ -60,7 +60,7 @@ export class SkriptLogParser {
     }
 
     const loadedMatch = message.match(
-      /Loaded (\d+) scripts with a total of \d+ structures/
+      /Loaded (\d+) scripts? with a total of \d+ structures?/
     );
     if (loadedMatch) {
       this.loadedScriptCount = Number(loadedMatch[1]);
@@ -169,7 +169,10 @@ export function mapError(
 }
 
 function stripPrefix(rawLine: string): string {
-  // Paper log lines look like `[18:00:27] [Server thread/INFO]: <message>`.
-  const m = /^\[[^\]]*\] \[[^\]]*\]: /.exec(rawLine);
+  // Paper log prefixes come in two shapes: the file appender writes
+  // `[18:00:27] [Server thread/INFO]: <message>` while the live console
+  // writes `[18:39:12 INFO]: <message>`. Strip one or more leading
+  // bracket groups followed by ": ".
+  const m = /^(?:\[[^\]]*\]\s*)+: /.exec(rawLine);
   return m === null ? rawLine : rawLine.slice(m[0].length);
 }
