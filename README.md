@@ -310,6 +310,50 @@ sample program.
 Verified by `examples/behavior/sharpsk.behavior.ts` (full countdown
 to completion, pause freezing the countdown, silent stop).
 
+### skript-db slice 1: SQL data sources
+
+A data source is a value: build one from a documented URL and keep
+it in a variable (`set(variable("sql"), dataSource(str("sqlite:data.db")))`),
+the pattern skript-db documents. Supported URL forms are
+`sqlite:<path>` (relative paths resolve under `plugins/skript-ts/data/`),
+`mysql://host[:port]/db?user=..&password=<redacted> `mariadb://...` and
+`postgresql://...`; credentials travel as query parameters. Data
+sources are runtime-only values — they are never written to
+`variables.json`, so credentials stay out of that file — and creating
+one opens no connection.
+
+`dbExecute` runs one statement. The query is a text expression: its
+literal parts are the author's own SQL, and every expression part of
+a `fmt(...)` becomes a JDBC parameter, bound by the engine and never
+inlined into the SQL text — a value that looks like SQL is stored as
+data, so this design needs no equivalent of skript-db's `unsafe`
+opt-out. With a store variable, a result set is mapped to entries
+`<var>::<column>::<row>` (rows are 1-based, previous entries under
+the variable are cleared first) and the variable itself is set to
+the row count; for a statement without a result set the variable
+receives the number of affected rows. Execution is synchronous on
+the calling thread, with one connection per execution. Failures do
+not throw: they are reported through `dbLastError()`. JDBC drivers
+come from the server — Paper ships SQLite and MySQL drivers — so
+the engine jar bundles none; a data source whose driver the server
+does not provide fails cleanly through the last-error expression.
+`examples/skriptdb.ts` is the sample program.
+
+| TypeScript | Meaning |
+| --- | --- |
+| `dataSource(url)` | a data source value from a documented URL |
+| `dbExecute(ds, query)` | execute one SQL statement |
+| `dbExecute(ds, query, var)` | execute and store the result / affected-row count in a variable |
+| `dbLastError()` | the last failed execution's message (no value after a success) |
+
+Verified by `examples/behavior/skriptdb.behavior.ts` against a
+local SQLite file (DDL, parameterized inserts, stored result
+read-back, an injection attempt stored as data, the error path).
+Network databases cannot be exercised in this environment (outbound
+TCP from the server process is restricted), so MySQL and friends
+are implemented from the documented URL contract but unverified
+here; SQLite is the verified path.
+
 ## Development
 
 ```sh

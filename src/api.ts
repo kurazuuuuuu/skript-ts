@@ -308,3 +308,41 @@ export function timerTimeLeft(name: Expr): Expr {
 export function timerActive(name: TextExpr): Cond {
   return { kind: "timerActive", name };
 }
+
+// ---------------------------------------------------------------------------
+// Engine builtins (skript-db slice, phase 8): SQL data sources
+//
+// A data source is a value: build one from a documented URL and keep
+// it in a variable, as in `set(variable("sql"), dataSource(str(
+// "sqlite:data.db")))`. Supported URL forms are "sqlite:<path>"
+// (relative paths resolve under the engine's data folder),
+// "mysql://host[:port]/db?user=..&password=..", "mariadb://..." and
+// "postgresql://..."; credentials travel as query parameters.
+//
+// dbExecute runs one statement. The query is a text expression: its
+// literal parts are the author's own SQL, and every expression part
+// of a format is bound by the engine as a JDBC parameter — values
+// are never inlined into the SQL text, so they cannot inject. With a
+// store variable, a result set is mapped to entries
+// <var>::<column>::<row> (rows are 1-based, previous entries are
+// cleared first) and the variable itself is set to the row count;
+// for a statement without a result set the variable receives the
+// number of affected rows. Execution is synchronous on the calling
+// thread; failures do not throw — read dbLastError() afterwards.
+// ---------------------------------------------------------------------------
+
+/** Construct a data-source expression (engine builtin) from a documented database URL. */
+export function dataSource(url: TextExpr): Expr {
+  return { kind: "dataSource", url };
+}
+
+/** Construct a database-execute statement (engine builtin): run one SQL statement, optionally storing its result. */
+export function dbExecute(datasource: Expr, query: TextExpr, store?: VariableExpr): Stmt {
+  if (store === undefined) return withLoc({ kind: "dbExecute", datasource, query });
+  return withLoc({ kind: "dbExecute", datasource, query, store });
+}
+
+/** Construct a last-database-error expression (engine builtin): the last failed execution's message, or no value. */
+export function dbLastError(): Expr {
+  return { kind: "dbLastError" };
+}

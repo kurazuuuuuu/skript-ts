@@ -40,7 +40,9 @@ function emitValue(e: Expr): string {
         case "borderCenter":
         case "timerId":
         case "timerTimeLeft":
-            // Engine-builtin expressions (phases 6-7) exist only in
+        case "dataSource":
+        case "dbLastError":
+            // Engine-builtin expressions (phases 6-8) exist only in
             // the engine jar; there is no Skript text form to emit.
             throw new Error(`Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
@@ -88,6 +90,8 @@ function emitString(e: Expr): string {
         case "borderCenter":
         case "timerId":
         case "timerTimeLeft":
+        case "dataSource":
+        case "dbLastError":
             throw new Error(`Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
@@ -196,6 +200,7 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         case "timerStop":
         case "timerPause":
         case "timerResume":
+        case "dbExecute":
             throw new Error(`Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = s;

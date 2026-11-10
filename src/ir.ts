@@ -56,6 +56,9 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "timerId",
   "timerTimeLeft",
   "timerActive",
+  "dataSource",
+  "dbExecute",
+  "dbLastError",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([

@@ -28,7 +28,8 @@ import java.util.logging.Logger;
  * contract* of the subset, the same contract the .sk emitter targets.
  *
  * Value model (plain Java objects):
- *   Player, World, String, Double, Boolean, Location, or null (no value).
+ *   Player, World, String, Double, Boolean, Location, Database.DataSource
+ *   (phase 8), or null (no value).
  * Item expressions evaluate to their type name as a String; items only
  * become real ItemStacks inside the give effect.
  *
@@ -36,7 +37,9 @@ import java.util.logging.Logger;
  * WebSocket client connections and world borders). Builtin statements
  * and expressions execute natively here; they have no Skript text form.
  * Phase 7 adds the second slice (SharpSK scope: named countdown
- * timers with tick/complete events).
+ * timers with tick/complete events). Phase 8 adds the third slice
+ * (skript-db scope: data source values, parameterized SQL execution
+ * with result storage into variables, and the last-error expression).
  */
 final class Engine {
 
@@ -100,6 +103,7 @@ final class Engine {
     private List<Map<String, Object>> topLevels = List.of();
     private WsHost wsHost;
     private TimerHost timerHost;
+    private Database database;
 
     Engine(Variables variables, Logger logger) {
         this.variables = variables;
@@ -114,6 +118,16 @@ final class Engine {
     /** Install the timer host (called by the plugin on enable). */
     void setTimerHost(TimerHost timerHost) {
         this.timerHost = timerHost;
+    }
+
+    /**
+     * Install the database executor (called by the plugin on enable).
+     * Unlike websockets and timers, the database fires no events back
+     * into the engine, so it is held directly rather than through a
+     * host interface.
+     */
+    void setDatabase(Database database) {
+        this.database = database;
     }
 
     /** Replace the running program (flat list of top-level IR nodes, in load order). */
@@ -277,6 +291,19 @@ final class Engine {
                     timerHost.resume(str(stmt.get("id")));
                 }
             }
+            case "dbExecute" -> {
+                if (database == null) {
+                    logger.warning("skript-ts: dbExecute without a database installed");
+                } else if (evalExpr(node(stmt.get("datasource")), ctx) instanceof Database.DataSource source) {
+                    QueryText query = buildQuery(node(stmt.get("query")), ctx);
+                    String storeKey = stmt.get("store") != null
+                            ? varKey(node(stmt.get("store")), ctx)
+                            : null;
+                    database.execute(source, query.sql, query.params, storeKey);
+                } else {
+                    logger.warning("skript-ts: dbExecute target is not a data source");
+                }
+            }
             default -> logger.warning("skript-ts: unknown statement kind '" + kind(stmt) + "'");
         }
     }
@@ -349,6 +376,17 @@ final class Engine {
                 Object name = evalExpr(node(expr.get("name")), ctx);
                 yield name == null ? null : timerHost.timeLeft(stringify(name));
             }
+            case "dataSource" -> {
+                if (database == null) yield null;
+                String url = renderText(node(expr.get("url")), ctx);
+                try {
+                    yield database.parseDataSource(url);
+                } catch (IllegalArgumentException e) {
+                    logger.warning("skript-ts: " + e.getMessage());
+                    yield null;
+                }
+            }
+            case "dbLastError" -> database == null ? null : database.lastError();
             case "format" -> renderParts(list(expr.get("parts")), ctx);
             default -> {
                 logger.warning("skript-ts: unknown expression kind '" + kind(expr) + "'");
@@ -378,6 +416,48 @@ final class Engine {
     // Text rendering and value formatting
     // ------------------------------------------------------------------
 
+    /** A SQL string plus the values to bind to its {@code ?} placeholders, in order. */
+    private static final class QueryText {
+        final String sql;
+        final List<Object> params;
+
+        QueryText(String sql, List<Object> params) {
+            this.sql = sql;
+            this.params = params;
+        }
+    }
+
+    /**
+     * Assemble a parameterized query from a query text expression.
+     * Literal text (a plain string, or the literal parts of a format)
+     * is the script author's own SQL and is used verbatim; every
+     * expression part of a format becomes one {@code ?} placeholder
+     * whose evaluated value is bound as a parameter by the database
+     * layer — never inlined into the SQL text.
+     */
+    private QueryText buildQuery(Map<String, Object> query, Ctx ctx) {
+        switch (kind(query)) {
+            case "string":
+                return new QueryText(str(query.get("value")), List.of());
+            case "format": {
+                StringBuilder sql = new StringBuilder();
+                List<Object> params = new ArrayList<>();
+                for (Object part : list(query.get("parts"))) {
+                    if (part instanceof String s) {
+                        sql.append(s);
+                    } else if (part instanceof Map<?, ?>) {
+                        sql.append('?');
+                        params.add(evalExpr(node(part), ctx));
+                    }
+                }
+                return new QueryText(sql.toString(), params);
+            }
+            default:
+                // Any other text-producing expression supplies the SQL as a whole.
+                return new QueryText(stringify(evalExpr(query, ctx)), List.of());
+        }
+    }
+
     /** Render a text expression (string literal or format) to a plain string. */
     private String renderText(Map<String, Object> text, Ctx ctx) {
         return switch (kind(text)) {
@@ -402,6 +482,7 @@ final class Engine {
     /** String form of a value inside messages and variable indices. */
     static String stringify(Object value) {
         if (value == null) return "";
+        if (value instanceof Database.DataSource ds) return ds.display();
         if (value instanceof Player p) return p.getName();
         if (value instanceof World w) return w.getName();
         if (value instanceof Number n) return formatNumber(n.doubleValue());

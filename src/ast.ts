@@ -22,7 +22,13 @@ export type Expr =
   | { kind: "borderCenter"; world: Expr }
   // Engine-builtin expressions (SharpSK slice, phase 7): timers.
   | { kind: "timerId" }
-  | { kind: "timerTimeLeft"; name: Expr };
+  | { kind: "timerTimeLeft"; name: Expr }
+  // Engine-builtin expressions (skript-db slice, phase 8): a data
+  // source value parsed from a documented URL (sqlite:<path>,
+  // mysql://..., mariadb://..., postgresql://...), and the message
+  // of the last failed database execution.
+  | { kind: "dataSource"; url: TextExpr }
+  | { kind: "dbLastError" };
 
 /** Represents a Skript text expression. */
 export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
@@ -60,7 +66,15 @@ export type Stmt =
   | { kind: "timerCreate"; id: string; seconds: Expr; loc?: SourceLoc }
   | { kind: "timerStop"; id: string; loc?: SourceLoc }
   | { kind: "timerPause"; id: string; loc?: SourceLoc }
-  | { kind: "timerResume"; id: string; loc?: SourceLoc };
+  | { kind: "timerResume"; id: string; loc?: SourceLoc }
+  // Engine-builtin statement (skript-db slice, phase 8): execute one
+  // SQL statement on a data source. The query is a text expression;
+  // its expression parts are bound as statement parameters by the
+  // engine, never inlined. When `store` is given, a result set is
+  // mapped to <store>::<column>::<row> entries (and <store> itself
+  // becomes the row count); otherwise the variable receives the
+  // number of affected rows.
+  | { kind: "dbExecute"; datasource: Expr; query: TextExpr; store?: VariableExpr; loc?: SourceLoc };
 
 /** Represents a Skript event kind. The ws* kinds are engine-builtin events (phase 6), the timer* kinds are phase 7. */
 export type EventKind =

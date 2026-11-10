@@ -38,6 +38,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     private Engine engine;
     private WebSockets websockets;
     private Timers timers;
+    private Database database;
     private final List<Command> registeredCommands = new ArrayList<>();
 
     @Override
@@ -126,6 +127,8 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
             }
         });
         timers.start();
+        database = new Database(variables, dataDir, getLogger());
+        engine.setDatabase(database);
         loadScripts();
         getServer().getPluginManager().registerEvents(this, this);
         getLogger().info("skript-ts engine enabled");

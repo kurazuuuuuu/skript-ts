@@ -57,6 +57,24 @@ final class Variables {
         return next;
     }
 
+    /** Put all entries and save once (used for database result cells). */
+    synchronized void setAll(Map<String, Object> entries) {
+        for (Map.Entry<String, Object> e : entries.entrySet()) {
+            if (e.getValue() == null) {
+                values.remove(e.getKey());
+            } else {
+                values.put(e.getKey(), e.getValue());
+            }
+        }
+        save();
+    }
+
+    /** Remove every key starting with the given prefix and save once. */
+    synchronized void removePrefix(String prefix) {
+        values.keySet().removeIf(k -> k.startsWith(prefix));
+        save();
+    }
+
     synchronized void load() {
         values.clear();
         if (!Files.exists(file)) return;
@@ -77,7 +95,10 @@ final class Variables {
         try {
             Map<String, Object> out = new LinkedHashMap<>();
             for (Map.Entry<String, Object> e : values.entrySet()) {
-                out.put(e.getKey(), encode(e.getValue()));
+                Object encoded = encode(e.getValue());
+                // A null encoding means "not persisted" (data sources:
+                // they can carry credentials and are runtime-only).
+                if (encoded != null) out.put(e.getKey(), encoded);
             }
             Files.createDirectories(file.getParent());
             Files.writeString(file, Json.write(out) + "\n", StandardCharsets.UTF_8);
@@ -87,6 +108,11 @@ final class Variables {
     }
 
     private static Object encode(Object value) {
+        if (value instanceof Database.DataSource) {
+            // Runtime-only value: never written to variables.json, so
+            // credentials inside a data source URL stay out of the file.
+            return null;
+        }
         if (value instanceof Location loc) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put(LOCATION_TAG, Boolean.TRUE);
