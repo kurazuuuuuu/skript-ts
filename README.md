@@ -205,8 +205,9 @@ The engine is a **clean-room reimplementation**: Skript is GPL, so no
 Skript code is used — only the behavior contract of the v0 subset,
 which is specified by the SPEC above and locked in by the same
 mineflayer behavior tests that validate the transpiled `.sk` files.
-The four behavior tests are the specification both runtimes must
-satisfy. Documented interpretation choices where the subset leaves
+The four v0 behavior tests are the specification both runtimes must
+satisfy; engine builtins (below) add their own engine-only tests.
+Documented interpretation choices where the subset leaves
 room: a first join fires both `on first join` and `on join` handlers
 (as under Skript); player-keyed variables use the player's name;
 whole numbers render without a fraction (`1`, not `1.0`).
@@ -238,6 +239,49 @@ engine's summary line to report exactly the deployed script count
 with no load failures. Running a plain `verify` afterwards restores
 `Skript.jar` and removes the engine jar, so the two modes never leak
 into each other.
+
+## Engine builtins (addon features inside the engine)
+
+Major addons are not separate plugins here: their features are being
+reimplemented natively inside the engine, one addon at a time, from
+documented behavior only (clean-room, same rule as the engine
+itself). Builtin constructs have **no `.sk` form**: a script using
+any of them is *engine-only* — the build writes its IR but no `.sk`,
+Skript-mode deployment skips it, and calling `emit()` on it throws.
+Behavior tests for builtins run only under `verify --engine` (the
+test context exposes `t.mode`; under Skript mode they pass without
+exercising anything). `examples/mundosk.ts` is the sample program.
+
+### MundoSK slice 1: WebSocket client + world borders
+
+WebSocket connections are named by a script-chosen id and live in
+the engine (backed by the JDK's `java.net.http.WebSocket`). Messages
+sent before the socket finishes opening are queued and flushed in
+order; the close event fires whoever closed the connection.
+
+| TypeScript | Meaning |
+| --- | --- |
+| `wsConnect(id, url)` | open a WebSocket client connection |
+| `wsSend(id, text)` | send a text message |
+| `wsDisconnect(id)` | close the connection |
+| `onWsOpen(body)` | event: a connection opened |
+| `onWsMessage(body)` | event: a text message arrived |
+| `onWsClose(body)` | event: a connection closed |
+| `wsMessage()` | the received text (inside `onWsMessage`) |
+| `wsId()` | the connection id (inside websocket events) |
+| `worldOf(target)` | the world of a player / location |
+| `borderSize(world)` | current size of the world's border |
+| `borderCenter(world)` | center location of the world's border |
+| `setBorderSize(world, size)` | set the border size |
+| `setBorderCenter(world, location)` | set the border center |
+
+Verified by `examples/behavior/mundosk.behavior.ts` (connect → echo
+→ broadcast → close against a local RFC 6455 echo server) and
+`examples/behavior/mundosk-border.behavior.ts` (set + read-back).
+Note: the websocket test needs the sandbox to permit outbound TCP
+from the server process — where direct TCP is denied by the
+environment, the connect fails cleanly through the engine's error
+logging and only that one test times out.
 
 ## Development
 

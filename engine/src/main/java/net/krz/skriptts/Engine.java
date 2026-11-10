@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -27,9 +28,13 @@ import java.util.logging.Logger;
  * contract* of the subset, the same contract the .sk emitter targets.
  *
  * Value model (plain Java objects):
- *   Player, String, Double, Boolean, Location, or null (no value).
+ *   Player, World, String, Double, Boolean, Location, or null (no value).
  * Item expressions evaluate to their type name as a String; items only
  * become real ItemStacks inside the give effect.
+ *
+ * Phase 6 adds the first engine-builtin addon slice (MundoSK scope:
+ * WebSocket client connections and world borders). Builtin statements
+ * and expressions execute natively here; they have no Skript text form.
  */
 final class Engine {
 
@@ -40,6 +45,8 @@ final class Engine {
         Player loopPlayer;  // "loop-player" inside loop all players
         Player victim;      // "victim" in death events
         String chatMessage; // "message" in chat events
+        String wsId;        // websocket connection id in websocket events
+        String wsText;      // received text in websocket message events
         String argType;     // command argument type ("text"/"player"/"integer") or null
         String[] rawArgs = new String[0];
 
@@ -50,19 +57,38 @@ final class Engine {
             c.loopPlayer = loopPlayer;
             c.victim = victim;
             c.chatMessage = chatMessage;
+            c.wsId = wsId;
+            c.wsText = wsText;
             c.argType = argType;
             c.rawArgs = rawArgs;
             return c;
         }
     }
 
+    /**
+     * Bridge to the plugin's WebSocket connection manager. The engine
+     * only issues commands through this interface; connection events
+     * come back as engine events fired by the plugin.
+     */
+    interface WsHost {
+        void connect(String id, String url);
+        void send(String id, String text);
+        void disconnect(String id);
+    }
+
     private final Variables variables;
     private final Logger logger;
     private List<Map<String, Object>> topLevels = List.of();
+    private WsHost wsHost;
 
     Engine(Variables variables, Logger logger) {
         this.variables = variables;
         this.logger = logger;
+    }
+
+    /** Install the WebSocket host (called by the plugin on enable). */
+    void setWsHost(WsHost wsHost) {
+        this.wsHost = wsHost;
     }
 
     /** Replace the running program (flat list of top-level IR nodes, in load order). */
@@ -163,6 +189,41 @@ final class Engine {
                     execBlock(list(stmt.get("body")), inner);
                 }
             }
+            case "wsConnect" -> {
+                if (wsHost == null) {
+                    logger.warning("skript-ts: wsConnect without a websocket host installed");
+                } else {
+                    wsHost.connect(str(stmt.get("id")), renderText(node(stmt.get("url")), ctx));
+                }
+            }
+            case "wsSend" -> {
+                if (wsHost == null) {
+                    logger.warning("skript-ts: wsSend without a websocket host installed");
+                } else {
+                    wsHost.send(str(stmt.get("id")), renderText(node(stmt.get("message")), ctx));
+                }
+            }
+            case "wsDisconnect" -> {
+                if (wsHost == null) {
+                    logger.warning("skript-ts: wsDisconnect without a websocket host installed");
+                } else {
+                    wsHost.disconnect(str(stmt.get("id")));
+                }
+            }
+            case "setBorderSize" -> {
+                Object w = evalExpr(node(stmt.get("world")), ctx);
+                Object size = evalExpr(node(stmt.get("size")), ctx);
+                if (w instanceof World world && size instanceof Number n) {
+                    world.getWorldBorder().setSize(n.doubleValue());
+                }
+            }
+            case "setBorderCenter" -> {
+                Object w = evalExpr(node(stmt.get("world")), ctx);
+                Object center = evalExpr(node(stmt.get("center")), ctx);
+                if (w instanceof World world && center instanceof Location loc) {
+                    world.getWorldBorder().setCenter(loc);
+                }
+            }
             default -> logger.warning("skript-ts: unknown statement kind '" + kind(stmt) + "'");
         }
     }
@@ -208,6 +269,22 @@ final class Engine {
             case "locationOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 yield target instanceof Player p ? p.getLocation() : null;
+            }
+            case "wsMessage" -> ctx.wsText;
+            case "wsId" -> ctx.wsId;
+            case "worldOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (target instanceof Player p) yield p.getWorld();
+                if (target instanceof Location l) yield l.getWorld();
+                yield null;
+            }
+            case "borderSize" -> {
+                Object w = evalExpr(node(expr.get("world")), ctx);
+                yield w instanceof World world ? world.getWorldBorder().getSize() : null;
+            }
+            case "borderCenter" -> {
+                Object w = evalExpr(node(expr.get("world")), ctx);
+                yield w instanceof World world ? world.getWorldBorder().getCenter() : null;
             }
             case "format" -> renderParts(list(expr.get("parts")), ctx);
             default -> {
@@ -263,6 +340,7 @@ final class Engine {
     static String stringify(Object value) {
         if (value == null) return "";
         if (value instanceof Player p) return p.getName();
+        if (value instanceof World w) return w.getName();
         if (value instanceof Number n) return formatNumber(n.doubleValue());
         if (value instanceof Boolean b) return b.toString();
         if (value instanceof Location l) {

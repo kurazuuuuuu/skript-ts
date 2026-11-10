@@ -33,6 +33,14 @@ function emitValue(e: Expr): string {
             return `location of ${emitValue(e.target)}`;
         case "format":
             return `"${emitStringParts(e.parts)}"`;
+        case "wsMessage":
+        case "wsId":
+        case "worldOf":
+        case "borderSize":
+        case "borderCenter":
+            // Engine-builtin expressions (phase 6) exist only in the
+            // engine jar; there is no Skript text form to emit.
+            throw new Error(`Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
             void exhaustive;
@@ -71,6 +79,12 @@ function emitString(e: Expr): string {
             return `%location of ${emitValue(e.target)}%`;
         case "format":
             return emitStringParts(e.parts);
+        case "wsMessage":
+        case "wsId":
+        case "worldOf":
+        case "borderSize":
+        case "borderCenter":
+            throw new Error(`Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
             void exhaustive;
@@ -167,6 +181,12 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             lines.push(...emitBlock(s.body, level + 1, path, "body"));
             return lines;
         }
+        case "wsConnect":
+        case "wsSend":
+        case "wsDisconnect":
+        case "setBorderSize":
+        case "setBorderCenter":
+            throw new Error(`Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = s;
             void exhaustive;
@@ -178,6 +198,9 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
 function emitTop(t: TopLevel, path: string): OwnedLine[] {
     switch (t.kind) {
         case "event": {
+            if (t.event === "wsOpen" || t.event === "wsMessage" || t.event === "wsClose") {
+                throw new Error(`Unhandled Event in emitTop: '${t.event}' is an engine-only builtin with no .sk form`);
+            }
             const header =
                 t.event === "join"
                     ? "on join:"

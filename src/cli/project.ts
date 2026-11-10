@@ -12,17 +12,23 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { emitIr, emitWithMap, type Script } from "../index.js";
+import { emitIr, emitWithMap, isEngineOnlyScript, type Script } from "../index.js";
 import type { SourceMapFile } from "../source-map.js";
 
 export interface BuiltScript {
   /** Path of the .sk file relative to the scripts folder, e.g. "welcome.sk". */
   rel: string;
-  /** Absolute path of the emitted .sk in the output dir. */
-  skPath: string;
-  /** Absolute path of the source map JSON next to the .sk. */
-  mapPath: string;
-  map: SourceMapFile;
+  /**
+   * True for scripts using engine-builtin features (e.g. the MundoSK
+   * slice): they have an IR form but no `.sk` form, so skPath / mapPath
+   * / map are null and Skript-mode deployment skips them.
+   */
+  engineOnly: boolean;
+  /** Absolute path of the emitted .sk in the output dir (null when engine-only). */
+  skPath: string | null;
+  /** Absolute path of the source map JSON next to the .sk (null when engine-only). */
+  mapPath: string | null;
+  map: SourceMapFile | null;
   /** Path of the IR file relative to the engine scripts folder, e.g. "welcome.ir.json". */
   irRel: string;
   /** Absolute path of the emitted IR JSON in the output dir. */
@@ -96,6 +102,17 @@ export async function buildProject(opts: {
       throw new Error(`${relSource}: exports ${found.length} Script values; exactly one is required (1 TS file = 1 .sk file)`);
     }
     const prog = found[0] as Script;
+    const relSk = toPosix(relative(srcDir, absFile)).replace(/\.ts$/, ".sk");
+    const irRel = relSk.replace(/\.sk$/, ".ir.json");
+    const irPath = join(outDir, irRel);
+    writeFileSync(irPath, emitIr(prog), "utf8");
+    if (isEngineOnlyScript(prog)) {
+      // Engine-builtin features have no .sk form: emit IR only. The
+      // script still counts as built (the engine load check expects
+      // every built script), but Skript deployment skips it.
+      scripts.push({ rel: relSk, engineOnly: true, skPath: null, mapPath: null, map: null, irRel, irPath });
+      continue;
+    }
     const { code, lines } = emitWithMap(prog);
     // Relativize captured TS call sites against the project root for readable
     // maps/reports; keep the absolute path for sources outside the root.
@@ -104,7 +121,6 @@ export async function buildProject(opts: {
       const rel = toPosix(relative(rootDir, resolve(l.ts.file)));
       return { ...l, ts: { ...l.ts, file: rel.startsWith("../") ? l.ts.file : rel } };
     });
-    const relSk = toPosix(relative(srcDir, absFile)).replace(/\.ts$/, ".sk");
     const map: SourceMapFile = {
       version: 1,
       file: relSk,
@@ -116,10 +132,7 @@ export async function buildProject(opts: {
     writeFileSync(skPath, code, "utf8");
     const mapPath = `${skPath}.map.json`;
     writeFileSync(mapPath, JSON.stringify(map, null, 2) + "\n", "utf8");
-    const irRel = relSk.replace(/\.sk$/, ".ir.json");
-    const irPath = join(outDir, irRel);
-    writeFileSync(irPath, emitIr(prog), "utf8");
-    scripts.push({ rel: relSk, skPath, mapPath, map, irRel, irPath });
+    scripts.push({ rel: relSk, engineOnly: false, skPath, mapPath, map, irRel, irPath });
     maps.set(relSk, map);
   }
   return { scripts, skipped, maps };
@@ -161,7 +174,11 @@ export function deployScripts(opts: {
       previous = [];
     }
   }
-  const next = opts.scripts.map((s) => s.rel);
+  // Engine-only scripts have no .sk file: they are excluded from the
+  // deployed set (and a stale .sk from an earlier build is removed by
+  // the manifest sweep above, since their rel is not in `next`).
+  const deployable = opts.scripts.filter((s) => !s.engineOnly);
+  const next = deployable.map((s) => s.rel);
   const removed: string[] = [];
   for (const rel of previous) {
     if (!next.includes(rel)) {
@@ -173,10 +190,10 @@ export function deployScripts(opts: {
     }
   }
   const deployed: string[] = [];
-  for (const s of opts.scripts) {
+  for (const s of deployable) {
     const target = join(serverScriptsDir, s.rel);
     mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(s.skPath, target);
+    copyFileSync(s.skPath as string, target);
     deployed.push(s.rel);
   }
   writeFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n", "utf8");

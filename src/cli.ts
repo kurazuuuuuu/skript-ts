@@ -341,6 +341,7 @@ async function main(): Promise<number> {
           port: readServerPort(serverDir),
           version: readMcVersion(serverDir),
           console: (cmd) => server.sendCommand(cmd),
+          mode: opts.engine ? "engine" : "skript",
         });
         let failures = 0;
         for (const file of files) {

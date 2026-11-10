@@ -32,6 +32,45 @@ export function toIr(script: Script): IrNode {
   return stripLoc(script) as IrNode;
 }
 
+/**
+ * Node kinds (and event kinds) that exist only in the engine jar:
+ * builtin addon features (phase 6, MundoSK slice) with no `.sk`
+ * equivalent. A script containing any of them is engine-only — the
+ * build writes its IR but no `.sk`, and Skript-mode deployment skips it.
+ */
+const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
+  "wsConnect",
+  "wsSend",
+  "wsDisconnect",
+  "wsMessage",
+  "wsId",
+  "worldOf",
+  "borderSize",
+  "borderCenter",
+  "setBorderSize",
+  "setBorderCenter",
+]);
+
+const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set(["wsOpen", "wsMessage", "wsClose"]);
+
+function containsEngineOnly(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(containsEngineOnly);
+  if (typeof value === "object" && value !== null) {
+    const rec = value as Record<string, unknown>;
+    if (typeof rec["kind"] === "string" && ENGINE_ONLY_KINDS.has(rec["kind"])) return true;
+    if (rec["kind"] === "event" && typeof rec["event"] === "string" && ENGINE_ONLY_EVENTS.has(rec["event"])) {
+      return true;
+    }
+    return Object.values(rec).some(containsEngineOnly);
+  }
+  return false;
+}
+
+/** True when the script uses engine-builtin features and has no `.sk` form. */
+export function isEngineOnlyScript(script: Script): boolean {
+  return containsEngineOnly(toIr(script));
+}
+
 /** Serialize a Script to the exact IR JSON text written to `.ir.json` files. */
 export function emitIr(script: Script): string {
   return JSON.stringify(toIr(script), null, 2) + "\n";

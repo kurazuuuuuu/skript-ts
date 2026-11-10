@@ -36,6 +36,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
 
     private Variables variables;
     private Engine engine;
+    private WebSockets websockets;
     private final List<Command> registeredCommands = new ArrayList<>();
 
     @Override
@@ -44,6 +45,43 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         variables = new Variables(dataDir.resolve("variables.json"), getLogger());
         variables.load();
         engine = new Engine(variables, getLogger());
+        websockets = new WebSockets(new WebSockets.Events() {
+            @Override
+            public void onOpen(String id) {
+                fireWsEvent("wsOpen", id, null);
+            }
+
+            @Override
+            public void onMessage(String id, String text) {
+                fireWsEvent("wsMessage", id, text);
+            }
+
+            @Override
+            public void onClose(String id) {
+                fireWsEvent("wsClose", id, null);
+            }
+
+            @Override
+            public void onError(String id, String message) {
+                getLogger().warning("websocket '" + id + "' error: " + message);
+            }
+        }, getLogger());
+        engine.setWsHost(new Engine.WsHost() {
+            @Override
+            public void connect(String id, String url) {
+                websockets.connect(id, url);
+            }
+
+            @Override
+            public void send(String id, String text) {
+                websockets.send(id, text);
+            }
+
+            @Override
+            public void disconnect(String id) {
+                websockets.disconnect(id);
+            }
+        });
         loadScripts();
         getServer().getPluginManager().registerEvents(this, this);
         getLogger().info("skript-ts engine enabled");
@@ -52,7 +90,21 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     @Override
     public void onDisable() {
         unregisterScriptCommands();
+        if (websockets != null) websockets.closeAll();
         if (variables != null) variables.save();
+    }
+
+    /**
+     * WebSocket callbacks arrive on IO threads; script bodies belong on
+     * the main thread (same discipline as the chat handler).
+     */
+    private void fireWsEvent(String event, String id, String text) {
+        getServer().getScheduler().runTask(this, () -> {
+            Engine.Ctx ctx = new Engine.Ctx();
+            ctx.wsId = id;
+            ctx.wsText = text;
+            engine.fireEvent(event, ctx, false);
+        });
     }
 
     /** Control command from plugin.yml: `/skript-ts reload` re-reads the IR scripts folder. */

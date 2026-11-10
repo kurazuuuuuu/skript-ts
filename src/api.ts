@@ -161,3 +161,85 @@ export function command(name: string, argType: CommandArgType | null, body: read
 export function script(...body: TopLevel[]): Script {
   return { kind: "script", body };
 }
+
+// ---------------------------------------------------------------------------
+// Engine builtins (MundoSK slice, phase 6)
+//
+// These builders produce nodes the .sk emitter intentionally does not
+// support: the features live in the skript-ts engine jar itself, not in
+// a separate addon plugin and not in Skript text. A script using any of
+// them is detected as engine-only at build time (see ir.ts) and is
+// deployed as IR only.
+// ---------------------------------------------------------------------------
+
+function requireWsId(id: string): string {
+  if (typeof id !== "string" || id.trim() === "") {
+    throw new RangeError("websocket id must be a non-empty string");
+  }
+  return id;
+}
+
+/** Construct a websocket-connect statement (engine builtin). */
+export function wsConnect(id: string, url: TextExpr): Stmt {
+  return withLoc({ kind: "wsConnect", id: requireWsId(id), url });
+}
+
+/** Construct a websocket-send statement (engine builtin). */
+export function wsSend(id: string, message: TextExpr): Stmt {
+  return withLoc({ kind: "wsSend", id: requireWsId(id), message });
+}
+
+/** Construct a websocket-disconnect statement (engine builtin). */
+export function wsDisconnect(id: string): Stmt {
+  return withLoc({ kind: "wsDisconnect", id: requireWsId(id) });
+}
+
+/** Construct an on-websocket-open event (engine builtin). */
+export function onWsOpen(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "wsOpen", body });
+}
+
+/** Construct an on-websocket-message event (engine builtin). */
+export function onWsMessage(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "wsMessage", body });
+}
+
+/** Construct an on-websocket-close event (engine builtin). */
+export function onWsClose(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "wsClose", body });
+}
+
+/** Construct a websocket-message expression: the text received, inside wsMessage events. */
+export function wsMessage(): Expr {
+  return { kind: "wsMessage" };
+}
+
+/** Construct a websocket-id expression: the connection id, inside websocket events. */
+export function wsId(): Expr {
+  return { kind: "wsId" };
+}
+
+/** Construct a world-of expression (engine builtin): the world of a player/location expression. */
+export function worldOf(target: Expr): Expr {
+  return { kind: "worldOf", target };
+}
+
+/** Construct a border-size expression (engine builtin): the current size of a world's border. */
+export function borderSize(world: Expr): Expr {
+  return { kind: "borderSize", world };
+}
+
+/** Construct a border-center expression (engine builtin): the center location of a world's border. */
+export function borderCenter(world: Expr): Expr {
+  return { kind: "borderCenter", world };
+}
+
+/** Construct a set-border-size statement (engine builtin). */
+export function setBorderSize(world: Expr, size: Expr): Stmt {
+  return withLoc({ kind: "setBorderSize", world, size });
+}
+
+/** Construct a set-border-center statement (engine builtin). */
+export function setBorderCenter(world: Expr, center: Expr): Stmt {
+  return withLoc({ kind: "setBorderCenter", world, center });
+}

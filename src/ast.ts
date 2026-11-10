@@ -12,7 +12,14 @@ export type Expr =
   | { kind: "boolean"; value: boolean }
   | { kind: "item"; name: string }
   | { kind: "locationOf"; target: Expr }
-  | { kind: "format"; parts: readonly (string | Expr)[] };
+  | { kind: "format"; parts: readonly (string | Expr)[] }
+  // Engine-builtin expressions (MundoSK slice, phase 6). These have no
+  // .sk equivalent: scripts using them are engine-only (see ir.ts).
+  | { kind: "wsMessage" }
+  | { kind: "wsId" }
+  | { kind: "worldOf"; target: Expr }
+  | { kind: "borderSize"; world: Expr }
+  | { kind: "borderCenter"; world: Expr };
 
 /** Represents a Skript text expression. */
 export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
@@ -37,10 +44,16 @@ export type Stmt =
   | { kind: "setVar"; variable: VariableExpr; value: Expr; loc?: SourceLoc }
   | { kind: "addVar"; variable: VariableExpr; value: Expr; loc?: SourceLoc }
   | { kind: "if"; cond: Cond; then: readonly Stmt[]; else?: readonly Stmt[]; loc?: SourceLoc }
-  | { kind: "loopPlayers"; body: readonly Stmt[]; loc?: SourceLoc };
+  | { kind: "loopPlayers"; body: readonly Stmt[]; loc?: SourceLoc }
+  // Engine-builtin statements (MundoSK slice, phase 6): no .sk equivalent.
+  | { kind: "wsConnect"; id: string; url: TextExpr; loc?: SourceLoc }
+  | { kind: "wsSend"; id: string; message: TextExpr; loc?: SourceLoc }
+  | { kind: "wsDisconnect"; id: string; loc?: SourceLoc }
+  | { kind: "setBorderSize"; world: Expr; size: Expr; loc?: SourceLoc }
+  | { kind: "setBorderCenter"; world: Expr; center: Expr; loc?: SourceLoc };
 
-/** Represents a Skript event kind. */
-export type EventKind = "join" | "firstJoin" | "quit" | "chat" | "death";
+/** Represents a Skript event kind. The ws* kinds are engine-builtin events (phase 6). */
+export type EventKind = "join" | "firstJoin" | "quit" | "chat" | "death" | "wsOpen" | "wsMessage" | "wsClose";
 
 /** Represents a Skript command argument type. */
 export type CommandArgType = "text" | "player" | "integer";

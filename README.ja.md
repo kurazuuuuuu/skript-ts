@@ -188,7 +188,7 @@ Skript の `variables.csv`、`ops.json`）を消去し、振る舞いテスト�
 - エンジンは `plugins/skript-ts/scripts/` の IR を読み込み、スクリプトのコマンドをサーバーのコマンドマップへ登録し、サブセットのイベントを受けてエフェクト・式・条件を解釈実行します。変数は `plugins/skript-ts/variables.json` に永続化します
 - `/skript-ts reload` で IR フォルダを再読み込みします。読み込みのたびに `Loaded N script(s), M top-level structure(s)` をログに出し、失敗したファイルは `Failed to load <file>: ...` と記録します
 
-エンジンは**クリーンルーム再実装**です。Skript は GPL のためコードは持ち込まず、v0 サブセットの振る舞い契約だけを共有します。その契約は上記 SPEC で規定し、変換された `.sk` を検証するのと同じ mineflayer 振る舞いテスト4本で固定しています。解釈の余地がある点の確定事項: 初回参加では `on first join` と `on join` の両方が発火する（Skript と同じ）、プレイヤーをキーにする変数はプレイヤー名で引く、整数の数値は小数部なしで表示する（`1.0` ではなく `1`）。
+エンジンは**クリーンルーム再実装**です。Skript は GPL のためコードは持ち込まず、v0 サブセットの振る舞い契約だけを共有します。その契約は上記 SPEC で規定し、変換された `.sk` を検証するのと同じ mineflayer 振る舞いテスト4本で固定しています（エンジン内蔵機能にはエンジン専用のテストが加わります）。解釈の余地がある点の確定事項: 初回参加では `on first join` と `on join` の両方が発火する（Skript と同じ）、プレイヤーをキーにする変数はプレイヤー名で引く、整数の数値は小数部なしで表示する（`1.0` ではなく `1`）。
 
 ### jar のビルド
 
@@ -206,6 +206,32 @@ bin/skript-ts.mjs verify --engine [--json]
 ```
 
 ステージ構成は通常の verify と同じですが、配置で IR を `plugins/skript-ts/scripts/` に置き、`skript-ts.jar` を導入して `Skript.jar` を退避します。つまりサンドボックスは**エンジンだけ**で起動します。読み込み確認は `skript-ts reload` を実行し、エンジンの要約行が配置したスクリプト数と一致し、読み込み失敗がないことを要求します。通常の `verify` を後から実行すると `Skript.jar` が復帰しエンジン jar が除去されるため、2つのモードが混ざることはありません。
+
+## エンジン内蔵機能（アドオンをエンジンへ内蔵）
+
+主要アドオンは別プラグインにはせず、機能をエンジンへネイティブに再実装していく方針です（アドオンごと、文書化された振る舞いのみに基づくクリーンルーム。エンジン本体と同じルール）。内蔵構文には **`.sk` の形がありません**。使ったスクリプトは「エンジン専用」となり、ビルドは IR のみを出力し、Skript モードの配置からは除外され、`emit()` にかけるとエラーになります。内蔵機能の振る舞いテストは `verify --engine` のときだけ本体を実行します（テストコンテキストの `t.mode` で判定し、Skript モードでは何もせず合格）。サンプルは `examples/mundosk.ts` です。
+
+### MundoSK 第1弾: WebSocket クライアント＋ワールドボーダー
+
+WebSocket 接続はスクリプトが選んだ id で名前付けされ、エンジン内に保持されます（実体は JDK 標準の `java.net.http.WebSocket`）。接続が開く前に送信されたメッセージはキューに入り、開いた順に送られます。close イベントは、どちらが切断しても発火します。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `wsConnect(id, url)` | WebSocket クライアント接続を開く |
+| `wsSend(id, text)` | テキストメッセージを送る |
+| `wsDisconnect(id)` | 接続を閉じる |
+| `onWsOpen(body)` | イベント: 接続が開いた |
+| `onWsMessage(body)` | イベント: テキストを受信した |
+| `onWsClose(body)` | イベント: 接続が閉じた |
+| `wsMessage()` | 受信したテキスト（`onWsMessage` 内） |
+| `wsId()` | 接続 id（WebSocket イベント内） |
+| `worldOf(target)` | プレイヤー／場所のワールド |
+| `borderSize(world)` | そのワールドのボーダーの現在のサイズ |
+| `borderCenter(world)` | そのワールドのボーダーの中心位置 |
+| `setBorderSize(world, size)` | ボーダーのサイズを設定 |
+| `setBorderCenter(world, location)` | ボーダーの中心を設定 |
+
+検証は `examples/behavior/mundosk.behavior.ts`（ローカルの RFC 6455 エコーサーバーに対する 接続→エコー→ブロードキャスト→切断）と `examples/behavior/mundosk-border.behavior.ts`（設定＋読み戻し）で行います。なお WebSocket のテストは、サーバープロセスから外向き TCP が許可されている必要があります。環境側で直接 TCP が拒否されている場合、接続はエンジンのエラーログ経由で綺麗に失敗し、この1本だけがタイムアウトします。
 
 ## 開発
 

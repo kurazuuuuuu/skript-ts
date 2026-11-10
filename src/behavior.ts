@@ -33,6 +33,13 @@ export interface BehaviorBot {
 }
 
 export interface BehaviorContext {
+  /**
+   * Which runtime the sandbox is running: "skript" (the real Skript
+   * plugin executing emitted .sk files) or "engine" (the skript-ts
+   * engine jar executing IR). Tests for engine-builtin features check
+   * this and only exercise the feature under the engine.
+   */
+  readonly mode: "skript" | "engine";
   /** Connect a bot with the given offline-mode username and wait until it has spawned. */
   connect(username: string): Promise<BehaviorBot>;
   /** Run a command on the server console (e.g. `op SomeBot`). Resolves after a short settle delay. */
@@ -156,10 +163,13 @@ export interface BehaviorContextOptions {
   version: string;
   /** Bridge to the server console (used by t.console). */
   console: (command: string) => void;
+  /** Runtime mode of the sandbox under test. Defaults to "skript". */
+  mode?: "skript" | "engine";
 }
 
 export function createBehaviorContext(opts: BehaviorContextOptions): BehaviorContext {
   return {
+    mode: opts.mode ?? "skript",
     async connect(username: string): Promise<BehaviorBot> {
       const bot = createBot({
         host: opts.host,
