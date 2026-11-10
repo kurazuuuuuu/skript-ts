@@ -19,7 +19,10 @@ export type Expr =
   | { kind: "wsId" }
   | { kind: "worldOf"; target: Expr }
   | { kind: "borderSize"; world: Expr }
-  | { kind: "borderCenter"; world: Expr };
+  | { kind: "borderCenter"; world: Expr }
+  // Engine-builtin expressions (SharpSK slice, phase 7): timers.
+  | { kind: "timerId" }
+  | { kind: "timerTimeLeft"; name: Expr };
 
 /** Represents a Skript text expression. */
 export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
@@ -27,7 +30,9 @@ export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
 /** Represents a Skript condition. */
 export type Cond =
   | { kind: "hasPermission"; target: Expr; permission: string }
-  | { kind: "isOp"; target: Expr };
+  | { kind: "isOp"; target: Expr }
+  // Engine-builtin condition (SharpSK slice, phase 7): a named timer exists.
+  | { kind: "timerActive"; name: TextExpr };
 
 /** Represents a Skript variable expression. */
 export type VariableExpr = Extract<Expr, { kind: "variable" }>;
@@ -50,10 +55,18 @@ export type Stmt =
   | { kind: "wsSend"; id: string; message: TextExpr; loc?: SourceLoc }
   | { kind: "wsDisconnect"; id: string; loc?: SourceLoc }
   | { kind: "setBorderSize"; world: Expr; size: Expr; loc?: SourceLoc }
-  | { kind: "setBorderCenter"; world: Expr; center: Expr; loc?: SourceLoc };
+  | { kind: "setBorderCenter"; world: Expr; center: Expr; loc?: SourceLoc }
+  // Engine-builtin statements (SharpSK slice, phase 7): named countdown timers.
+  | { kind: "timerCreate"; id: string; seconds: Expr; loc?: SourceLoc }
+  | { kind: "timerStop"; id: string; loc?: SourceLoc }
+  | { kind: "timerPause"; id: string; loc?: SourceLoc }
+  | { kind: "timerResume"; id: string; loc?: SourceLoc };
 
-/** Represents a Skript event kind. The ws* kinds are engine-builtin events (phase 6). */
-export type EventKind = "join" | "firstJoin" | "quit" | "chat" | "death" | "wsOpen" | "wsMessage" | "wsClose";
+/** Represents a Skript event kind. The ws* kinds are engine-builtin events (phase 6), the timer* kinds are phase 7. */
+export type EventKind =
+  | "join" | "firstJoin" | "quit" | "chat" | "death"
+  | "wsOpen" | "wsMessage" | "wsClose"
+  | "timerTick" | "timerComplete";
 
 /** Represents a Skript command argument type. */
 export type CommandArgType = "text" | "player" | "integer";

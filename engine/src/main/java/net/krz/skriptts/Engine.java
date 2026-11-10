@@ -35,6 +35,8 @@ import java.util.logging.Logger;
  * Phase 6 adds the first engine-builtin addon slice (MundoSK scope:
  * WebSocket client connections and world borders). Builtin statements
  * and expressions execute natively here; they have no Skript text form.
+ * Phase 7 adds the second slice (SharpSK scope: named countdown
+ * timers with tick/complete events).
  */
 final class Engine {
 
@@ -47,6 +49,7 @@ final class Engine {
         String chatMessage; // "message" in chat events
         String wsId;        // websocket connection id in websocket events
         String wsText;      // received text in websocket message events
+        String timerId;     // timer name in timer tick/complete events
         String argType;     // command argument type ("text"/"player"/"integer") or null
         String[] rawArgs = new String[0];
 
@@ -59,6 +62,7 @@ final class Engine {
             c.chatMessage = chatMessage;
             c.wsId = wsId;
             c.wsText = wsText;
+            c.timerId = timerId;
             c.argType = argType;
             c.rawArgs = rawArgs;
             return c;
@@ -76,10 +80,26 @@ final class Engine {
         void disconnect(String id);
     }
 
+    /**
+     * Bridge to the plugin's named-timer manager. Statements command
+     * the manager through this interface; tick and complete events
+     * come back as engine events fired by the plugin.
+     */
+    interface TimerHost {
+        void create(String id, double seconds);
+        void stop(String id);
+        void pause(String id);
+        void resume(String id);
+        boolean isActive(String id);
+        /** Remaining seconds, or null when no such timer exists. */
+        Double timeLeft(String id);
+    }
+
     private final Variables variables;
     private final Logger logger;
     private List<Map<String, Object>> topLevels = List.of();
     private WsHost wsHost;
+    private TimerHost timerHost;
 
     Engine(Variables variables, Logger logger) {
         this.variables = variables;
@@ -89,6 +109,11 @@ final class Engine {
     /** Install the WebSocket host (called by the plugin on enable). */
     void setWsHost(WsHost wsHost) {
         this.wsHost = wsHost;
+    }
+
+    /** Install the timer host (called by the plugin on enable). */
+    void setTimerHost(TimerHost timerHost) {
+        this.timerHost = timerHost;
     }
 
     /** Replace the running program (flat list of top-level IR nodes, in load order). */
@@ -224,6 +249,34 @@ final class Engine {
                     world.getWorldBorder().setCenter(loc);
                 }
             }
+            case "timerCreate" -> {
+                if (timerHost == null) {
+                    logger.warning("skript-ts: timerCreate without a timer host installed");
+                } else if (evalExpr(node(stmt.get("seconds")), ctx) instanceof Number n) {
+                    timerHost.create(str(stmt.get("id")), n.doubleValue());
+                }
+            }
+            case "timerStop" -> {
+                if (timerHost == null) {
+                    logger.warning("skript-ts: timerStop without a timer host installed");
+                } else {
+                    timerHost.stop(str(stmt.get("id")));
+                }
+            }
+            case "timerPause" -> {
+                if (timerHost == null) {
+                    logger.warning("skript-ts: timerPause without a timer host installed");
+                } else {
+                    timerHost.pause(str(stmt.get("id")));
+                }
+            }
+            case "timerResume" -> {
+                if (timerHost == null) {
+                    logger.warning("skript-ts: timerResume without a timer host installed");
+                } else {
+                    timerHost.resume(str(stmt.get("id")));
+                }
+            }
             default -> logger.warning("skript-ts: unknown statement kind '" + kind(stmt) + "'");
         }
     }
@@ -241,6 +294,10 @@ final class Engine {
             case "isOp" -> {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && p.isOp();
+            }
+            case "timerActive" -> {
+                String name = renderText(node(cond.get("name")), ctx);
+                yield timerHost != null && name != null && timerHost.isActive(name);
             }
             default -> {
                 logger.warning("skript-ts: unknown condition kind '" + kind(cond) + "'");
@@ -285,6 +342,12 @@ final class Engine {
             case "borderCenter" -> {
                 Object w = evalExpr(node(expr.get("world")), ctx);
                 yield w instanceof World world ? world.getWorldBorder().getCenter() : null;
+            }
+            case "timerId" -> ctx.timerId;
+            case "timerTimeLeft" -> {
+                if (timerHost == null) yield null;
+                Object name = evalExpr(node(expr.get("name")), ctx);
+                yield name == null ? null : timerHost.timeLeft(stringify(name));
             }
             case "format" -> renderParts(list(expr.get("parts")), ctx);
             default -> {

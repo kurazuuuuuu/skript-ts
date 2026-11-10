@@ -243,3 +243,68 @@ export function setBorderSize(world: Expr, size: Expr): Stmt {
 export function setBorderCenter(world: Expr, center: Expr): Stmt {
   return withLoc({ kind: "setBorderCenter", world, center });
 }
+
+// ---------------------------------------------------------------------------
+// Engine builtins (SharpSK slice, phase 7): named countdown timers
+//
+// Timers are SharpSK's headline standalone feature, reimplemented on
+// the Bukkit scheduler. A timer is created with a name and a duration
+// in seconds; the tick event fires every second while it runs (after
+// the remaining time is decremented, while it is still above zero),
+// and the complete event fires once when the countdown reaches zero,
+// after which the timer no longer exists. Stopping removes a timer
+// silently; pausing freezes it (still active, no ticks). Creating a
+// timer whose name is already in use restarts it.
+// ---------------------------------------------------------------------------
+
+function requireTimerId(id: string): string {
+  if (typeof id !== "string" || id.trim() === "") {
+    throw new RangeError("timer id must be a non-empty string");
+  }
+  return id;
+}
+
+/** Construct a timer-create statement (engine builtin): start a named countdown of the given seconds. */
+export function timerCreate(id: string, seconds: Expr): Stmt {
+  return withLoc({ kind: "timerCreate", id: requireTimerId(id), seconds });
+}
+
+/** Construct a timer-stop statement (engine builtin): remove a timer without firing its complete event. */
+export function timerStop(id: string): Stmt {
+  return withLoc({ kind: "timerStop", id: requireTimerId(id) });
+}
+
+/** Construct a timer-pause statement (engine builtin): freeze a timer's countdown. */
+export function timerPause(id: string): Stmt {
+  return withLoc({ kind: "timerPause", id: requireTimerId(id) });
+}
+
+/** Construct a timer-resume statement (engine builtin): continue a paused timer. */
+export function timerResume(id: string): Stmt {
+  return withLoc({ kind: "timerResume", id: requireTimerId(id) });
+}
+
+/** Construct an on-timer-tick event (engine builtin): fires every second while a timer runs. */
+export function onTimerTick(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "timerTick", body });
+}
+
+/** Construct an on-timer-complete event (engine builtin): fires once when a timer's countdown reaches zero. */
+export function onTimerComplete(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "timerComplete", body });
+}
+
+/** Construct a timer-id expression: the name of the timer, inside timer events. */
+export function timerId(): Expr {
+  return { kind: "timerId" };
+}
+
+/** Construct a timer-time-left expression (engine builtin): seconds remaining on the named timer, or no value when it is not active. */
+export function timerTimeLeft(name: Expr): Expr {
+  return { kind: "timerTimeLeft", name };
+}
+
+/** Construct a timer-active condition (engine builtin): the named timer exists (running or paused). */
+export function timerActive(name: TextExpr): Cond {
+  return { kind: "timerActive", name };
+}

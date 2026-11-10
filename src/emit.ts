@@ -38,8 +38,10 @@ function emitValue(e: Expr): string {
         case "worldOf":
         case "borderSize":
         case "borderCenter":
-            // Engine-builtin expressions (phase 6) exist only in the
-            // engine jar; there is no Skript text form to emit.
+        case "timerId":
+        case "timerTimeLeft":
+            // Engine-builtin expressions (phases 6-7) exist only in
+            // the engine jar; there is no Skript text form to emit.
             throw new Error(`Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
@@ -84,6 +86,8 @@ function emitString(e: Expr): string {
         case "worldOf":
         case "borderSize":
         case "borderCenter":
+        case "timerId":
+        case "timerTimeLeft":
             throw new Error(`Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
@@ -125,6 +129,8 @@ function emitCond(c: Cond): string {
             return `${emitValue(c.target)} has permission "${escapeText(c.permission)}"`;
         case "isOp":
             return `${emitValue(c.target)} is op`;
+        case "timerActive":
+            throw new Error(`Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = c;
             void exhaustive;
@@ -186,6 +192,10 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         case "wsDisconnect":
         case "setBorderSize":
         case "setBorderCenter":
+        case "timerCreate":
+        case "timerStop":
+        case "timerPause":
+        case "timerResume":
             throw new Error(`Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = s;
@@ -198,7 +208,10 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
 function emitTop(t: TopLevel, path: string): OwnedLine[] {
     switch (t.kind) {
         case "event": {
-            if (t.event === "wsOpen" || t.event === "wsMessage" || t.event === "wsClose") {
+            if (
+                t.event === "wsOpen" || t.event === "wsMessage" || t.event === "wsClose" ||
+                t.event === "timerTick" || t.event === "timerComplete"
+            ) {
                 throw new Error(`Unhandled Event in emitTop: '${t.event}' is an engine-only builtin with no .sk form`);
             }
             const header =

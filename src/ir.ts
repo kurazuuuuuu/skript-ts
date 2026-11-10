@@ -49,9 +49,22 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "borderCenter",
   "setBorderSize",
   "setBorderCenter",
+  "timerCreate",
+  "timerStop",
+  "timerPause",
+  "timerResume",
+  "timerId",
+  "timerTimeLeft",
+  "timerActive",
 ]);
 
-const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set(["wsOpen", "wsMessage", "wsClose"]);
+const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
+  "wsOpen",
+  "wsMessage",
+  "wsClose",
+  "timerTick",
+  "timerComplete",
+]);
 
 function containsEngineOnly(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsEngineOnly);

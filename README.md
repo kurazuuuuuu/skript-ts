@@ -283,6 +283,33 @@ from the server process — where direct TCP is denied by the
 environment, the connect fails cleanly through the engine's error
 logging and only that one test times out.
 
+### SharpSK slice 1: timers
+
+SharpSK's bulk is hooks into other plugins; its standalone headline
+feature is named countdown timers, reimplemented here on the Bukkit
+scheduler. A timer ticks once per second: the remaining time is
+decremented first, the tick event fires while it is still above
+zero, and at zero the complete event fires and the timer is gone.
+Stopping removes a timer silently; pausing freezes it (still
+active, no ticks); creating a timer under an existing name restarts
+it. Script reloads drop all timers. `examples/sharpsk.ts` is the
+sample program.
+
+| TypeScript | Meaning |
+| --- | --- |
+| `timerCreate(id, seconds)` | start (or restart) a named countdown |
+| `timerStop(id)` | remove a timer without firing complete |
+| `timerPause(id)` | freeze a timer's countdown |
+| `timerResume(id)` | continue a paused timer |
+| `onTimerTick(body)` | event: a timer ticked (once per second) |
+| `onTimerComplete(body)` | event: a timer's countdown reached zero |
+| `timerId()` | the timer's name (inside timer events) |
+| `timerTimeLeft(name)` | seconds remaining on the named timer |
+| `timerActive(name)` | condition: the named timer exists (running or paused) |
+
+Verified by `examples/behavior/sharpsk.behavior.ts` (full countdown
+to completion, pause freezing the countdown, silent stop).
+
 ## Development
 
 ```sh

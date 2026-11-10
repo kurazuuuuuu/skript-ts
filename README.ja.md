@@ -233,6 +233,24 @@ WebSocket 接続はスクリプトが選んだ id で名前付けされ、エン
 
 検証は `examples/behavior/mundosk.behavior.ts`（ローカルの RFC 6455 エコーサーバーに対する 接続→エコー→ブロードキャスト→切断）と `examples/behavior/mundosk-border.behavior.ts`（設定＋読み戻し）で行います。なお WebSocket のテストは、サーバープロセスから外向き TCP が許可されている必要があります。環境側で直接 TCP が拒否されている場合、接続はエンジンのエラーログ経由で綺麗に失敗し、この1本だけがタイムアウトします。
 
+### SharpSK 第1弾: タイマー
+
+SharpSK の大半は他プラグインへのフックで、単独で効く看板機能は名前付きカウントダウンタイマーです。ここでは Bukkit スケジューラの上で再実装しています。タイマーは1秒ごとに進みます。先に残り時間を減らし、残りが正の間は tick イベントが発火し、0 に達すると complete イベントが発火してタイマーは消滅します。停止は complete を発火せずに除去し、一時停止は凍結します（active のまま、tick は止まります）。同名で作り直すとリスタートします。スクリプトのリロードで全タイマーは破棄されます。サンプルは `examples/sharpsk.ts` です。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `timerCreate(id, seconds)` | 名前付きカウントダウンを開始（同名あれば再開始） |
+| `timerStop(id)` | complete を発火せずにタイマーを除去 |
+| `timerPause(id)` | カウントダウンを凍結 |
+| `timerResume(id)` | 一時停止したタイマーを再開 |
+| `onTimerTick(body)` | イベント: タイマーが進んだ（1秒ごと） |
+| `onTimerComplete(body)` | イベント: カウントダウンが 0 に達した |
+| `timerId()` | タイマーの名前（タイマーイベント内） |
+| `timerTimeLeft(name)` | 名前付きタイマーの残り秒数 |
+| `timerActive(name)` | 条件: 名前付きタイマーが存在する（実行中または一時停止中） |
+
+検証は `examples/behavior/sharpsk.behavior.ts`（完了までの全カウントダウン、一時停止での凍結、無言の停止）で行います。
+
 ## 開発
 
 ```sh

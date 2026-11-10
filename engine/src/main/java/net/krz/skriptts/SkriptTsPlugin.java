@@ -37,6 +37,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     private Variables variables;
     private Engine engine;
     private WebSockets websockets;
+    private Timers timers;
     private final List<Command> registeredCommands = new ArrayList<>();
 
     @Override
@@ -82,6 +83,49 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
                 websockets.disconnect(id);
             }
         });
+        timers = new Timers(this, new Timers.Events() {
+            @Override
+            public void onTick(String id, double timeLeft) {
+                fireTimerEvent("timerTick", id);
+            }
+
+            @Override
+            public void onComplete(String id) {
+                fireTimerEvent("timerComplete", id);
+            }
+        }, getLogger());
+        engine.setTimerHost(new Engine.TimerHost() {
+            @Override
+            public void create(String id, double seconds) {
+                timers.create(id, seconds);
+            }
+
+            @Override
+            public void stop(String id) {
+                timers.stop(id);
+            }
+
+            @Override
+            public void pause(String id) {
+                timers.pause(id);
+            }
+
+            @Override
+            public void resume(String id) {
+                timers.resume(id);
+            }
+
+            @Override
+            public boolean isActive(String id) {
+                return timers.isActive(id);
+            }
+
+            @Override
+            public Double timeLeft(String id) {
+                return timers.timeLeft(id);
+            }
+        });
+        timers.start();
         loadScripts();
         getServer().getPluginManager().registerEvents(this, this);
         getLogger().info("skript-ts engine enabled");
@@ -90,8 +134,20 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     @Override
     public void onDisable() {
         unregisterScriptCommands();
+        if (timers != null) timers.shutdown();
         if (websockets != null) websockets.closeAll();
         if (variables != null) variables.save();
+    }
+
+    /**
+     * Timer callbacks arrive on the server main thread (the manager is
+     * driven by the Bukkit scheduler), so unlike websocket events they
+     * need no thread hop before running script bodies.
+     */
+    private void fireTimerEvent(String event, String id) {
+        Engine.Ctx ctx = new Engine.Ctx();
+        ctx.timerId = id;
+        engine.fireEvent(event, ctx, false);
     }
 
     /**
@@ -124,6 +180,10 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     // ------------------------------------------------------------------
 
     synchronized void loadScripts() {
+        // A reload replaces the program; timers created by the old
+        // program would fire into handlers that may no longer exist,
+        // so they are dropped (documented phase 7 semantics).
+        if (timers != null) timers.clearAll();
         Path dir = getDataFolder().toPath().resolve("scripts");
         List<Map<String, Object>> tops = new ArrayList<>();
         int scripts = 0;
