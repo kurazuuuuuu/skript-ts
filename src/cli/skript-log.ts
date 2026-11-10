@@ -72,7 +72,7 @@ export class SkriptLogParser {
       this.pending = {
         phase: this.phase,
         skLine: Number(headerMatch[1]),
-        file: headerMatch[2],
+        file: headerMatch[2] ?? "",
         messages: []
       };
       return;

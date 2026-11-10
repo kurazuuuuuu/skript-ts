@@ -209,7 +209,7 @@ describe("expressions inside format strings", () => {
       locationOf(player()),
     );
     expect(emit(script(onJoin([broadcast(msg)])))).toBe(
-      'on join:\n    broadcast "p=%player% e=%event-player% l=%loop-player% a=%arg-2% m=%message% v={score::%player%} n=7 b=true i=apple loc=%location of player%"\n',
+      'on join:\n    broadcast "p=%player% e=%event-player% l=%loop-player% a=%arg-2% m=%message% v=%{score::%player%}% n=7 b=true i=apple loc=%location of player%"\n',
     );
   });
   it("nested format flattens into the enclosing string", () => {
@@ -261,7 +261,7 @@ describe("victim expression (death events have no player)", () => {
         ),
       ),
     ).toBe(
-      'on death:\n    add 1 to {deaths::%victim%}\n    send "total: {deaths::%victim%}" to victim\n',
+      'on death:\n    add 1 to {deaths::%victim%}\n    send "total: %{deaths::%victim%}%" to victim\n',
     );
   });
 });

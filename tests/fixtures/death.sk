@@ -1,3 +1,3 @@
 on death:
     add 1 to {deaths::%victim%}
-    send "死亡回数は {deaths::%victim%} 回です" to victim
+    send "死亡回数は %{deaths::%victim%}% 回です" to victim

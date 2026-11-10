@@ -56,7 +56,9 @@ function emitString(e: Expr): string {
         case "chatMessage":
             return "%message%";
         case "variable":
-            return emitValue(e);
+            // Inside a string, a variable must be %-wrapped to interpolate
+            // its value; a bare {..} would be literal text in Skript.
+            return `%${emitValue(e)}%`;
         case "string":
             return escapeText(e.value);
         case "number":

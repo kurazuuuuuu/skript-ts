@@ -13,7 +13,8 @@
   "scripts": {
     "emit-examples": "tsx examples/print-all.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cli": "tsx src/cli.ts"
   },
   "type": "module",
   "version": "2026.11.11",
@@ -21,5 +22,8 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "bin": {
+    "skript-ts": "bin/skript-ts.mjs"
   }
 }
