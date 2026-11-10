@@ -346,3 +346,76 @@ export function dbExecute(datasource: Expr, query: TextExpr, store?: VariableExp
 export function dbLastError(): Expr {
   return { kind: "dbLastError" };
 }
+
+// ---------------------------------------------------------------------------
+// Engine builtins (skUtilities slice, phase 9): the text file core
+//
+// skUtilities' flagship area is file operations; this slice covers
+// the core of it as documented behavior — create / delete / write /
+// append / read text files, count and pick lines, test existence —
+// reimplemented clean-room from the documented behavior (the addon
+// is GPL-3.0; no addon code was consulted).
+//
+// Paths are text expressions. Relative paths resolve under the
+// engine's files root (plugins/skript-ts/files/); absolute paths
+// and paths that escape the root after normalization are refused —
+// statements do nothing, expressions yield no value, the condition
+// is false. (The original addon is deliberately non-restrictive
+// about paths; the confinement is an engine safety rule, recorded
+// in the development log.)
+//
+// Semantics: fileCreate makes parent directories and an empty file
+// and leaves an existing file's contents untouched; fileWrite
+// replaces the whole file (UTF-8); fileAppend adds the text plus a
+// newline; fileDelete removes a regular file or an *empty*
+// directory (no recursive delete). fileContents returns the whole
+// file as one string, fileLine is 1-based, fileLineCount counts
+// lines (an empty file is 0); all three yield no value for a
+// missing file. Failures never throw: they log a warning engine
+// side and read as no-ops / no value.
+// ---------------------------------------------------------------------------
+
+/** Construct a file-create statement (engine builtin): create an empty file (and parents), leaving an existing file untouched. */
+export function fileCreate(path: TextExpr): Stmt {
+  return withLoc({ kind: "fileCreate", path });
+}
+
+/** Construct a directory-create statement (engine builtin): create a directory including parents. */
+export function dirCreate(path: TextExpr): Stmt {
+  return withLoc({ kind: "dirCreate", path });
+}
+
+/** Construct a file-delete statement (engine builtin): delete a regular file or an empty directory. */
+export function fileDelete(path: TextExpr): Stmt {
+  return withLoc({ kind: "fileDelete", path });
+}
+
+/** Construct a file-write statement (engine builtin): replace a file's whole contents with the text (UTF-8). */
+export function fileWrite(path: TextExpr, text: TextExpr): Stmt {
+  return withLoc({ kind: "fileWrite", path, text });
+}
+
+/** Construct a file-append statement (engine builtin): append the text plus a newline to a file, creating it if needed. */
+export function fileAppend(path: TextExpr, text: TextExpr): Stmt {
+  return withLoc({ kind: "fileAppend", path, text });
+}
+
+/** Construct a file-contents expression (engine builtin): the whole text of a file, or no value when it is missing. */
+export function fileContents(path: TextExpr): Expr {
+  return { kind: "fileContents", path };
+}
+
+/** Construct a file-line expression (engine builtin): the 1-based line of a file, or no value when out of range / missing. */
+export function fileLine(path: TextExpr, line: Expr): Expr {
+  return { kind: "fileLine", path, line };
+}
+
+/** Construct a file-line-count expression (engine builtin): the number of lines in a file, or no value when it is missing. */
+export function fileLineCount(path: TextExpr): Expr {
+  return { kind: "fileLineCount", path };
+}
+
+/** Construct a file-exists condition (engine builtin): a file or directory exists at the path. */
+export function fileExists(path: TextExpr): Cond {
+  return { kind: "fileExists", path };
+}

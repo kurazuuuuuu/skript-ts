@@ -40,6 +40,9 @@ import java.util.logging.Logger;
  * timers with tick/complete events). Phase 8 adds the third slice
  * (skript-db scope: data source values, parameterized SQL execution
  * with result storage into variables, and the last-error expression).
+ * Phase 9 adds the fourth slice (skUtilities scope: the text file
+ * core — create / delete / write / append / read files under an
+ * engine-confined root, line access, and an existence condition).
  */
 final class Engine {
 
@@ -104,6 +107,7 @@ final class Engine {
     private WsHost wsHost;
     private TimerHost timerHost;
     private Database database;
+    private Files files;
 
     Engine(Variables variables, Logger logger) {
         this.variables = variables;
@@ -128,6 +132,16 @@ final class Engine {
      */
     void setDatabase(Database database) {
         this.database = database;
+    }
+
+    /**
+     * Install the text-file helper (called by the plugin on enable).
+     * Like the database, the file core fires no events back into the
+     * engine, so it is held directly rather than through a host
+     * interface.
+     */
+    void setFiles(Files files) {
+        this.files = files;
     }
 
     /** Replace the running program (flat list of top-level IR nodes, in load order). */
@@ -304,6 +318,41 @@ final class Engine {
                     logger.warning("skript-ts: dbExecute target is not a data source");
                 }
             }
+            case "fileCreate" -> {
+                if (files == null) {
+                    logger.warning("skript-ts: fileCreate without a file helper installed");
+                } else {
+                    files.createFile(renderText(node(stmt.get("path")), ctx));
+                }
+            }
+            case "dirCreate" -> {
+                if (files == null) {
+                    logger.warning("skript-ts: dirCreate without a file helper installed");
+                } else {
+                    files.createDirectory(renderText(node(stmt.get("path")), ctx));
+                }
+            }
+            case "fileDelete" -> {
+                if (files == null) {
+                    logger.warning("skript-ts: fileDelete without a file helper installed");
+                } else {
+                    files.delete(renderText(node(stmt.get("path")), ctx));
+                }
+            }
+            case "fileWrite" -> {
+                if (files == null) {
+                    logger.warning("skript-ts: fileWrite without a file helper installed");
+                } else {
+                    files.write(renderText(node(stmt.get("path")), ctx), renderText(node(stmt.get("text")), ctx));
+                }
+            }
+            case "fileAppend" -> {
+                if (files == null) {
+                    logger.warning("skript-ts: fileAppend without a file helper installed");
+                } else {
+                    files.appendLine(renderText(node(stmt.get("path")), ctx), renderText(node(stmt.get("text")), ctx));
+                }
+            }
             default -> logger.warning("skript-ts: unknown statement kind '" + kind(stmt) + "'");
         }
     }
@@ -325,6 +374,10 @@ final class Engine {
             case "timerActive" -> {
                 String name = renderText(node(cond.get("name")), ctx);
                 yield timerHost != null && name != null && timerHost.isActive(name);
+            }
+            case "fileExists" -> {
+                String path = renderText(node(cond.get("path")), ctx);
+                yield files != null && path != null && files.exists(path);
             }
             default -> {
                 logger.warning("skript-ts: unknown condition kind '" + kind(cond) + "'");
@@ -387,6 +440,22 @@ final class Engine {
                 }
             }
             case "dbLastError" -> database == null ? null : database.lastError();
+            case "fileContents" -> {
+                if (files == null) yield null;
+                String path = renderText(node(expr.get("path")), ctx);
+                yield path == null ? null : files.contents(path);
+            }
+            case "fileLine" -> {
+                if (files == null) yield null;
+                String path = renderText(node(expr.get("path")), ctx);
+                Object line = evalExpr(node(expr.get("line")), ctx);
+                yield path == null || !(line instanceof Number n) ? null : files.line(path, n.doubleValue());
+            }
+            case "fileLineCount" -> {
+                if (files == null) yield null;
+                String path = renderText(node(expr.get("path")), ctx);
+                yield path == null ? null : files.lineCount(path);
+            }
             case "format" -> renderParts(list(expr.get("parts")), ctx);
             default -> {
                 logger.warning("skript-ts: unknown expression kind '" + kind(expr) + "'");

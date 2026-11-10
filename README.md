@@ -354,6 +354,52 @@ TCP from the server process is restricted), so MySQL and friends
 are implemented from the documented URL contract but unverified
 here; SQLite is the verified path.
 
+### skUtilities slice 1: the text file core
+
+skUtilities is a GPL-3.0 addon, so — like the engine itself — this
+slice is a clean-room reimplementation from documented behavior
+only; no addon code was consulted. Its flagship area is file
+operations, and this slice covers the core of it: create, delete,
+write, append, and read text files, count and pick lines, and test
+existence.
+
+Paths are text expressions confined to the engine's files root,
+`plugins/skript-ts/files/`: relative paths resolve under it, and
+absolute paths or paths that escape the root after normalization
+are refused — statements do nothing, expressions yield no value,
+the condition is false. The original addon is deliberately
+non-restrictive about paths (its README warns it can damage a
+server), so the confinement is an intentional engine safety rule,
+not a documented behavior. `fileCreate` makes parent directories
+and an empty file and leaves an existing file's contents
+untouched; `fileWrite` replaces the whole file (UTF-8);
+`fileAppend` adds the text plus a newline; `fileDelete` removes a
+regular file or an *empty* directory (there is no recursive
+delete). `fileContents` returns the whole file as one string,
+`fileLine` is 1-based, and `fileLineCount` counts lines (an empty
+file is 0); all three yield no value for a missing file. Failures
+never throw: they log a warning engine side. `examples/skutil.ts`
+is the sample program.
+
+| TypeScript | Meaning |
+| --- | --- |
+| `fileCreate(path)` | create an empty file (and parents), leaving an existing file untouched |
+| `dirCreate(path)` | create a directory including parents |
+| `fileDelete(path)` | delete a regular file or an empty directory |
+| `fileWrite(path, text)` | replace a file's whole contents with the text |
+| `fileAppend(path, text)` | append the text plus a newline to a file |
+| `fileContents(path)` | the whole text of a file (no value when missing) |
+| `fileLine(path, n)` | the 1-based line `n` of a file (no value when out of range / missing) |
+| `fileLineCount(path)` | the number of lines in a file (no value when missing) |
+| `fileExists(path)` | condition: a file or directory exists at the path |
+
+Verified by `examples/behavior/skutil.behavior.ts` (create →
+append → contents read-back → per-line read-back → line count →
+a refused `../` escape → delete). The addon's URL features
+(text fetch / download) are out of this slice: they need outbound
+network access, which this environment restricts from the server
+process, so they would be unverifiable here.
+
 ## Development
 
 ```sh

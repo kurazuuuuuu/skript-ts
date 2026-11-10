@@ -39,6 +39,9 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     private WebSockets websockets;
     private Timers timers;
     private Database database;
+    // Fully qualified: this class imports java.nio.file.Files for
+    // script loading, which shadows the engine's own Files helper.
+    private net.krz.skriptts.Files files;
     private final List<Command> registeredCommands = new ArrayList<>();
 
     @Override
@@ -129,6 +132,8 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         timers.start();
         database = new Database(variables, dataDir, getLogger());
         engine.setDatabase(database);
+        files = new net.krz.skriptts.Files(dataDir.resolve("files"), getLogger());
+        engine.setFiles(files);
         loadScripts();
         getServer().getPluginManager().registerEvents(this, this);
         getLogger().info("skript-ts engine enabled");

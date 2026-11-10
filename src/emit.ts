@@ -42,7 +42,10 @@ function emitValue(e: Expr): string {
         case "timerTimeLeft":
         case "dataSource":
         case "dbLastError":
-            // Engine-builtin expressions (phases 6-8) exist only in
+        case "fileContents":
+        case "fileLine":
+        case "fileLineCount":
+            // Engine-builtin expressions (phases 6-9) exist only in
             // the engine jar; there is no Skript text form to emit.
             throw new Error(`Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
@@ -92,6 +95,9 @@ function emitString(e: Expr): string {
         case "timerTimeLeft":
         case "dataSource":
         case "dbLastError":
+        case "fileContents":
+        case "fileLine":
+        case "fileLineCount":
             throw new Error(`Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
@@ -134,6 +140,7 @@ function emitCond(c: Cond): string {
         case "isOp":
             return `${emitValue(c.target)} is op`;
         case "timerActive":
+        case "fileExists":
             throw new Error(`Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = c;
@@ -201,6 +208,11 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         case "timerPause":
         case "timerResume":
         case "dbExecute":
+        case "fileCreate":
+        case "dirCreate":
+        case "fileDelete":
+        case "fileWrite":
+        case "fileAppend":
             throw new Error(`Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = s;

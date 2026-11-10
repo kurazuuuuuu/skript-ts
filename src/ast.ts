@@ -28,7 +28,13 @@ export type Expr =
   // mysql://..., mariadb://..., postgresql://...), and the message
   // of the last failed database execution.
   | { kind: "dataSource"; url: TextExpr }
-  | { kind: "dbLastError" };
+  | { kind: "dbLastError" }
+  // Engine-builtin expressions (skUtilities slice, phase 9): reads
+  // from text files under the engine's files root. All three yield
+  // no value when the file is missing.
+  | { kind: "fileContents"; path: TextExpr }
+  | { kind: "fileLine"; path: TextExpr; line: Expr }
+  | { kind: "fileLineCount"; path: TextExpr };
 
 /** Represents a Skript text expression. */
 export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
@@ -38,7 +44,10 @@ export type Cond =
   | { kind: "hasPermission"; target: Expr; permission: string }
   | { kind: "isOp"; target: Expr }
   // Engine-builtin condition (SharpSK slice, phase 7): a named timer exists.
-  | { kind: "timerActive"; name: TextExpr };
+  | { kind: "timerActive"; name: TextExpr }
+  // Engine-builtin condition (skUtilities slice, phase 9): a file or
+  // directory exists under the engine's files root.
+  | { kind: "fileExists"; path: TextExpr };
 
 /** Represents a Skript variable expression. */
 export type VariableExpr = Extract<Expr, { kind: "variable" }>;
@@ -74,7 +83,15 @@ export type Stmt =
   // mapped to <store>::<column>::<row> entries (and <store> itself
   // becomes the row count); otherwise the variable receives the
   // number of affected rows.
-  | { kind: "dbExecute"; datasource: Expr; query: TextExpr; store?: VariableExpr; loc?: SourceLoc };
+  | { kind: "dbExecute"; datasource: Expr; query: TextExpr; store?: VariableExpr; loc?: SourceLoc }
+  // Engine-builtin statements (skUtilities slice, phase 9): the text
+  // file core. Paths are text expressions resolved by the engine
+  // under its files root; escaping paths are refused.
+  | { kind: "fileCreate"; path: TextExpr; loc?: SourceLoc }
+  | { kind: "dirCreate"; path: TextExpr; loc?: SourceLoc }
+  | { kind: "fileDelete"; path: TextExpr; loc?: SourceLoc }
+  | { kind: "fileWrite"; path: TextExpr; text: TextExpr; loc?: SourceLoc }
+  | { kind: "fileAppend"; path: TextExpr; text: TextExpr; loc?: SourceLoc };
 
 /** Represents a Skript event kind. The ws* kinds are engine-builtin events (phase 6), the timer* kinds are phase 7. */
 export type EventKind =
