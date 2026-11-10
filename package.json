@@ -1,0 +1,24 @@
+{
+  "description": "Write Minecraft Skript scripts in typed TypeScript and transpile them to .sk files.",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "name": "skript-ts",
+  "packageManager": "pnpm@12.15.0",
+  "private": true,
+  "scripts": {
+    "emit-examples": "tsx examples/print-all.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "type": "module",
+  "version": "0.1.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
