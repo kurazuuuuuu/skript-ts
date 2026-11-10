@@ -1,4 +1,12 @@
-import type { Expr, TextExpr, Cond, VariableExpr, Stmt, TopLevel, Script, CommandArgType } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, Stmt, TopLevel, Script, CommandArgType, SourceLoc } from "./ast.js";
+import { captureLoc } from "./loc.js";
+
+/** Attach the TypeScript call-site location to a freshly built AST node. */
+function withLoc<T extends Stmt | TopLevel>(node: T): T {
+  const loc: SourceLoc | undefined = captureLoc();
+  if (loc !== undefined) node.loc = loc;
+  return node;
+}
 
 /** Construct a player expression. */
 export function player(): Expr {
@@ -79,74 +87,74 @@ export function isOp(target: Expr): Cond {
 
 /** Construct a send statement. */
 export function send(target: Expr, message: TextExpr): Stmt {
-  return { kind: "send", target, message };
+  return withLoc({ kind: "send", target, message });
 }
 
 /** Construct a broadcast statement. */
 export function broadcast(message: TextExpr): Stmt {
-  return { kind: "broadcast", message };
+  return withLoc({ kind: "broadcast", message });
 }
 
 /** Construct a give statement. */
 export function give(target: Expr, itemName: string, amount: number): Stmt {
-  return { kind: "give", target, itemName, amount };
+  return withLoc({ kind: "give", target, itemName, amount });
 }
 
 /** Construct a teleport statement. */
 export function teleport(target: Expr, location: Expr): Stmt {
-  return { kind: "teleport", target, location };
+  return withLoc({ kind: "teleport", target, location });
 }
 
 /** Construct a set-variable statement. */
 export function set(variable: VariableExpr, value: Expr): Stmt {
-  return { kind: "setVar", variable, value };
+  return withLoc({ kind: "setVar", variable, value });
 }
 
 /** Construct an add-variable statement. */
 export function add(variable: VariableExpr, value: Expr): Stmt {
-  return { kind: "addVar", variable, value };
+  return withLoc({ kind: "addVar", variable, value });
 }
 
 /** Construct an if statement with optional else branch. */
 export function ifElse(cond: Cond, then: readonly Stmt[], elseBody?: readonly Stmt[]): Stmt {
-  if (elseBody === undefined) return { kind: "if", cond, then };
-  return { kind: "if", cond, then, else: elseBody };
+  if (elseBody === undefined) return withLoc({ kind: "if", cond, then });
+  return withLoc({ kind: "if", cond, then, else: elseBody });
 }
 
 /** Construct a loop-players statement. */
 export function loopPlayers(body: readonly Stmt[]): Stmt {
-  return { kind: "loopPlayers", body };
+  return withLoc({ kind: "loopPlayers", body });
 }
 
 /** Construct an on-join event. */
 export function onJoin(body: readonly Stmt[]): TopLevel {
-  return { kind: "event", event: "join", body };
+  return withLoc({ kind: "event", event: "join", body });
 }
 
 /** Construct an on-first-join event. */
 export function onFirstJoin(body: readonly Stmt[]): TopLevel {
-  return { kind: "event", event: "firstJoin", body };
+  return withLoc({ kind: "event", event: "firstJoin", body });
 }
 
 /** Construct an on-quit event. */
 export function onQuit(body: readonly Stmt[]): TopLevel {
-  return { kind: "event", event: "quit", body };
+  return withLoc({ kind: "event", event: "quit", body });
 }
 
 /** Construct an on-chat event. */
 export function onChat(body: readonly Stmt[]): TopLevel {
-  return { kind: "event", event: "chat", body };
+  return withLoc({ kind: "event", event: "chat", body });
 }
 
 /** Construct an on-death event. */
 export function onDeath(body: readonly Stmt[]): TopLevel {
-  return { kind: "event", event: "death", body };
+  return withLoc({ kind: "event", event: "death", body });
 }
 
 /** Construct a command declaration with resolved optional-argument flag. */
 export function command(name: string, argType: CommandArgType | null, body: readonly Stmt[], argOptional?: boolean): TopLevel {
   const resolved = argOptional === undefined ? argType !== null : argOptional;
-  return { kind: "command", name, argType, argOptional: resolved, body };
+  return withLoc({ kind: "command", name, argType, argOptional: resolved, body });
 }
 
 /** Construct a script from top-level declarations. */

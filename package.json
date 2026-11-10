@@ -2,6 +2,7 @@
   "description": "Write Minecraft Skript scripts in typed TypeScript and transpile them to .sk files.",
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "mineflayer": "^4.39.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"

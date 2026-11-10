@@ -25,16 +25,19 @@ export type Cond =
 /** Represents a Skript variable expression. */
 export type VariableExpr = Extract<Expr, { kind: "variable" }>;
 
+/** Source position in the TypeScript file where a builder call was made. */
+export interface SourceLoc { file: string; line: number; column: number }
+
 /** Represents a Skript statement. */
 export type Stmt =
-  | { kind: "send"; target: Expr; message: TextExpr }
-  | { kind: "broadcast"; message: TextExpr }
-  | { kind: "give"; target: Expr; itemName: string; amount: number }
-  | { kind: "teleport"; target: Expr; location: Expr }
-  | { kind: "setVar"; variable: VariableExpr; value: Expr }
-  | { kind: "addVar"; variable: VariableExpr; value: Expr }
-  | { kind: "if"; cond: Cond; then: readonly Stmt[]; else?: readonly Stmt[] }
-  | { kind: "loopPlayers"; body: readonly Stmt[] };
+  | { kind: "send"; target: Expr; message: TextExpr; loc?: SourceLoc }
+  | { kind: "broadcast"; message: TextExpr; loc?: SourceLoc }
+  | { kind: "give"; target: Expr; itemName: string; amount: number; loc?: SourceLoc }
+  | { kind: "teleport"; target: Expr; location: Expr; loc?: SourceLoc }
+  | { kind: "setVar"; variable: VariableExpr; value: Expr; loc?: SourceLoc }
+  | { kind: "addVar"; variable: VariableExpr; value: Expr; loc?: SourceLoc }
+  | { kind: "if"; cond: Cond; then: readonly Stmt[]; else?: readonly Stmt[]; loc?: SourceLoc }
+  | { kind: "loopPlayers"; body: readonly Stmt[]; loc?: SourceLoc };
 
 /** Represents a Skript event kind. */
 export type EventKind = "join" | "firstJoin" | "quit" | "chat" | "death";
@@ -44,8 +47,8 @@ export type CommandArgType = "text" | "player" | "integer";
 
 /** Represents a Skript top-level declaration. */
 export type TopLevel =
-  | { kind: "event"; event: EventKind; body: readonly Stmt[] }
-  | { kind: "command"; name: string; argType: CommandArgType | null; argOptional: boolean; body: readonly Stmt[] };
+  | { kind: "event"; event: EventKind; body: readonly Stmt[]; loc?: SourceLoc }
+  | { kind: "command"; name: string; argType: CommandArgType | null; argOptional: boolean; body: readonly Stmt[]; loc?: SourceLoc };
 
 /** Represents a Skript script. */
 export interface Script { kind: "script"; body: readonly TopLevel[] }

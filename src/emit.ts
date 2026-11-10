@@ -1,4 +1,5 @@
-import type { Cond, Expr, Script, Stmt, TextExpr, TopLevel, VariableExpr } from "./ast.js";
+import type { Cond, Expr, Script, SourceLoc, Stmt, TextExpr, TopLevel, VariableExpr } from "./ast.js";
+import type { LineMapping } from "./source-map.js";
 
 function escapeText(s: string): string {
     return s.replace(/"/g, '""').replace(/%/g, "%%");
@@ -116,41 +117,52 @@ function emitCond(c: Cond): string {
     }
 }
 
-function emitBlock(stmts: readonly Stmt[], level: number): string[] {
-    const lines: string[] = [];
-    for (const stmt of stmts) {
-        lines.push(...emitStmt(stmt, level));
-    }
+/** One emitted line plus the AST node that produced it. */
+interface OwnedLine {
+    text: string;
+    node: string;
+    loc?: SourceLoc;
+}
+
+function own(text: string, node: string, loc: SourceLoc | undefined): OwnedLine {
+    return loc === undefined ? { text, node } : { text, node, loc };
+}
+
+function emitBlock(stmts: readonly Stmt[], level: number, parentPath: string, branch: string): OwnedLine[] {
+    const lines: OwnedLine[] = [];
+    stmts.forEach((stmt, i) => {
+        lines.push(...emitStmt(stmt, level, `${parentPath}.${branch}[${i}]`));
+    });
     return lines;
 }
 
-function emitStmt(s: Stmt, level: number): string[] {
+function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     const prefix = " ".repeat(4 * level);
     switch (s.kind) {
         case "send":
-            return [`${prefix}send ${emitText(s.message)} to ${emitValue(s.target)}`];
+            return [own(`${prefix}send ${emitText(s.message)} to ${emitValue(s.target)}`, path, s.loc)];
         case "broadcast":
-            return [`${prefix}broadcast ${emitText(s.message)}`];
+            return [own(`${prefix}broadcast ${emitText(s.message)}`, path, s.loc)];
         case "give":
-            return [`${prefix}give ${String(s.amount)} ${s.itemName} to ${emitValue(s.target)}`];
+            return [own(`${prefix}give ${String(s.amount)} ${s.itemName} to ${emitValue(s.target)}`, path, s.loc)];
         case "teleport":
-            return [`${prefix}teleport ${emitValue(s.target)} to ${emitValue(s.location)}`];
+            return [own(`${prefix}teleport ${emitValue(s.target)} to ${emitValue(s.location)}`, path, s.loc)];
         case "setVar":
-            return [`${prefix}set ${emitValue(s.variable)} to ${emitValue(s.value)}`];
+            return [own(`${prefix}set ${emitValue(s.variable)} to ${emitValue(s.value)}`, path, s.loc)];
         case "addVar":
-            return [`${prefix}add ${emitValue(s.value)} to ${emitValue(s.variable)}`];
+            return [own(`${prefix}add ${emitValue(s.value)} to ${emitValue(s.variable)}`, path, s.loc)];
         case "if": {
-            const lines = [`${prefix}if ${emitCond(s.cond)}:`];
-            lines.push(...emitBlock(s.then, level + 1));
+            const lines = [own(`${prefix}if ${emitCond(s.cond)}:`, path, s.loc)];
+            lines.push(...emitBlock(s.then, level + 1, path, "then"));
             if (s.else !== undefined) {
-                lines.push(`${prefix}else:`);
-                lines.push(...emitBlock(s.else, level + 1));
+                lines.push(own(`${prefix}else:`, path, s.loc));
+                lines.push(...emitBlock(s.else, level + 1, path, "else"));
             }
             return lines;
         }
         case "loopPlayers": {
-            const lines = [`${prefix}loop all players:`];
-            lines.push(...emitBlock(s.body, level + 1));
+            const lines = [own(`${prefix}loop all players:`, path, s.loc)];
+            lines.push(...emitBlock(s.body, level + 1, path, "body"));
             return lines;
         }
         default: {
@@ -161,7 +173,7 @@ function emitStmt(s: Stmt, level: number): string[] {
     }
 }
 
-function emitTop(t: TopLevel): string {
+function emitTop(t: TopLevel, path: string): OwnedLine[] {
     switch (t.kind) {
         case "event": {
             const header =
@@ -174,8 +186,7 @@ function emitTop(t: TopLevel): string {
                         : t.event === "chat"
                           ? "on chat:"
                           : "on death:";
-            const lines = [header, ...emitBlock(t.body, 1)];
-            return lines.join("\n");
+            return [own(header, path, t.loc), ...emitBlock(t.body, 1, path, "body")];
         }
         case "command": {
             const argPart =
@@ -183,8 +194,11 @@ function emitTop(t: TopLevel): string {
                     ? ""
                     : ` ${t.argOptional ? `[<${t.argType}>]` : `<${t.argType}>`}`;
             const header = `command /${t.name}${argPart}:`;
-            const lines = [header, "    trigger:", ...emitBlock(t.body, 2)];
-            return lines.join("\n");
+            return [
+                own(header, path, t.loc),
+                own("    trigger:", path, t.loc),
+                ...emitBlock(t.body, 2, path, "body"),
+            ];
         }
         default: {
             const exhaustive: never = t;
@@ -194,6 +208,27 @@ function emitTop(t: TopLevel): string {
     }
 }
 
+/** Result of emitting a script together with its line mappings. */
+export interface EmitResult {
+    code: string;
+    lines: LineMapping[];
+}
+
+/** Emit Skript source and, for every emitted line, which AST node and TS call site produced it. */
+export function emitWithMap(script: Script): EmitResult {
+    const owned: OwnedLine[] = [];
+    script.body.forEach((top, i) => {
+        if (i > 0) owned.push({ text: "", node: "" });
+        owned.push(...emitTop(top, `body[${i}]`));
+    });
+    const code = owned.map((l) => l.text).join("\n") + "\n";
+    const lines: LineMapping[] = owned.map((l, i) => {
+        const base: LineMapping = { line: i + 1, node: l.node };
+        return l.loc === undefined ? base : { ...base, ts: l.loc };
+    });
+    return { code, lines };
+}
+
 export function emit(script: Script): string {
-    return script.body.map(emitTop).join("\n\n") + "\n";
+    return emitWithMap(script).code;
 }
