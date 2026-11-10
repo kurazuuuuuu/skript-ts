@@ -1,0 +1,25 @@
+on chat:
+    if message is "ping":
+        send "pong" to player
+    if message is "hello":
+        if player is not op:
+            send "hi, regular player" to player
+    if message is "hello":
+        if player is op:
+            send "hi, boss" to player
+
+command /calc [<integer>]:
+    trigger:
+        send "calc: double=%(arg-1 * 2)%, half=%(arg-1 / 2)%, mod3=%mod(arg-1, 3)%" to player
+        if arg-1 is greater than or equal to 100:
+            broadcast "big number: %arg-1%"
+
+command /gate [<text>]:
+    trigger:
+        if arg-1 is "open":
+            send "gate opens" to player
+        else:
+            if arg-1 is "sesame":
+                send "gate opens" to player
+            else:
+                send "gate stays shut" to player

@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, Stmt, TopLevel, Script, CommandArgType, SourceLoc } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -73,6 +73,114 @@ export function locationOf(target: Expr): Expr {
 /** Construct a format expression from parts. */
 export function fmt(...parts: (string | Expr)[]): TextExpr {
   return { kind: "format", parts };
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 11): comparisons, logic, arithmetic
+//
+// Comparisons mirror Skript's compare condition, as verified
+// against the real Skript 2.17.1 in the sandbox: text equality is
+// case-insensitive, values of different types are never equal (a
+// number is never equal to its text form), a value with no value
+// (e.g. an unset variable) is not equal to anything — not even to
+// another unset value — and only numbers can be ordered (ordering
+// a text is always false). Negated forms ("is not ...") are exact
+// boolean negations of the positive form, including for values
+// that cannot be compared at all.
+//
+// Arithmetic mirrors Skript's arithmetic expression plus its mod()
+// function: operands must both be numbers, except that "+" over
+// two texts concatenates them; any other type combination yields
+// no value. Division is real division (7 / 2 is 3.5, 1 / 0 is
+// Infinity); remainder is the mathematical modulo — the result
+// takes the divisor's sign (remainder(-1, 10) is 9) and is NaN
+// for a zero divisor.
+// ---------------------------------------------------------------------------
+
+/** Construct an equality condition: the two values are equal (texts compare case-insensitively). */
+export function equals(left: Expr, right: Expr): Cond {
+  return { kind: "equals", left, right };
+}
+
+/** Construct an inequality condition: the negation of equals(). */
+export function notEquals(left: Expr, right: Expr): Cond {
+  return { kind: "notEquals", left, right };
+}
+
+/** Construct a greater-than condition (numbers only; false for anything else). */
+export function greaterThan(left: Expr, right: Expr): Cond {
+  return { kind: "greaterThan", left, right };
+}
+
+/** Construct a greater-than-or-equal condition (numbers only; false for anything else). */
+export function greaterOrEqual(left: Expr, right: Expr): Cond {
+  return { kind: "greaterOrEqual", left, right };
+}
+
+/** Construct a less-than condition (numbers only; false for anything else). */
+export function lessThan(left: Expr, right: Expr): Cond {
+  return { kind: "lessThan", left, right };
+}
+
+/** Construct a less-than-or-equal condition (numbers only; false for anything else). */
+export function lessOrEqual(left: Expr, right: Expr): Cond {
+  return { kind: "lessOrEqual", left, right };
+}
+
+function combine(kind: "and" | "or", conds: readonly Cond[]): Cond {
+  if (conds.length < 2) {
+    throw new RangeError(`${kind}() needs at least two conditions`);
+  }
+  let acc: Cond = conds[0]!;
+  for (let i = 1; i < conds.length; i++) {
+    acc = kind === "and" ? { kind: "and", left: acc, right: conds[i]! } : { kind: "or", left: acc, right: conds[i]! };
+  }
+  return acc;
+}
+
+/** Construct an and condition: every given condition holds. */
+export function and(...conds: Cond[]): Cond {
+  return combine("and", conds);
+}
+
+/** Construct an or condition: at least one of the given conditions holds. */
+export function or(...conds: Cond[]): Cond {
+  return combine("or", conds);
+}
+
+/** Construct a not condition: the given condition does not hold. */
+export function not(cond: Cond): Cond {
+  return { kind: "not", cond };
+}
+
+/** Construct an arithmetic expression from an operator and two operands. */
+export function arith(op: ArithOp, left: Expr, right: Expr): Expr {
+  return { kind: "arith", op, left, right };
+}
+
+/** Construct an addition expression (or text concatenation, when both operands are texts). */
+export function plus(left: Expr, right: Expr): Expr {
+  return arith("+", left, right);
+}
+
+/** Construct a subtraction expression. */
+export function minus(left: Expr, right: Expr): Expr {
+  return arith("-", left, right);
+}
+
+/** Construct a multiplication expression. */
+export function times(left: Expr, right: Expr): Expr {
+  return arith("*", left, right);
+}
+
+/** Construct a division expression (real division; dividing by zero yields Infinity or NaN). */
+export function dividedBy(left: Expr, right: Expr): Expr {
+  return arith("/", left, right);
+}
+
+/** Construct a remainder expression: the mathematical modulo (sign of the divisor; NaN for a zero divisor). */
+export function remainder(left: Expr, right: Expr): Expr {
+  return arith("mod", left, right);
 }
 
 /** Construct a has-permission condition. */

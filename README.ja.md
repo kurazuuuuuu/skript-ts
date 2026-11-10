@@ -49,9 +49,11 @@ on join:
     send "おかえりなさい、%player% さん" to player
 ```
 
-完成したサンプルプログラム5本（参加ウェルカム、キットコマンド、チャットログ中継、
-死亡カウンタ、スポーンコマンド）は [`examples/`](examples/) にあり、
-ゴールデンテストのフィクスチャも兼ねています。
+サンプルプログラムは [`examples/`](examples/) にあります。v0 の5本
+（参加ウェルカム、キットコマンド、チャットログ中継、死亡カウンタ、
+スポーンコマンド）、エンジン内蔵機能ごとのサンプル、そしてコア言語
+（比較・論理・算術）の `logic.ts` です。ゴールデンテストのフィクスチャ
+も兼ねています。
 
 ## 対応サブセット（SPEC、v0）
 
@@ -98,7 +100,20 @@ on join:
 | `num(n)` / `bool(b)` | `42` / `true` | 同じ |
 | `item(name)` | `diamond sword` | 同じ |
 | `locationOf(e)` | `location of <e>` | `%location of <e>%` |
+| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` など | `%(<a> + <b>)%` など |
+| `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可） | `mod(<a>, <b>)` | `%mod(<a>, <b>)%` |
 | `fmt(...parts)` | `"<parts>"` | 外側の文字列に平坦化 |
+
+算術の意味論（本家 Skript 2.17.1 の実挙動で裏取り済み）: 被演算子は
+原則として両方とも数値です。例外は `+` で、両方が文字列なら連結に
+なります（`"5" + "6"` は数値の 11 ではなく文字列 `"56"`）。それ以外の
+型の組み合わせ（文字列と数値の混在も、どちらの順でも）はエラーに
+ならず「値なし」になります。除算は実数除算で、ゼロ除算は doubles の
+規則に従います（`1 / 0` は Infinity）。出力は常に括弧で囲むため、
+Skript 自身の演算子優先順位に依存しません。剰余は Skript の
+`mod()` 関数です（Skript に中置の剰余演算子はありません）。数学的
+剰余で、結果の符号は除数に一致します（`mod(-1, 10)` は `9`）。
+除数がゼロのときは NaN です。
 
 注意: `on death` イベントには `player` が存在せず、Skript にエラーとして
 弾かれます（"There's no player in an on death event"）。死亡したプレイヤーは
@@ -116,6 +131,33 @@ on join:
 | --- | --- |
 | `hasPermission(target, "node")` | `<target> has permission "node"` |
 | `isOp(target)` | `<target> is op` |
+| `equals(a, b)` | `<a> is <b>` |
+| `notEquals(a, b)` | `<a> is not <b>` |
+| `greaterThan(a, b)` | `<a> is greater than <b>` |
+| `greaterOrEqual(a, b)` | `<a> is greater than or equal to <b>` |
+| `lessThan(a, b)` | `<a> is less than <b>` |
+| `lessOrEqual(a, b)` | `<a> is less than or equal to <b>` |
+| `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | 入れ子の `if`/`else` へ展開（下記） |
+
+比較の意味論（推測ではなく本家 Skript 2.17.1 の実挙動で裏取り済み）:
+文字列の等値は **大文字小文字を区別しません**。異なる型の値は決して
+等しくなりません（数値の `1` と文字列 `"1"` は非等値）。**値なし**
+（未設定の変数）は何とも等しくなく、値なし同士でも等しくありません。
+不等値は等値の厳密な否定で、未設定の変数は「0 ではない」が真に
+なります。大小比較は数値のみに有効で、文字列や型の混在は偽に
+なり、否定形も厳密な否定です（比較不能な組は「より大きくない」が
+真）。エンジン jar も同じ意味論をネイティブに実装しています。
+
+論理演算は `.sk` のテキストとしては出力しません。Skript 2.17.1 は
+条件位置の接続表現を、試した全ての形（裸・括弧つき・他の条件との
+混在）でパース拒否し、一般の `not` 条件も存在しないからです。
+そのため `ifElse` は論理を制御フローへ展開します。`and` は2番目の
+検査を1番目の中に入れ子にし（else 節を複製）、`or` は else 節側へ
+入れ子にし、`not` は else がある場合は分岐交換、ド・モルガンの
+適用、そして Skript ネイティブの否定形（`is not ...`、
+`does not have permission`）を使い分けます。このサブセットの条件は
+純粋（副作用なし）なので、この展開は意味論的に厳密です。エンジン
+側は `and`/`or`/`not` を直接評価します。
 
 ### 文字列のエスケープ
 リテラルテキストは Skript の規則に従います。`"` は `""` に、リテラルな `%` は `%%` に
@@ -302,7 +344,7 @@ Ersatz は Skript と PlaceholderAPI の橋渡しアドオンで、このスラ�
 | `placeholderPrefix()` | マッチした prefix（イベント内） |
 | `setPlaceholderResult(text)` | 処理中のリクエストへ返答する |
 
-検証は `examples/behavior/ersatz.behavior.ts` で、実物の PlaceholderAPI を通した往復として行います（自前の2つの prefix を提供し、裸名・前後にリテラルを持つ全体置換・対象プレイヤー名の解決を読み戻し、解決できないプレースホルダがリテラルのまま残ることも確認）。relational プレースホルダ（後継アドオンで追加された発展機能）と MVdWPlaceholderAPI（別プラグイン）は今回の対象外です。ハンドラは identifier を結果文字列へ埋め込んで応答を組み立てます。現行サブセットには文字列の等値条件が無いため、identifier による分岐はアドオン側の発明にせず、コア言語側の宿題として記録しています。
+検証は `examples/behavior/ersatz.behavior.ts` で、実物の PlaceholderAPI を通した往復として行います（自前の2つの prefix を提供し、裸名・前後にリテラルを持つ全体置換・対象プレイヤー名の解決を読み戻し、解決できないプレースホルダがリテラルのまま残ることも確認）。relational プレースホルダ（後継アドオンで追加された発展機能）と MVdWPlaceholderAPI（別プラグイン）は今回の対象外です。コア言語に文字列の等値条件が加わった（フェーズ11）ため、ハンドラは identifier で分岐もできます。サンプルでは `%skriptts_name%` にプレイヤー自身の名前を返し、それ以外の identifier はエコーします。
 
 ## 開発
 

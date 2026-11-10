@@ -31,6 +31,14 @@ function emitValue(e: Expr): string {
             return e.name;
         case "locationOf":
             return `location of ${emitValue(e.target)}`;
+        case "arith":
+            // Arithmetic is always parenthesized so the emitted tree
+            // means the same thing regardless of Skript's own
+            // operator precedence; mod is Skript's mod() function
+            // (Skript has no infix remainder operator).
+            return e.op === "mod"
+                ? `mod(${emitValue(e.left)}, ${emitValue(e.right)})`
+                : `(${emitValue(e.left)} ${e.op} ${emitValue(e.right)})`;
         case "format":
             return `"${emitStringParts(e.parts)}"`;
         case "wsMessage":
@@ -87,6 +95,8 @@ function emitString(e: Expr): string {
             return e.name;
         case "locationOf":
             return `%location of ${emitValue(e.target)}%`;
+        case "arith":
+            return `%${emitValue(e)}%`;
         case "format":
             return emitStringParts(e.parts);
         case "wsMessage":
@@ -139,15 +149,52 @@ function emitText(t: TextExpr): string {
     }
 }
 
-function emitCond(c: Cond): string {
+/**
+ * Emit a leaf condition (anything except and/or/not). With
+ * `negated`, emit Skript's native negated form of the same leaf:
+ * the compare condition's "is not ..." patterns, "is not op", and
+ * "does not have permission" — all verified to parse and to behave
+ * as exact boolean negations on the real Skript 2.17.1.
+ */
+function emitLeafCond(c: Cond, negated: boolean): string {
     switch (c.kind) {
         case "hasPermission":
-            return `${emitValue(c.target)} has permission "${escapeText(c.permission)}"`;
+            return negated
+                ? `${emitValue(c.target)} does not have permission "${escapeText(c.permission)}"`
+                : `${emitValue(c.target)} has permission "${escapeText(c.permission)}"`;
         case "isOp":
-            return `${emitValue(c.target)} is op`;
+            return negated ? `${emitValue(c.target)} is not op` : `${emitValue(c.target)} is op`;
+        case "equals":
+            return negated
+                ? `${emitValue(c.left)} is not ${emitValue(c.right)}`
+                : `${emitValue(c.left)} is ${emitValue(c.right)}`;
+        case "notEquals":
+            return negated
+                ? `${emitValue(c.left)} is ${emitValue(c.right)}`
+                : `${emitValue(c.left)} is not ${emitValue(c.right)}`;
+        case "greaterThan":
+            return negated
+                ? `${emitValue(c.left)} is not greater than ${emitValue(c.right)}`
+                : `${emitValue(c.left)} is greater than ${emitValue(c.right)}`;
+        case "greaterOrEqual":
+            return negated
+                ? `${emitValue(c.left)} is not greater than or equal to ${emitValue(c.right)}`
+                : `${emitValue(c.left)} is greater than or equal to ${emitValue(c.right)}`;
+        case "lessThan":
+            return negated
+                ? `${emitValue(c.left)} is not less than ${emitValue(c.right)}`
+                : `${emitValue(c.left)} is less than ${emitValue(c.right)}`;
+        case "lessOrEqual":
+            return negated
+                ? `${emitValue(c.left)} is not less than or equal to ${emitValue(c.right)}`
+                : `${emitValue(c.left)} is less than or equal to ${emitValue(c.right)}`;
         case "timerActive":
         case "fileExists":
             throw new Error(`Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`);
+        case "and":
+        case "or":
+        case "not":
+            throw new Error(`Unhandled Cond in emitCond: '${c.kind}' is a logic node, not a leaf condition`);
         default: {
             const exhaustive: never = c;
             void exhaustive;
@@ -175,6 +222,78 @@ function emitBlock(stmts: readonly Stmt[], level: number, parentPath: string, br
     return lines;
 }
 
+/**
+ * Emit an if statement, lowering logic conditions (and/or/not) to
+ * control flow. The sandbox's Skript 2.17.1 rejects every textual
+ * conjunction form probed (bare, parenthesized, =-forms, mixed
+ * with permission conditions — all "Can't understand this
+ * condition"), and has no general `not` condition either, so:
+ *
+ *   and(a, b)  ->  if a: if b: <then> else: <else>  / else: <else>
+ *   or(a, b)   ->  if a: <then>  / else: if b: <then> else: <else>
+ *   not(c)     ->  branches swapped when an else exists, De Morgan
+ *                  for and/or, and Skript's native negated leaf
+ *                  forms ("is not ...", "does not have ...") when
+ *                  there is no else to swap into.
+ *
+ * The lowering is semantically exact: conditions in this subset
+ * are pure, and the negated leaf forms are exact negations.
+ */
+function emitIfLines(
+    cond: Cond,
+    then: readonly Stmt[],
+    elseOpt: readonly Stmt[] | undefined,
+    level: number,
+    path: string,
+    loc: SourceLoc | undefined,
+): OwnedLine[] {
+    const prefix = " ".repeat(4 * level);
+    switch (cond.kind) {
+        case "and": {
+            const inner: Stmt =
+                elseOpt === undefined
+                    ? { kind: "if", cond: cond.right, then, loc }
+                    : { kind: "if", cond: cond.right, then, else: elseOpt, loc };
+            return emitIfLines(cond.left, [inner], elseOpt, level, path, loc);
+        }
+        case "or": {
+            const inner: Stmt =
+                elseOpt === undefined
+                    ? { kind: "if", cond: cond.right, then, loc }
+                    : { kind: "if", cond: cond.right, then, else: elseOpt, loc };
+            return emitIfLines(cond.left, then, [inner], level, path, loc);
+        }
+        case "not": {
+            const inner = cond.cond;
+            if (inner.kind === "not") {
+                return emitIfLines(inner.cond, then, elseOpt, level, path, loc);
+            }
+            if (inner.kind === "and" || inner.kind === "or") {
+                const flipped: Cond =
+                    inner.kind === "and"
+                        ? { kind: "or", left: { kind: "not", cond: inner.left }, right: { kind: "not", cond: inner.right } }
+                        : { kind: "and", left: { kind: "not", cond: inner.left }, right: { kind: "not", cond: inner.right } };
+                return emitIfLines(flipped, then, elseOpt, level, path, loc);
+            }
+            if (elseOpt !== undefined) {
+                return emitIfLines(inner, elseOpt, then, level, path, loc);
+            }
+            const lines = [own(`${prefix}if ${emitLeafCond(inner, true)}:`, path, loc)];
+            lines.push(...emitBlock(then, level + 1, path, "then"));
+            return lines;
+        }
+        default: {
+            const lines = [own(`${prefix}if ${emitLeafCond(cond, false)}:`, path, loc)];
+            lines.push(...emitBlock(then, level + 1, path, "then"));
+            if (elseOpt !== undefined) {
+                lines.push(own(`${prefix}else:`, path, loc));
+                lines.push(...emitBlock(elseOpt, level + 1, path, "else"));
+            }
+            return lines;
+        }
+    }
+}
+
 function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     const prefix = " ".repeat(4 * level);
     switch (s.kind) {
@@ -190,15 +309,8 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             return [own(`${prefix}set ${emitValue(s.variable)} to ${emitValue(s.value)}`, path, s.loc)];
         case "addVar":
             return [own(`${prefix}add ${emitValue(s.value)} to ${emitValue(s.variable)}`, path, s.loc)];
-        case "if": {
-            const lines = [own(`${prefix}if ${emitCond(s.cond)}:`, path, s.loc)];
-            lines.push(...emitBlock(s.then, level + 1, path, "then"));
-            if (s.else !== undefined) {
-                lines.push(own(`${prefix}else:`, path, s.loc));
-                lines.push(...emitBlock(s.else, level + 1, path, "else"));
-            }
-            return lines;
-        }
+        case "if":
+            return emitIfLines(s.cond, s.then, s.else, level, path, s.loc);
         case "loopPlayers": {
             const lines = [own(`${prefix}loop all players:`, path, s.loc)];
             lines.push(...emitBlock(s.body, level + 1, path, "body"));

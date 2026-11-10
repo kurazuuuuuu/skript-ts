@@ -49,6 +49,11 @@ import java.util.logging.Logger;
  * bridge — a placeholder-value expression, and script-served
  * placeholder prefixes with a request event and a result statement;
  * PlaceholderAPI itself stays an external, optional plugin).
+ * Phase 11 adds core-language comparisons, logic and arithmetic
+ * (no addon scope): equality / ordering conditions with Skript's
+ * compare semantics, and/or/not composition, and binary arithmetic
+ * whose "+" concatenates two texts and whose remainder is the
+ * mathematical modulo of Skript's mod() function.
  */
 final class Engine {
 
@@ -446,6 +451,33 @@ final class Engine {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && p.isOp();
             }
+            case "equals" -> valuesEqual(
+                    evalExpr(node(cond.get("left")), ctx), evalExpr(node(cond.get("right")), ctx));
+            case "notEquals" -> !valuesEqual(
+                    evalExpr(node(cond.get("left")), ctx), evalExpr(node(cond.get("right")), ctx));
+            case "greaterThan" -> {
+                Integer rel = numericRelation(
+                        evalExpr(node(cond.get("left")), ctx), evalExpr(node(cond.get("right")), ctx));
+                yield rel != null && rel > 0;
+            }
+            case "greaterOrEqual" -> {
+                Integer rel = numericRelation(
+                        evalExpr(node(cond.get("left")), ctx), evalExpr(node(cond.get("right")), ctx));
+                yield rel != null && rel >= 0;
+            }
+            case "lessThan" -> {
+                Integer rel = numericRelation(
+                        evalExpr(node(cond.get("left")), ctx), evalExpr(node(cond.get("right")), ctx));
+                yield rel != null && rel < 0;
+            }
+            case "lessOrEqual" -> {
+                Integer rel = numericRelation(
+                        evalExpr(node(cond.get("left")), ctx), evalExpr(node(cond.get("right")), ctx));
+                yield rel != null && rel <= 0;
+            }
+            case "and" -> evalCond(node(cond.get("left")), ctx) && evalCond(node(cond.get("right")), ctx);
+            case "or" -> evalCond(node(cond.get("left")), ctx) || evalCond(node(cond.get("right")), ctx);
+            case "not" -> !evalCond(node(cond.get("cond")), ctx);
             case "timerActive" -> {
                 String name = renderText(node(cond.get("name")), ctx);
                 yield timerHost != null && name != null && timerHost.isActive(name);
@@ -459,6 +491,42 @@ final class Engine {
                 yield false;
             }
         };
+    }
+
+    /**
+     * Skript's compare equality, as verified against the real
+     * Skript 2.17.1: a missing value (null) is never equal to
+     * anything, not even to another missing value; numbers compare
+     * numerically; texts compare case-insensitively; values of
+     * different types are never equal (a number is not equal to its
+     * text form); anything else compares by identity/equality of
+     * the underlying object (players, worlds, locations, booleans).
+     * Inequality is the exact boolean negation of this, so an
+     * incomparable pair is "not equal" — matching Skript's negated
+     * compare patterns.
+     */
+    private static boolean valuesEqual(Object a, Object b) {
+        if (a == null || b == null) return false;
+        if (a instanceof Number na && b instanceof Number nb) {
+            double x = na.doubleValue(), y = nb.doubleValue();
+            return !Double.isNaN(x) && !Double.isNaN(y) && x == y;
+        }
+        if (a instanceof String sa && b instanceof String sb) return sa.equalsIgnoreCase(sb);
+        if (a.getClass() != b.getClass()) return false;
+        return a.equals(b);
+    }
+
+    /**
+     * The numeric ordering relation of two values, or null when
+     * they cannot be ordered. Only numbers can be ordered in
+     * Skript (texts have no ordering comparator, and mixed types
+     * are incomparable), and NaN orders against nothing.
+     */
+    private static Integer numericRelation(Object a, Object b) {
+        if (!(a instanceof Number na) || !(b instanceof Number nb)) return null;
+        double x = na.doubleValue(), y = nb.doubleValue();
+        if (Double.isNaN(x) || Double.isNaN(y)) return null;
+        return Double.compare(x, y);
     }
 
     // ------------------------------------------------------------------
@@ -546,11 +614,40 @@ final class Engine {
             }
             case "placeholderIdentifier" -> ctx.papiIdentifier;
             case "placeholderPrefix" -> ctx.papiPrefix;
+            case "arith" -> evalArith(str(expr.get("op")),
+                    evalExpr(node(expr.get("left")), ctx), evalExpr(node(expr.get("right")), ctx));
             case "format" -> renderParts(list(expr.get("parts")), ctx);
             default -> {
                 logger.warning("skript-ts: unknown expression kind '" + kind(expr) + "'");
                 yield null;
             }
+        };
+    }
+
+    /**
+     * Binary arithmetic with Skript's semantics, as verified
+     * against the real Skript 2.17.1: both operands must be
+     * numbers, except that "+" over two texts concatenates them;
+     * every other type combination (mixed text/number included)
+     * yields no value. Division is real division and follows Java
+     * doubles at zero (1/0 is Infinity, 0/0 is NaN). The remainder
+     * is Skript's mod(): the mathematical modulo whose result
+     * takes the divisor's sign — mod(-1, 10) is 9 — and NaN for a
+     * zero divisor.
+     */
+    private static Object evalArith(String op, Object a, Object b) {
+        if ("+".equals(op) && a instanceof String sa && b instanceof String sb) {
+            return sa + sb;
+        }
+        if (!(a instanceof Number na) || !(b instanceof Number nb)) return null;
+        double x = na.doubleValue(), y = nb.doubleValue();
+        return switch (op) {
+            case "+" -> x + y;
+            case "-" -> x - y;
+            case "*" -> x * y;
+            case "/" -> x / y;
+            case "mod" -> x - Math.floor(x / y) * y;
+            default -> null;
         };
     }
 

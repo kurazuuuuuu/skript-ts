@@ -7,7 +7,9 @@ import { defineBehavior } from "../../src/behavior.js";
 // and "skripttswho" (answers with the prefix and the target
 // player's name), and /papiget reads values back. Covered:
 //   1. bare placeholder name form ("skriptts_greet")
-//   2. a whole string holding one %...% token
+//   2. a whole string holding one %...% token — and the identifier
+//      "name" specifically branches inside the handler (core
+//      text-equality condition, phase 11) to the player's name
 //   3. a whole string mixing literal text and a token
 //   4. the second prefix, with player() resolved to the target
 //   5. an unresolvable placeholder staying literal ("%nope_missing%")
@@ -22,7 +24,7 @@ export default defineBehavior(async (t) => {
     await bot.waitForMessage("papi value: echo-greet");
 
     bot.chat("/papiget %skriptts_name%");
-    await bot.waitForMessage("papi value: echo-name");
+    await bot.waitForMessage("papi value: PapiBot");
 
     bot.chat("/papiget say %skriptts_greet%!");
     await bot.waitForMessage("papi value: say echo-greet!");

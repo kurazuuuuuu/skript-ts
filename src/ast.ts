@@ -42,7 +42,14 @@ export type Expr =
   // parts of the request inside placeholder-request events.
   | { kind: "placeholderValue"; player: Expr; text: TextExpr }
   | { kind: "placeholderIdentifier" }
-  | { kind: "placeholderPrefix" };
+  | { kind: "placeholderPrefix" }
+  // Core-language arithmetic (phase 11): a binary operation over two
+  // expressions. "+" also concatenates when both operands are texts;
+  // "mod" is the mathematical remainder (Skript's mod() function).
+  | { kind: "arith"; op: ArithOp; left: Expr; right: Expr };
+
+/** Represents a binary arithmetic operator. */
+export type ArithOp = "+" | "-" | "*" | "/" | "mod";
 
 /** Represents a Skript text expression. */
 export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
@@ -51,6 +58,20 @@ export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
 export type Cond =
   | { kind: "hasPermission"; target: Expr; permission: string }
   | { kind: "isOp"; target: Expr }
+  // Core-language comparisons and logic (phase 11). The comparison
+  // kinds mirror Skript's compare condition: text equality is
+  // case-insensitive, values of different types are never equal,
+  // and only numbers can be ordered. and/or are binary (the API
+  // folds longer chains); not wraps any condition.
+  | { kind: "equals"; left: Expr; right: Expr }
+  | { kind: "notEquals"; left: Expr; right: Expr }
+  | { kind: "greaterThan"; left: Expr; right: Expr }
+  | { kind: "greaterOrEqual"; left: Expr; right: Expr }
+  | { kind: "lessThan"; left: Expr; right: Expr }
+  | { kind: "lessOrEqual"; left: Expr; right: Expr }
+  | { kind: "and"; left: Cond; right: Cond }
+  | { kind: "or"; left: Cond; right: Cond }
+  | { kind: "not"; cond: Cond }
   // Engine-builtin condition (SharpSK slice, phase 7): a named timer exists.
   | { kind: "timerActive"; name: TextExpr }
   // Engine-builtin condition (skUtilities slice, phase 9): a file or

@@ -1,7 +1,9 @@
 import {
   argument,
   command,
+  equals,
   fmt,
+  ifElse,
   onPlaceholderRequest,
   placeholderIdentifier,
   placeholderPrefix,
@@ -10,6 +12,7 @@ import {
   script,
   send,
   setPlaceholderResult,
+  str,
 } from "../src/index.js";
 import type { Script } from "../src/index.js";
 
@@ -22,7 +25,11 @@ import type { Script } from "../src/index.js";
 //
 // The script serves two placeholder prefixes of its own and reads
 // values back through a command:
-//   %skriptts_<anything>%     -> "echo-<anything>"
+//   %skriptts_name%           -> the target player's name (the
+//                                handler branches on the identifier
+//                                with the core text-equality
+//                                condition added in phase 11)
+//   %skriptts_<anything else>% -> "echo-<anything>"
 //   %skripttswho_<anything>%  -> "skripttswho for <player name>"
 //   /papiget <text>           -> evaluates the text as placeholders
 //                                for the command sender: a bare name
@@ -33,7 +40,11 @@ import type { Script } from "../src/index.js";
 //                                literal ("%nope_missing%").
 export const ersatzScript: Script = script(
   onPlaceholderRequest("skriptts", [
-    setPlaceholderResult(fmt("echo-", placeholderIdentifier())),
+    ifElse(equals(placeholderIdentifier(), str("name")), [
+      setPlaceholderResult(fmt(player())),
+    ], [
+      setPlaceholderResult(fmt("echo-", placeholderIdentifier())),
+    ]),
   ]),
   onPlaceholderRequest("skripttswho", [
     setPlaceholderResult(fmt(placeholderPrefix(), " for ", player())),

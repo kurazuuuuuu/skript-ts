@@ -53,9 +53,11 @@ on join:
     send "Welcome back, %player%" to player
 ```
 
-Five complete sample programs live in [`examples/`](examples/)
-(welcome, kit command, chat log relay, death counter, spawn commands) and
-double as golden-test fixtures.
+Sample programs live in [`examples/`](examples/): the five v0
+programs (welcome, kit command, chat log relay, death counter, spawn
+commands), one per engine builtin, and `logic.ts` for the core
+language (comparisons, logic, arithmetic). They double as
+golden-test fixtures.
 
 ## Supported subset (SPEC, v0)
 
@@ -103,7 +105,22 @@ section.
 | `num(n)` / `bool(b)` | `42` / `true` | same |
 | `item(name)` | `diamond sword` | same |
 | `locationOf(e)` | `location of <e>` | `%location of <e>%` |
+| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc. | `%(<a> + <b>)%` etc. |
+| `remainder(a, b)` (or `arith(op, a, b)` for any of the five) | `mod(<a>, <b>)` | `%mod(<a>, <b>)%` |
 | `fmt(...parts)` | `"<parts>"` | flattened into the enclosing string |
+
+Arithmetic semantics (verified against the real Skript 2.17.1):
+operands must both be numbers, except that `+` over two texts
+concatenates them — `"5" + "6"` is the text `"56"`, never `11`.
+Every other type combination (a text and a number, in either
+order) yields *no value*: not an error, just an absent result.
+Division is real division and follows doubles at zero (`1 / 0`
+is Infinity). Emission always parenthesizes, so the emitted tree
+does not depend on Skript's own precedence. The remainder is
+Skript's `mod()` function (there is no infix remainder operator
+in Skript): the mathematical modulo, whose result takes the
+divisor's sign — `mod(-1, 10)` is `9` — and NaN for a zero
+divisor.
 
 Note: in `on death` events there is **no** `player` — Skript rejects it
 ("There's no player in an on death event"). Use `victim()` for the player
@@ -121,6 +138,36 @@ below, not by load checks.
 | --- | --- |
 | `hasPermission(target, "node")` | `<target> has permission "node"` |
 | `isOp(target)` | `<target> is op` |
+| `equals(a, b)` | `<a> is <b>` |
+| `notEquals(a, b)` | `<a> is not <b>` |
+| `greaterThan(a, b)` | `<a> is greater than <b>` |
+| `greaterOrEqual(a, b)` | `<a> is greater than or equal to <b>` |
+| `lessThan(a, b)` | `<a> is less than <b>` |
+| `lessOrEqual(a, b)` | `<a> is less than or equal to <b>` |
+| `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | lowered to nested `if`/`else` (see below) |
+
+Comparison semantics (verified against the real Skript 2.17.1,
+not assumed): text equality is **case-insensitive**; a value is
+never equal to a value of a different type (the number `1` is not
+equal to the text `"1"`); a *missing* value (an unset variable)
+is not equal to anything — not even to another missing value —
+and inequality is the exact negation of equality, so an unset
+variable *is* "not 0". Ordering compares numbers only: ordering
+a text, or mixing types, is false, and the negated ordering forms
+are exact negations too (an incomparable pair *is* "not greater
+than"). The engine jar implements the same semantics natively.
+
+Logic has no textual form in the `.sk` output: Skript 2.17.1
+rejects every conjunction form probed for it (bare, parenthesized,
+mixed with other conditions — all fail to parse), and it has no
+general `not` condition. So `ifElse` lowers logic to control flow
+instead: `and` nests the second check inside the first (the else
+branch is duplicated), `or` nests it in the else branch, and `not`
+swaps branches when an else exists, applies De Morgan over
+`and`/`or`, and otherwise uses Skript's native negated leaf forms
+(`is not ...`, `does not have permission`). Conditions in this
+subset are pure, so the lowering is semantically exact; the
+engine evaluates `and`/`or`/`not` directly.
 
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal
@@ -452,10 +499,10 @@ the second prefix resolving the target player's name), and an
 unresolvable placeholder stays literal. Relational placeholders
 (a feature the successor addon added later) and
 MVdWPlaceholderAPI (a different plugin) are out of this slice.
-Handlers shape their answer around the identifier by embedding
-it in the result text; the subset has no text-equality condition
-yet, so branching on the identifier is a recorded follow-up for
-the core language rather than an addon-side invention.
+Since the core language gained a text-equality condition
+(phase 11), handlers can also branch on the identifier: the
+sample answers the player's own name for `%skriptts_name%` and
+echoes every other identifier.
 
 ## Development
 
