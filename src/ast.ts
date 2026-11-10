@@ -34,7 +34,15 @@ export type Expr =
   // no value when the file is missing.
   | { kind: "fileContents"; path: TextExpr }
   | { kind: "fileLine"; path: TextExpr; line: Expr }
-  | { kind: "fileLineCount"; path: TextExpr };
+  | { kind: "fileLineCount"; path: TextExpr }
+  // Engine-builtin expressions (Ersatz slice, phase 10):
+  // placeholderValue evaluates PlaceholderAPI placeholders in a
+  // text for a player (a text without %...% is a single placeholder
+  // name). placeholderIdentifier / placeholderPrefix expose the
+  // parts of the request inside placeholder-request events.
+  | { kind: "placeholderValue"; player: Expr; text: TextExpr }
+  | { kind: "placeholderIdentifier" }
+  | { kind: "placeholderPrefix" };
 
 /** Represents a Skript text expression. */
 export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
@@ -91,20 +99,28 @@ export type Stmt =
   | { kind: "dirCreate"; path: TextExpr; loc?: SourceLoc }
   | { kind: "fileDelete"; path: TextExpr; loc?: SourceLoc }
   | { kind: "fileWrite"; path: TextExpr; text: TextExpr; loc?: SourceLoc }
-  | { kind: "fileAppend"; path: TextExpr; text: TextExpr; loc?: SourceLoc };
+  | { kind: "fileAppend"; path: TextExpr; text: TextExpr; loc?: SourceLoc }
+  // Engine-builtin statement (Ersatz slice, phase 10): set the
+  // answer string for the placeholder request being handled. Only
+  // meaningful inside an onPlaceholderRequest body; a request whose
+  // handler never sets a result resolves to no value.
+  | { kind: "setPlaceholderResult"; text: TextExpr; loc?: SourceLoc };
 
-/** Represents a Skript event kind. The ws* kinds are engine-builtin events (phase 6), the timer* kinds are phase 7. */
+/** Represents a Skript event kind. The ws* kinds are engine-builtin events (phase 6), the timer* kinds are phase 7, papiRequest is phase 10. */
 export type EventKind =
   | "join" | "firstJoin" | "quit" | "chat" | "death"
   | "wsOpen" | "wsMessage" | "wsClose"
-  | "timerTick" | "timerComplete";
+  | "timerTick" | "timerComplete"
+  | "papiRequest";
 
 /** Represents a Skript command argument type. */
 export type CommandArgType = "text" | "player" | "integer";
 
 /** Represents a Skript top-level declaration. */
 export type TopLevel =
-  | { kind: "event"; event: EventKind; body: readonly Stmt[]; loc?: SourceLoc }
+  // `prefixes` is set only for the papiRequest event (phase 10): the
+  // PlaceholderAPI expansion identifiers this handler serves.
+  | { kind: "event"; event: EventKind; body: readonly Stmt[]; prefixes?: readonly string[]; loc?: SourceLoc }
   | { kind: "command"; name: string; argType: CommandArgType | null; argOptional: boolean; body: readonly Stmt[]; loc?: SourceLoc };
 
 /** Represents a Skript script. */

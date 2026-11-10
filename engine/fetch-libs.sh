@@ -50,4 +50,12 @@ done
 BUNGEE_VERSION="1.21-R0.2-deprecated+build.21"
 fetch "bungeecord-chat-${BUNGEE_VERSION}.jar" \
     "https://repo.papermc.io/repository/maven-public/net/md-5/bungeecord-chat/${BUNGEE_VERSION}/bungeecord-chat-1.21-R0.2-deprecated%2Bbuild.21.jar"
+# PlaceholderAPI (phase 10, Ersatz slice): compile-time dependency of
+# the engine's placeholder bridge, and the jar the CLI deploys next
+# to the engine in the sandbox so the bridge has its runtime plugin.
+# Taken from the official GitHub release, checksum-pinned like the
+# rest.
+PAPI_VERSION="2.12.3"
+fetch "PlaceholderAPI-${PAPI_VERSION}.jar" \
+    "https://github.com/PlaceholderAPI/PlaceholderAPI/releases/download/${PAPI_VERSION}/PlaceholderAPI-${PAPI_VERSION}.jar"
 echo "all engine libraries present and verified"

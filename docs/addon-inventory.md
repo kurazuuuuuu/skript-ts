@@ -118,13 +118,15 @@ SQL を実行し結果を Skript の変数へ格納するアドオン。`LICENSE
 本家は 2023年以降動きがない。なお保守フォーク byPixelTV/skript-db（2025年にも
 プッシュあり）が存在するため、「本家は停滞、フォークが継続中」という状態である。
 
-### Ersatz — GPL-3.0 / 停滞（リポジトリ同定に注意）
-PlaceholderAPI のプレースホルダを Skript から使うための連携アドオン。調査上の注意と
-して、本家とされていた TheLimeGlass/Ersatz は現在存在せず（404）、説明文
-「PlaceholderAPI integration for Skript」が一致する abandonedaccount6235/Ersatz を
-調査対象とした。このリポジトリは再アップロード／ミラーの可能性があり、原著作者の
-公式リポジトリかどうかは **未確認**。同リポジトリの `LICENSE.md` の本文では GPL v3
-を確認した。GitHub リリースはなく、プッシュは 2019年が最後。
+### Ersatz — GPL-3.0 / 停滞（出所はフェーズ10で確定）
+PlaceholderAPI のプレースホルダを Skript から使うための連携アドオン。棚卸し当初は
+「本家とされていた TheLimeGlass/Ersatz は 404 で、abandonedaccount6235/Ersatz は
+再アップロード／ミラーの可能性があり原著作者は未確認」としていたが、フェーズ10の
+着手前確認で一次情報から確定した（詳細は進捗メモとフェーズ10の開発ログ）:
+原著作者は **Pikachu920** であり、TheLimeGlass は別人。現存リポジトリは改名済み
+アカウント配下にある著者本人のリポジトリそのもので、`LICENSE.md`（GPL v3）は
+開設当日に著者自身がコミットしている。GitHub リリースはなく、プッシュは
+2019年が最後。
 
 ## ライセンスと skript-ts（MIT）の関係
 
@@ -162,7 +164,8 @@ PlaceholderAPI のプレースホルダを Skript から使うための連携ア
    需要が高く、仕様も比較的素直で再実装しやすい。
 5. **Ersatz**（GPL-3.0、2019年から停滞）— PlaceholderAPI 連携の需要は大きい。
    ただしリポジトリの出所確認が未了のため、着手前に原著作者と公式の所在を確認する
-   ことが先決。
+   ことが先決。（フェーズ10で確認完了: 原著作者は Pikachu920、現存リポジトリは
+   著者本人のものと確定し、内蔵済み。進捗メモ参照）
 
 ### 優先度が低いもの
 - **skript-mirror**（MIT）— 後継の skript-reflect が活発に継続中であり、mirror
@@ -223,3 +226,21 @@ PlaceholderAPI のプレースホルダを Skript から使うための連携ア
   ネットワーク制限で検証できないため見送り、YAML と文字列・変換系は
   要素単位の文書が確認できず推測で仕様を作らないため見送った
   （詳細は開発ログのフェーズ9節）。
+
+- **Ersatz（フェーズ10、2026-11-11）**: 着手前の出所確認を完遂した。
+  一次情報（GitHub API、コミット履歴、`src/plugin.yml`）から、
+  原著作者は **Pikachu920**（マニフェストの `author: Pikachu`、
+  パッケージ `com.pikachu.papiaddon`、全コミットが同名義）と確定。
+  棚卸し当初の「TheLimeGlass が本家」という前提は誤りだった
+  （TheLimeGlass は Skellett 等の別人で現役）。現存リポジトリ
+  `abandonedaccount6235/Ersatz` は、2017-11-11 の開設当初から
+  著者本人の履歴を持つ原本そのものであり（フォークではなく、
+  後継 skript-placeholders の系譜元として GitHub に記録されて
+  いる）、アカウント改名に伴って移転したもの。再アップロード
+  ではない。`LICENSE.md` の GPL-3.0 は開設当日に著者自身が
+  コミットしており真正。第1弾として PlaceholderAPI 連携の中核
+  （値の取得式、prefix 単位のリクエストイベント、identifier /
+  prefix 式、結果設定文）をエンジンへ内蔵した。PlaceholderAPI
+  本体は外部プラグインのまま `softdepend` とし、検証時は公式
+  2.12.3 をサンドボックスへ併置する。relational と
+  MVdWPlaceholderAPI は対象外（詳細は開発ログのフェーズ10節）。

@@ -286,6 +286,24 @@ skUtilities は GPL-3.0 のアドオンのため、このスライスもエン�
 
 検証は `examples/behavior/skutil.behavior.ts` で行います（作成→追記→全文の読み戻し→行ごとの読み戻し→行数→`../` 脱出の拒否→削除）。アドオンの URL 系機能（テキスト取得・ダウンロード）はこの環境ではサーバープロセスからの外向きネットワークが制限され検証できないため、今回の対象外です。
 
+### Ersatz 第1弾: PlaceholderAPI 連携
+
+Ersatz は Skript と PlaceholderAPI の橋渡しアドオンで、このスライスはその橋渡しをエンジンへ内蔵するクリーンルーム再実装です（GPL-3.0 のためアドオンのコードは参照していません。着手前に出所も確定させました。原著作者は Pikachu920 で、現存リポジトリは改名済みアカウント配下にある著者本人のもので、初日から GPL-3.0 です。詳細は `docs/addon-inventory.md`）。PlaceholderAPI 自体は外部プラグインのままです。エンジンは `softdepend` で任意依存とし、検証ハーネスは公式 2.12.3 の jar（`engine/fetch-libs.sh` がチェックサム固定で取得）をエンジンと並べてサンドボックスへ配置します。PlaceholderAPI の無いサーバーでは橋渡しは単に無効で、取得式は値なし、リクエストイベントは発火しません。
+
+読み取り側: `placeholderValue(player, text)` は、そのプレイヤーについてテキスト中の PAPI プレースホルダを評価します。`%...%` を含まないテキストは単一のプレースホルダ名として扱い（文書化された裸名の形。例: `player_ping`）、トークンを含むテキストは文字列全体を置換します。誰も解決できないプレースホルダは、PAPI 自身の契約通り文字列にそのまま残ります。
+
+提供側: `onPlaceholderRequest(prefix, body)` で、その prefix（PAPI 拡張の識別子）へのリクエストにスクリプトが応答します。本文では `placeholderIdentifier()` がリクエストのパラメータ部（`%prefix_<identifier>%`）、`placeholderPrefix()` がマッチした prefix、`player()` が評価対象のプレイヤー（オフライン／コンソール由来では値なし）です。`setPlaceholderResult(text)` で返答を決め、設定しなければそのプレースホルダは未解決のままになります。登録はロードされたプログラムに追随し、スクリプトのリロードごとに再同期します。メインスレッド外から来たリクエストは、上限つきでメインスレッドへ移して処理します。サンプルは `examples/ersatz.ts` です。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `placeholderValue(player, text)` | テキスト中の PAPI プレースホルダをプレイヤーについて評価（裸名／全体置換） |
+| `onPlaceholderRequest(prefix, body)` | イベント: その prefix のプレースホルダが要求された |
+| `placeholderIdentifier()` | リクエストのパラメータ部（イベント内） |
+| `placeholderPrefix()` | マッチした prefix（イベント内） |
+| `setPlaceholderResult(text)` | 処理中のリクエストへ返答する |
+
+検証は `examples/behavior/ersatz.behavior.ts` で、実物の PlaceholderAPI を通した往復として行います（自前の2つの prefix を提供し、裸名・前後にリテラルを持つ全体置換・対象プレイヤー名の解決を読み戻し、解決できないプレースホルダがリテラルのまま残ることも確認）。relational プレースホルダ（後継アドオンで追加された発展機能）と MVdWPlaceholderAPI（別プラグイン）は今回の対象外です。ハンドラは identifier を結果文字列へ埋め込んで応答を組み立てます。現行サブセットには文字列の等値条件が無いため、identifier による分岐はアドオン側の発明にせず、コア言語側の宿題として記録しています。
+
 ## 開発
 
 ```sh

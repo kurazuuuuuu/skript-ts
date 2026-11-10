@@ -2,6 +2,7 @@ package net.krz.skriptts;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandMap;
 import org.bukkit.command.CommandSender;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 /**
@@ -38,6 +40,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     private Engine engine;
     private WebSockets websockets;
     private Timers timers;
+    private Placeholders placeholders;
     private Database database;
     // Fully qualified: this class imports java.nio.file.Files for
     // script loading, which shadows the engine's own Files helper.
@@ -130,6 +133,22 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
             }
         });
         timers.start();
+        // PlaceholderAPI is an optional external plugin (softdepend).
+        // The bridge class is the only one touching its API, and it
+        // is instantiated only when the plugin is actually present,
+        // so a server without PlaceholderAPI runs the engine
+        // unchanged (placeholder expressions yield no value and
+        // request events never fire).
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            try {
+                placeholders = new Placeholders(this, this::handlePlaceholderRequest, getLogger());
+                engine.setPlaceholderHost(placeholders::parse);
+                getLogger().info("skript-ts: PlaceholderAPI bridge active");
+            } catch (NoClassDefFoundError e) {
+                placeholders = null;
+                getLogger().warning("skript-ts: PlaceholderAPI is present but its API could not be linked; placeholder features are inactive");
+            }
+        }
         database = new Database(variables, dataDir, getLogger());
         engine.setDatabase(database);
         files = new net.krz.skriptts.Files(dataDir.resolve("files"), getLogger());
@@ -142,9 +161,32 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     @Override
     public void onDisable() {
         unregisterScriptCommands();
+        if (placeholders != null) placeholders.shutdown();
         if (timers != null) timers.shutdown();
         if (websockets != null) websockets.closeAll();
         if (variables != null) variables.save();
+    }
+
+    /**
+     * PlaceholderAPI may call from asynchronous threads (its parse
+     * entry points are used from async chat and the like), but script
+     * bodies belong on the main thread. Serve directly when already
+     * there — the engine's own placeholder reads run on the main
+     * thread and must not deadlock waiting for it — and hop through
+     * the scheduler otherwise, with a bounded wait.
+     */
+    private String handlePlaceholderRequest(String prefix, String identifier, Player player) {
+        if (Bukkit.isPrimaryThread()) {
+            return engine.firePlaceholderRequest(prefix, identifier, player);
+        }
+        try {
+            return getServer().getScheduler()
+                    .callSyncMethod(this, () -> engine.firePlaceholderRequest(prefix, identifier, player))
+                    .get(2, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            getLogger().warning("skript-ts: placeholder request for prefix '" + prefix + "' could not be served: " + e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -233,6 +275,9 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
             getLogger().severe("Failed to read scripts folder " + dir + ": " + e.getMessage());
         }
         engine.setProgram(tops);
+        // The placeholder expansions mirror the loaded program:
+        // prefixes the new program no longer serves are unregistered.
+        if (placeholders != null) placeholders.sync(engine.placeholderPrefixes());
         reregisterScriptCommands(tops);
         getLogger().info("Loaded " + scripts + " script(s), " + structures + " top-level structure(s)");
     }

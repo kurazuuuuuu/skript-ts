@@ -400,6 +400,63 @@ a refused `../` escape → delete). The addon's URL features
 network access, which this environment restricts from the server
 process, so they would be unverifiable here.
 
+### Ersatz slice 1: PlaceholderAPI integration
+
+Ersatz is the PlaceholderAPI bridge for Skript; this slice
+reimplements that bridge inside the engine, clean-room from
+documented behavior (the addon is GPL-3.0 and no addon code was
+consulted; its provenance was pinned down first — the author is
+Pikachu920, and the surviving repository, now under a renamed
+account, is the author's own, GPL-3.0 licensed from its first day;
+see `docs/addon-inventory.md`). PlaceholderAPI itself stays an
+external plugin: the engine lists it under `softdepend`, the
+verify harness deploys the official 2.12.3 jar next to the engine
+in the sandbox (fetched checksum-pinned by `engine/fetch-libs.sh`),
+and on a server without PlaceholderAPI the bridge is simply
+inactive — the read expression yields no value and request events
+never fire.
+
+Reading: `placeholderValue(player, text)` evaluates the PAPI
+placeholders in a text for that player. A text holding no `%...%`
+token is treated as a single placeholder name (the documented
+bare form, e.g. `player_ping`); a text holding tokens is
+formatted as a whole. Placeholders nobody resolves stay in the
+text literally, per PAPI's own contract.
+
+Serving: `onPlaceholderRequest(prefix, body)` makes the script
+answer PAPI requests for that prefix (an expansion identifier).
+Inside the body, `placeholderIdentifier()` is the parameter part
+of the request (`%prefix_<identifier>%`), `placeholderPrefix()`
+is the prefix that matched, and `player()` is the player the
+value is computed for (no value for offline/console requests).
+`setPlaceholderResult(text)` supplies the answer; a handler that
+never sets a result leaves the placeholder unresolved.
+Registrations mirror the loaded program and are re-synced on
+every script reload. Requests that arrive off the main thread
+are hopped onto it with a bounded wait. `examples/ersatz.ts` is
+the sample program.
+
+| TypeScript | Meaning |
+| --- | --- |
+| `placeholderValue(player, text)` | evaluate PAPI placeholders in a text for a player (bare name or whole-string form) |
+| `onPlaceholderRequest(prefix, body)` | event: a placeholder under this prefix was requested |
+| `placeholderIdentifier()` | the parameter part of the request (inside the event) |
+| `placeholderPrefix()` | the prefix that matched (inside the event) |
+| `setPlaceholderResult(text)` | answer the placeholder request being handled |
+
+Verified by `examples/behavior/ersatz.behavior.ts` as a full
+round trip through the real PlaceholderAPI plugin: the script
+serves two prefixes of its own and reads them back (the bare
+name form, a whole string with literal text around a token, and
+the second prefix resolving the target player's name), and an
+unresolvable placeholder stays literal. Relational placeholders
+(a feature the successor addon added later) and
+MVdWPlaceholderAPI (a different plugin) are out of this slice.
+Handlers shape their answer around the identifier by embedding
+it in the result text; the subset has no text-equality condition
+yet, so branching on the identifier is a recorded follow-up for
+the core language rather than an addon-side invention.
+
 ## Development
 
 ```sh

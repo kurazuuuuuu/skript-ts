@@ -68,6 +68,10 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "fileLine",
   "fileLineCount",
   "fileExists",
+  "placeholderValue",
+  "placeholderIdentifier",
+  "placeholderPrefix",
+  "setPlaceholderResult",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
@@ -76,6 +80,7 @@ const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
   "wsClose",
   "timerTick",
   "timerComplete",
+  "papiRequest",
 ]);
 
 function containsEngineOnly(value: unknown): boolean {

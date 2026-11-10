@@ -10,8 +10,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -43,6 +45,10 @@ import java.util.logging.Logger;
  * Phase 9 adds the fourth slice (skUtilities scope: the text file
  * core — create / delete / write / append / read files under an
  * engine-confined root, line access, and an existence condition).
+ * Phase 10 adds the fifth slice (Ersatz scope: the PlaceholderAPI
+ * bridge — a placeholder-value expression, and script-served
+ * placeholder prefixes with a request event and a result statement;
+ * PlaceholderAPI itself stays an external, optional plugin).
  */
 final class Engine {
 
@@ -56,6 +62,9 @@ final class Engine {
         String wsId;        // websocket connection id in websocket events
         String wsText;      // received text in websocket message events
         String timerId;     // timer name in timer tick/complete events
+        String papiPrefix;  // matched expansion prefix in placeholder request events
+        String papiIdentifier; // parameter part of the placeholder being requested
+        String papiResult;  // answer set by the set-result statement (read back after dispatch)
         String argType;     // command argument type ("text"/"player"/"integer") or null
         String[] rawArgs = new String[0];
 
@@ -69,6 +78,9 @@ final class Engine {
             c.wsId = wsId;
             c.wsText = wsText;
             c.timerId = timerId;
+            c.papiPrefix = papiPrefix;
+            c.papiIdentifier = papiIdentifier;
+            c.papiResult = papiResult;
             c.argType = argType;
             c.rawArgs = rawArgs;
             return c;
@@ -84,6 +96,18 @@ final class Engine {
         void connect(String id, String url);
         void send(String id, String text);
         void disconnect(String id);
+    }
+
+    /**
+     * Bridge to the plugin's PlaceholderAPI manager. The value
+     * expression delegates evaluation through this interface; request
+     * events come back as engine dispatches fired by the plugin.
+     * Only the manager class touches PlaceholderAPI classes, so its
+     * absence cannot affect the rest of the engine.
+     */
+    interface PlaceholderHost {
+        /** Evaluate the placeholders in text for the player; the manager returns the input unchanged if it cannot. */
+        String parse(Player player, String text);
     }
 
     /**
@@ -106,6 +130,7 @@ final class Engine {
     private List<Map<String, Object>> topLevels = List.of();
     private WsHost wsHost;
     private TimerHost timerHost;
+    private PlaceholderHost placeholderHost;
     private Database database;
     private Files files;
 
@@ -122,6 +147,14 @@ final class Engine {
     /** Install the timer host (called by the plugin on enable). */
     void setTimerHost(TimerHost timerHost) {
         this.timerHost = timerHost;
+    }
+
+    /**
+     * Install the placeholder host (called by the plugin on enable,
+     * only when PlaceholderAPI is present on the server).
+     */
+    void setPlaceholderHost(PlaceholderHost placeholderHost) {
+        this.placeholderHost = placeholderHost;
     }
 
     /**
@@ -169,6 +202,44 @@ final class Engine {
             boolean match = ev.equals(event) || (firstJoin && "join".equals(event) && "firstJoin".equals(ev));
             if (match) execBlock(list(top.get("body")), ctx);
         }
+    }
+
+    /** All placeholder prefixes (expansion identifiers) the loaded program serves, in declaration order. */
+    Set<String> placeholderPrefixes() {
+        Set<String> out = new LinkedHashSet<>();
+        for (Map<String, Object> top : topLevels) {
+            if (!"event".equals(kind(top)) || !"papiRequest".equals(str(top.get("event")))) continue;
+            if (top.get("prefixes") instanceof List<?> list) {
+                for (Object p : list) {
+                    if (p instanceof String s && !s.isBlank()) out.add(s);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Serve one PlaceholderAPI request: run every handler registered
+     * for the prefix, in declaration order, and return the result the
+     * handlers set (null when none did). Runs on the server main
+     * thread — the plugin hops asynchronous PAPI calls over. The
+     * player is the value's target and is null for offline or
+     * console requests, in which case player expressions have no
+     * value inside the handler.
+     */
+    String firePlaceholderRequest(String prefix, String identifier, Player player) {
+        Ctx ctx = new Ctx();
+        ctx.player = player;
+        ctx.eventPlayer = player;
+        ctx.papiPrefix = prefix;
+        ctx.papiIdentifier = identifier;
+        for (Map<String, Object> top : topLevels) {
+            if (!"event".equals(kind(top)) || !"papiRequest".equals(str(top.get("event")))) continue;
+            if (top.get("prefixes") instanceof List<?> list && list.contains(prefix)) {
+                execBlock(list(top.get("body")), ctx);
+            }
+        }
+        return ctx.papiResult;
     }
 
     void runCommand(Map<String, Object> node, CommandSender sender, String[] args) {
@@ -353,6 +424,10 @@ final class Engine {
                     files.appendLine(renderText(node(stmt.get("path")), ctx), renderText(node(stmt.get("text")), ctx));
                 }
             }
+            case "setPlaceholderResult" ->
+                // Only meaningful while a placeholder request is being
+                // served; anywhere else the value is simply dropped.
+                ctx.papiResult = renderText(node(stmt.get("text")), ctx);
             default -> logger.warning("skript-ts: unknown statement kind '" + kind(stmt) + "'");
         }
     }
@@ -456,6 +531,21 @@ final class Engine {
                 String path = renderText(node(expr.get("path")), ctx);
                 yield path == null ? null : files.lineCount(path);
             }
+            case "placeholderValue" -> {
+                if (placeholderHost == null) yield null;
+                Object target = evalExpr(node(expr.get("player")), ctx);
+                String text = renderText(node(expr.get("text")), ctx);
+                if (!(target instanceof Player p) || text == null) yield null;
+                // Documented bare form: a text holding no %...%
+                // token is a single placeholder name, so wrap it
+                // for PAPI to resolve; a text with tokens is
+                // formatted as a whole. Placeholders nobody
+                // resolves stay literal, per PAPI's own contract.
+                String query = text.contains("%") ? text : "%" + text + "%";
+                yield placeholderHost.parse(p, query);
+            }
+            case "placeholderIdentifier" -> ctx.papiIdentifier;
+            case "placeholderPrefix" -> ctx.papiPrefix;
             case "format" -> renderParts(list(expr.get("parts")), ctx);
             default -> {
                 logger.warning("skript-ts: unknown expression kind '" + kind(expr) + "'");

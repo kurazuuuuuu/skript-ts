@@ -419,3 +419,70 @@ export function fileLineCount(path: TextExpr): Expr {
 export function fileExists(path: TextExpr): Cond {
   return { kind: "fileExists", path };
 }
+
+// ---------------------------------------------------------------------------
+// Engine builtins (Ersatz slice, phase 10): PlaceholderAPI integration
+//
+// Ersatz bridges Skript and PlaceholderAPI (PAPI); this slice
+// reimplements that bridge inside the engine, clean-room from the
+// documented behavior (the addon is GPL-3.0; no addon code was
+// consulted — see the development log for the provenance work and
+// the sources used). PAPI itself stays an external plugin: the
+// engine declares it as a soft dependency, and when it is absent
+// the read expression yields no value and request events never
+// fire.
+//
+// Read side: placeholderValue(player, text) evaluates the PAPI
+// placeholders in a text for that player. A text containing no
+// %...% token is treated as a single placeholder name (the
+// documented bare form, e.g. "player_ping"); a text containing
+// %...% tokens is formatted as a whole. Placeholders nobody
+// resolves stay in the text literally, per PAPI's own contract.
+//
+// Write side: onPlaceholderRequest(prefix, body) serves requests
+// for that prefix (a PAPI expansion identifier). Inside the body,
+// placeholderIdentifier() is the parameter part of the request
+// ("%prefix_<identifier>%"), placeholderPrefix() is the prefix
+// that matched, and player() is the player the value is computed
+// for (no value for offline/console requests). Answer with
+// setPlaceholderResult(text); a handler that never sets a result
+// leaves the placeholder unresolved.
+// ---------------------------------------------------------------------------
+
+function requirePrefixes(prefix: string | readonly string[]): readonly string[] {
+  const list = typeof prefix === "string" ? [prefix] : [...prefix];
+  if (list.length === 0) {
+    throw new RangeError("placeholder request needs at least one prefix");
+  }
+  for (const p of list) {
+    if (typeof p !== "string" || p.trim() === "") {
+      throw new RangeError("placeholder prefix must be a non-empty string");
+    }
+  }
+  return list;
+}
+
+/** Construct a placeholder-value expression (engine builtin): evaluate PAPI placeholders in a text for a player. */
+export function placeholderValue(player: Expr, text: TextExpr): Expr {
+  return { kind: "placeholderValue", player, text };
+}
+
+/** Construct an on-placeholder-request event (engine builtin): serve PAPI requests for the given prefix(es). */
+export function onPlaceholderRequest(prefix: string | readonly string[], body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "papiRequest", prefixes: requirePrefixes(prefix), body });
+}
+
+/** Construct a placeholder-identifier expression: the parameter part of the request, inside placeholder-request events. */
+export function placeholderIdentifier(): Expr {
+  return { kind: "placeholderIdentifier" };
+}
+
+/** Construct a placeholder-prefix expression: the prefix that matched, inside placeholder-request events. */
+export function placeholderPrefix(): Expr {
+  return { kind: "placeholderPrefix" };
+}
+
+/** Construct a set-placeholder-result statement (engine builtin): answer the placeholder request being handled. */
+export function setPlaceholderResult(text: TextExpr): Stmt {
+  return withLoc({ kind: "setPlaceholderResult", text });
+}

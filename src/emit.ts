@@ -45,7 +45,10 @@ function emitValue(e: Expr): string {
         case "fileContents":
         case "fileLine":
         case "fileLineCount":
-            // Engine-builtin expressions (phases 6-9) exist only in
+        case "placeholderValue":
+        case "placeholderIdentifier":
+        case "placeholderPrefix":
+            // Engine-builtin expressions (phases 6-10) exist only in
             // the engine jar; there is no Skript text form to emit.
             throw new Error(`Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
@@ -98,6 +101,9 @@ function emitString(e: Expr): string {
         case "fileContents":
         case "fileLine":
         case "fileLineCount":
+        case "placeholderValue":
+        case "placeholderIdentifier":
+        case "placeholderPrefix":
             throw new Error(`Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
@@ -213,6 +219,7 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         case "fileDelete":
         case "fileWrite":
         case "fileAppend":
+        case "setPlaceholderResult":
             throw new Error(`Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = s;
@@ -227,7 +234,7 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
         case "event": {
             if (
                 t.event === "wsOpen" || t.event === "wsMessage" || t.event === "wsClose" ||
-                t.event === "timerTick" || t.event === "timerComplete"
+                t.event === "timerTick" || t.event === "timerComplete" || t.event === "papiRequest"
             ) {
                 throw new Error(`Unhandled Event in emitTop: '${t.event}' is an engine-only builtin with no .sk form`);
             }

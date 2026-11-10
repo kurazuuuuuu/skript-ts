@@ -18,6 +18,17 @@ import { join } from "node:path";
 /** Suffix appended to Skript.jar while engine mode owns the plugins folder. */
 export const SKRIPT_DISABLED_SUFFIX = ".skript-ts-disabled";
 
+/**
+ * PlaceholderAPI jar (phase 10): the engine's placeholder bridge
+ * soft-depends on the PlaceholderAPI plugin, so engine mode deploys
+ * the checksum-pinned jar from `engine/libs/` (fetched by
+ * `engine/fetch-libs.sh`) next to the engine jar. Skript mode never
+ * deploys it, keeping that sandbox's plugin set unchanged. The file
+ * name inside the sandbox is fixed so install/uninstall stay exact.
+ */
+export const PAPI_LIBS_JAR = "PlaceholderAPI-2.12.3.jar";
+export const PAPI_SANDBOX_JAR = "PlaceholderAPI.jar";
+
 export interface PluginSetResult {
   /** Human-readable description of what changed ("" when already in the target state). */
   note: string;
@@ -47,6 +58,13 @@ export function installEngine(rootDir: string, serverDir: string): PluginSetResu
   }
   copyFileSync(built, join(pluginsDir, "skript-ts.jar"));
   changes.push("skript-ts.jar を配置");
+  const papiLib = join(rootDir, "engine", "libs", PAPI_LIBS_JAR);
+  if (existsSync(papiLib)) {
+    copyFileSync(papiLib, join(pluginsDir, PAPI_SANDBOX_JAR));
+    changes.push("PlaceholderAPI.jar を配置");
+  } else {
+    changes.push("PlaceholderAPI.jar が engine/libs に無いためプレースホルダ機能は無効");
+  }
   return { note: changes.join("、") };
 }
 
@@ -59,6 +77,11 @@ export function uninstallEngine(rootDir: string, serverDir: string): PluginSetRe
   if (existsSync(engineJar)) {
     rmSync(engineJar);
     changes.push("skript-ts.jar を除去");
+  }
+  const papiJar = join(pluginsDir, PAPI_SANDBOX_JAR);
+  if (existsSync(papiJar)) {
+    rmSync(papiJar);
+    changes.push("PlaceholderAPI.jar を除去");
   }
   const skriptJar = join(pluginsDir, "Skript.jar");
   const skriptDisabled = skriptJar + SKRIPT_DISABLED_SUFFIX;
