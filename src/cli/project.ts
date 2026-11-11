@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -154,6 +155,36 @@ export function runTypecheck(rootDir: string): { ok: boolean; output: string } {
 const MANIFEST_NAME = ".skript-ts-manifest.json";
 
 /**
+ * Copy/write so the destination is never observed half-written: the
+ * payload lands in a sibling temp file and is renamed over the
+ * target (atomic on the same filesystem). Deploy targets sit in a
+ * live server's folders where reload triggers read them back (the
+ * engine polls marker files, phase 25), so a torn file must be
+ * structurally impossible.
+ */
+function atomicCopyFileSync(source: string, target: string): void {
+  const temp = `${target}.tmp-${process.pid}`;
+  try {
+    copyFileSync(source, temp);
+    renameSync(temp, target);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
+}
+
+function atomicWriteFileSync(target: string, content: string): void {
+  const temp = `${target}.tmp-${process.pid}`;
+  try {
+    writeFileSync(temp, content, "utf8");
+    renameSync(temp, target);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
+}
+
+/**
  * Copy built .sk files into the server's Skript scripts folder.
  * Files deployed by a previous run but no longer built are removed
  * (tracked through a manifest file in the scripts folder).
@@ -193,10 +224,10 @@ export function deployScripts(opts: {
   for (const s of deployable) {
     const target = join(serverScriptsDir, s.rel);
     mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(s.skPath as string, target);
+    atomicCopyFileSync(s.skPath as string, target);
     deployed.push(s.rel);
   }
-  writeFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n", "utf8");
+  atomicWriteFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n");
   return { deployed, removed };
 }
 
@@ -240,9 +271,9 @@ export function deployEngineScripts(opts: {
   for (const s of opts.scripts) {
     const target = join(engineScriptsDir, s.irRel);
     mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(s.irPath, target);
+    atomicCopyFileSync(s.irPath, target);
     deployed.push(s.irRel);
   }
-  writeFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n", "utf8");
+  atomicWriteFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n");
   return { deployed, removed };
 }

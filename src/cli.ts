@@ -10,6 +10,7 @@
  *                    [--pace-ms <n>] [--settle-ms <n>] [--server-dir <dir>] [--json]
  *   skript-ts probe stop   [--server-dir <dir>] [--json]
  *   skript-ts probe status [--server-dir <dir>] [--json]
+ *   skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>] [--json]
  *
  * build:  typecheck -> transpile -> deploy (with --deploy)
  * verify: typecheck -> transpile -> deploy -> server start -> script load
@@ -27,6 +28,10 @@
  *         and reloads instead of rebooting, for fast semantics probes.
  *         `probe stop` stops the server and verifies that no process
  *         or session.lock is left behind.
+ * watch:  a dev loop for engine mode against an already-running
+ *         server — save -> typecheck -> transpile -> deploy IR ->
+ *         the engine reloads via marker files. Watch never starts
+ *         or stops the server; it only deploys into it.
  *
  * With --json, progress is written to stderr and a single JSON result
  * object is printed to stdout. Exit code is 0 on success, 1 on failure.
@@ -38,22 +43,29 @@ import { pathToFileURL } from "node:url";
 import { createBehaviorContext, type BehaviorTest } from "./behavior.js";
 import { installEngine, uninstallEngine } from "./cli/engine.js";
 import { readProbeState, runProbeRound, startProbeServer, stopProbeServer } from "./cli/probe.js";
+import { runWatch } from "./cli/watch.js";
 import { createProgress, type ProgressReporter, type StageHandle } from "./cli/progress.js";
 import { buildProject, deployEngineScripts, deployScripts, runTypecheck, type BuildResult } from "./cli/project.js";
 import { SandboxServer } from "./cli/server.js";
 import { SkriptLogParser, mapError, type MappedError } from "./cli/skript-log.js";
 
 interface CliOptions {
-  command: "build" | "verify" | "probe";
+  command: "build" | "verify" | "probe" | "watch";
   srcDir: string;
   outDir: string;
   serverDir: string;
+  // True only when --server-dir was passed explicitly (watch
+  // requires it: it deploys into a live server).
+  serverDirExplicit: boolean;
   java: string | null;
   json: boolean;
   deploy: boolean;
   engine: boolean;
   behavior: boolean;
   fresh: boolean;
+  // watch only
+  yes: boolean;
+  debounceMs: number;
   probeAction: "start" | "run" | "stop" | "status";
   probeDir: string | null;
   commandsFile: string | null;
@@ -94,7 +106,8 @@ const USAGE = `usage:
   skript-ts probe run <probe-dir> [--commands <file>] [--out <file>] [--pace-ms <n>] [--settle-ms <n>]
                    [--server-dir <dir>] [--json]
   skript-ts probe stop   [--server-dir <dir>] [--json]
-  skript-ts probe status [--server-dir <dir>] [--json]`;
+  skript-ts probe status [--server-dir <dir>] [--json]
+  skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>] [--json]`;
 
 function parseNonNegativeNumber(flag: string, raw: string): number {
   const n = Number(raw);
@@ -141,9 +154,40 @@ function parseProbeArgs(rest: string[], opts: CliOptions): void {
   }
 }
 
+function parseWatchArgs(rest: string[], opts: CliOptions): void {
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i] as string;
+    const value = (): string => {
+      const v = rest[++i];
+      if (v === undefined) throw new Error(`missing value for ${arg}\n${USAGE}`);
+      return v;
+    };
+    switch (arg) {
+      case "--src": opts.srcDir = value(); break;
+      case "--out": opts.outDir = value(); break;
+      case "--server-dir": opts.serverDir = value(); opts.serverDirExplicit = true; break;
+      case "--json": opts.json = true; break;
+      case "--yes": opts.yes = true; break;
+      case "--debounce-ms": opts.debounceMs = parseNonNegativeNumber(arg, value()); break;
+      case "--help":
+      case "-h":
+        console.log(USAGE);
+        process.exit(0);
+        break;
+      default:
+        throw new Error(`unknown option: ${arg}\n${USAGE}`);
+    }
+  }
+}
+
 function parseArgs(argv: string[]): CliOptions {
   const [command, ...rest] = argv;
-  if (command !== "build" && command !== "verify" && command !== "probe") {
+  if (
+    command !== "build" &&
+    command !== "verify" &&
+    command !== "probe" &&
+    command !== "watch"
+  ) {
     throw new Error(`unknown command: ${command ?? "(none)"}\n${USAGE}`);
   }
   const opts: CliOptions = {
@@ -151,12 +195,15 @@ function parseArgs(argv: string[]): CliOptions {
     srcDir: "examples",
     outDir: "build",
     serverDir: "server",
+    serverDirExplicit: false,
     java: null,
     json: false,
     deploy: false,
     engine: false,
     behavior: true,
     fresh: true,
+    yes: false,
+    debounceMs: 400,
     probeAction: "status",
     probeDir: null,
     commandsFile: null,
@@ -166,6 +213,10 @@ function parseArgs(argv: string[]): CliOptions {
   };
   if (command === "probe") {
     parseProbeArgs(rest, opts);
+    return opts;
+  }
+  if (command === "watch") {
+    parseWatchArgs(rest, opts);
     return opts;
   }
   for (let i = 0; i < rest.length; i++) {
@@ -178,7 +229,7 @@ function parseArgs(argv: string[]): CliOptions {
     switch (arg) {
       case "--src": opts.srcDir = value(); break;
       case "--out": opts.outDir = value(); break;
-      case "--server-dir": opts.serverDir = value(); break;
+      case "--server-dir": opts.serverDir = value(); opts.serverDirExplicit = true; break;
       case "--java": opts.java = value(); break;
       case "--json": opts.json = true; break;
       case "--deploy": opts.deploy = true; break;
@@ -416,6 +467,23 @@ async function main(): Promise<number> {
 
   if (opts.command === "probe") {
     return runProbeCommand(opts, { rootDir, serverDir, progress, startedAt });
+  }
+
+  if (opts.command === "watch") {
+    // Watch deploys into a live server: the target directory must
+    // be named explicitly, never defaulted into.
+    if (!opts.serverDirExplicit) {
+      throw new Error("watch requires an explicit --server-dir (it deploys into a live server)");
+    }
+    return runWatch({
+      rootDir,
+      srcDir,
+      outDir,
+      serverDir,
+      json: opts.json,
+      yes: opts.yes,
+      debounceMs: opts.debounceMs,
+    });
   }
 
   const stages: StageResult[] = [];
