@@ -1562,6 +1562,74 @@ Since the core language gained a text-equality condition
 sample answers the player's own name for `%skriptts_name%` and
 echoes every other identifier.
 
+### Phase 26: HTTP requests and `env()` (a skript-ts original extension)
+
+Original Skript has no HTTP client, so this slice is an original
+extension of skript-ts, shaped to fit the existing event and
+continuation model: a request is fired asynchronously and its
+completion re-enters the script as an event.
+
+| TypeScript | Meaning |
+| --- | --- |
+| `httpFetch(id, url, opts?)` | statement: start an async GET; the body returns as text |
+| `httpDownload(id, url, path, opts?)` | statement: start an async GET that saves the body under the files root |
+| `onHttpResponse(body)` | event: a request completed (successfully or not) |
+| `httpId()` | the completion's id (event only) |
+| `httpStatus()` | the HTTP status code (event only) |
+| `httpBody()` | the response body of a fetch (event only) |
+| `httpError()` | the failure kind, or no value on success (event only) |
+| `httpSavedPath()` | where a download was saved, relative to the files root (event only) |
+| `httpOk()` | condition: the completion carries no error |
+
+`id` is a non-empty literal the script chooses to tell its own
+requests apart; `opts.timeoutSeconds` bounds the whole request
+(1–120, default deadline 15 s). Failure kinds are `policy`,
+`network`, `timeout`, `size`, `io` and `busy`; `httpError()`
+returns the kind only — detail goes to the server log, because
+URLs may carry secrets. Bodies are capped at 8 MiB, the connect
+timeout is 5 s, at most 8 requests run at once (further requests
+complete as `busy`), and redirects are followed manually for at
+most 3 hops, re-validated at every hop. A download writes to a
+temporary `.part` file and is renamed into place atomically; it
+saves the body whatever the HTTP status is, so scripts check
+`httpStatus()` themselves.
+
+SSRF policy (default): `http`/`https` only, no user info in the
+URL, ports 80/443 only, and every resolved address — for the
+initial URL and each redirect hop — is checked; loopback,
+link-local, site-local (RFC 1918, fc00::/7), CGNAT (100.64/10),
+unspecified and multicast addresses are refused as `policy`.
+For development fixtures there is an escape hatch:
+`"http": {"allowPrivateAddresses": true}` in
+`plugins/skript-ts/config.json` allows private targets and all
+ports, and the engine logs a loud warning when it is on. Do not
+use it on a production server. One known limitation: the JDK
+re-resolves the host name when it connects, so a DNS rebinding
+window remains between the check and the connection.
+
+`env(name)` resolves `System.getenv(name)` on the server and
+yields no value when the variable is unset. The JVM inherits the
+environment of whatever launched the server, so changing a
+variable requires a server restart — scripts cannot set or
+refresh values at runtime.
+
+Samples: `examples/http.ts` (nine commands against a local echo
+server) and `examples/env.ts`; verified by
+`examples/behavior/http.behavior.ts`, which asserts the success,
+404, redirect, oversize, timeout, policy-refusal and
+download/read-back paths plus the `env()` behavior on a real
+server.
+
+Network databases (skript-db slice) were verified on a real VM
+in this phase: MySQL 8.0 works through the Connector/J driver
+Paper ships, and PostgreSQL 16 works when its driver is supplied
+to the plugin (for example merged into the jar or via plugin
+libraries) — the engine initializes the scheme's well-known
+driver class before connecting, because such a driver registers
+with `DriverManager` only once its class is loaded. The
+`mariadb://` URL form fails cleanly through `dbLastError()` when
+no MariaDB driver is present.
+
 ## Development
 
 ```sh
