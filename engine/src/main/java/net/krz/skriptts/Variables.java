@@ -5,8 +5,10 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.boss.BossBar;
+import org.bukkit.boss.KeyedBossBar;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -39,6 +41,7 @@ final class Variables {
     private static final String LOCATION_TAG = "__location";
     private static final String ITEM_TAG = "__item";
     private static final String TIMESPAN_TAG = "__timespan";
+    private static final String KEYED_BOSS_BAR_TAG = "__keyedbossbar";
 
     private final Map<String, Object> values = new LinkedHashMap<>();
     private final Path file;
@@ -144,6 +147,17 @@ final class Variables {
             // a data source.
             return null;
         }
+        if (value instanceof KeyedBossBar keyed) {
+            // Keyed boss bars persist by key (phase 24): the bar
+            // itself lives in the server's persistent boss bar
+            // storage, so the variable only records its key. On
+            // decode the bar is looked up again; a bar deleted
+            // since decodes to no value.
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put(KEYED_BOSS_BAR_TAG, Boolean.TRUE);
+            m.put("key", keyed.getKey().toString());
+            return m;
+        }
         if (value instanceof BossBar) {
             // Runtime-only value (phase 21): a boss bar is a live
             // server-registered display, not data; it is dropped
@@ -237,6 +251,10 @@ final class Variables {
                 return Timespan.ETERNAL;
             }
             return Timespan.ofMs((long) num(map.get("ms")));
+        }
+        if (value instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get(KEYED_BOSS_BAR_TAG))) {
+            NamespacedKey nk = NamespacedKey.fromString(String.valueOf(map.get("key")));
+            return nk == null ? null : Bukkit.getBossBar(nk);
         }
         return value;
     }

@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, TimespanUnit, EventFilter, RelativeDirection, WeatherName, GameModeName, TitleTiming, BossBarColorName, FishingStateName } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, TimespanUnit, EventFilter, RelativeDirection, WeatherName, GameModeName, TitleTiming, BossBarColorName, BossBarStyleName, BossBarFlagName, FishingStateName } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -364,6 +364,9 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "contains",
   "startsWith",
   "endsWith",
+  "bossBarDarkensSky",
+  "bossBarCreatesFog",
+  "bossBarPlaysBossMusic",
   "timerActive",
   "fileExists",
 ]);
@@ -2326,6 +2329,14 @@ const BOSS_BAR_COLOR_NAMES: ReadonlySet<string> = new Set([
   "pink", "blue", "red", "green", "yellow", "purple", "white",
 ]);
 
+const BOSS_BAR_STYLE_NAMES: ReadonlySet<string> = new Set([
+  "solid", "6 notches", "10 notches", "12 notches", "20 notches",
+]);
+
+const BOSS_BAR_FLAG_NAMES: ReadonlySet<string> = new Set([
+  "darkenSky", "createFog", "playBossMusic",
+]);
+
 /**
  * Construct a boss bar creation expression (`a boss bar`, `a
  * <color> boss bar`, `a bossbar with title <title>`, or `a
@@ -2334,8 +2345,8 @@ const BOSS_BAR_COLOR_NAMES: ReadonlySet<string> = new Set([
  * unless the options say otherwise. Store it in a LOCAL
  * variable and add viewers to show it: a bar cannot be saved,
  * and the original rejects storing one in a persistent
- * variable at load time. Keyed bars are not offered (see the
- * section comment).
+ * variable at load time. For a persistent bar, see
+ * keyedBossBar below.
  */
 export function bossBar(options: { title?: Expr; color?: BossBarColorName } = {}): Expr {
   if (options.color !== undefined && !BOSS_BAR_COLOR_NAMES.has(options.color)) {
@@ -2384,6 +2395,104 @@ export function bossBarTitleOf(bar: Expr): Expr {
 /** Construct a boss bar progress expression: the bar's current progress as a fraction (`progress of %bossbar%`; 1 is full). */
 export function bossBarProgressOf(bar: Expr): Expr {
   return { kind: "bossBarProgressOf", bar };
+}
+
+/**
+ * Construct a keyed boss bar creation expression (`a keyed boss
+ * bar with key <key>`, with optional color and `with title`
+ * clauses): evaluating it REPLACES any bar stored under the key
+ * with a fresh one (empty title, progress 0) in the server's
+ * persistent boss bar storage. Unlike a plain bar, a keyed bar
+ * CAN be stored in a persistent variable.
+ */
+export function keyedBossBar(key: Expr, options: { title?: Expr; color?: BossBarColorName } = {}): Expr {
+  if (options.color !== undefined && !BOSS_BAR_COLOR_NAMES.has(options.color)) {
+    throw new RangeError(`invalid boss bar color name: ${String(options.color)}`);
+  }
+  return {
+    kind: "keyedBossBar",
+    key,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(options.color !== undefined ? { color: options.color } : {}),
+  };
+}
+
+/** Construct a keyed boss bar fetch expression (`boss bar with key <key>`): the bar stored under the key, or no value when the key has no bar. Fetching never creates a bar. */
+export function keyedBossBarOf(key: Expr): Expr {
+  return { kind: "keyedBossBarOf", key };
+}
+
+/** Construct a boss bar key expression (`boss bar key of <bar>`): the full `namespace:key` text of a keyed bar; not set for a plain bar. */
+export function bossBarKeyOf(bar: Expr): Expr {
+  return { kind: "bossBarKeyOf", bar };
+}
+
+/** Construct a boss bar style expression (`style of <bar>`): the style as text — "solid" or "N segments". */
+export function bossBarStyleOf(bar: Expr): Expr {
+  return { kind: "bossBarStyleOf", bar };
+}
+
+/** Construct the section boss bar expression (`event-bossbar`): the bar being created inside a createBossBarSection body. Only meaningful there. */
+export function eventBossBar(): Expr {
+  return { kind: "eventBossBar" };
+}
+
+/** Construct a delete-keyed-boss-bar statement (`delete boss bar with key <key>`): remove the bar stored under the key. A missing key is a silent no-op. */
+export function deleteKeyedBossBar(key: Expr): Stmt {
+  return withLoc({ kind: "deleteKeyedBossBar", key });
+}
+
+/** Construct a set-boss-bar-style statement (`set style of <bar> to <style>`): the style is a literal name. */
+export function setBossBarStyle(bar: Expr, style: BossBarStyleName): Stmt {
+  if (!BOSS_BAR_STYLE_NAMES.has(style)) {
+    throw new RangeError(`invalid boss bar style name: ${String(style)}`);
+  }
+  return withLoc({ kind: "setBossBarStyle", bar, style });
+}
+
+/** Construct a set-boss-bar-flag statement (`make <bar> darken the sky` / `create fog` / `play boss music`, or `make <bar> no longer ...` when enabled is false). */
+export function setBossBarFlag(bar: Expr, flag: BossBarFlagName, enabled: boolean): Stmt {
+  if (!BOSS_BAR_FLAG_NAMES.has(flag)) {
+    throw new RangeError(`invalid boss bar flag name: ${String(flag)}`);
+  }
+  return withLoc({ kind: "setBossBarFlag", bar, flag, enabled });
+}
+
+/** Construct a boss-bar-darkens-the-sky condition (`<bar> darkens the sky`). */
+export function bossBarDarkensSky(bar: Expr): Cond {
+  return { kind: "bossBarDarkensSky", bar };
+}
+
+/** Construct a boss-bar-creates-fog condition (`<bar> creates fog`). */
+export function bossBarCreatesFog(bar: Expr): Cond {
+  return { kind: "bossBarCreatesFog", bar };
+}
+
+/** Construct a boss-bar-plays-boss-music condition (`<bar> plays boss music`). */
+export function bossBarPlaysBossMusic(bar: Expr): Cond {
+  return { kind: "bossBarPlaysBossMusic", bar };
+}
+
+/**
+ * Construct a boss bar section creation statement (`set <target>
+ * to a [keyed] boss bar [with key <key>]:` plus an indented
+ * body): create a bar and run the body with the new bar
+ * available as eventBossBar(). With `key` the bar is keyed (the
+ * create resets any bar stored under the key); the body
+ * typically sets the title, progress, style and flags on
+ * eventBossBar().
+ */
+export function createBossBarSection(target: VarTarget, body: readonly Stmt[], options: { key?: Expr; color?: BossBarColorName } = {}): Stmt {
+  if (options.color !== undefined && !BOSS_BAR_COLOR_NAMES.has(options.color)) {
+    throw new RangeError(`invalid boss bar color name: ${String(options.color)}`);
+  }
+  return withLoc({
+    kind: "createBossBarSection",
+    target,
+    ...(options.key !== undefined ? { key: options.key } : {}),
+    ...(options.color !== undefined ? { color: options.color } : {}),
+    body: [...body],
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -225,6 +225,30 @@ function emitValue(e: Expr): string {
             return e.bar.kind === "arith"
                 ? `progress of (${emitValue(e.bar)})`
                 : `progress of ${emitValue(e.bar)}`;
+        case "keyedBossBar":
+            // The keyed create forms (all probed in phase 24):
+            // bare and color-only use `a keyed ... boss bar with
+            // key %text%`; a title adds `with title %text%` after
+            // the key — two-word `boss bar` without a color, the
+            // one-word `bossbar` shape with one.
+            if (e.title !== undefined) {
+                return e.color !== undefined
+                    ? `a keyed ${e.color} bossbar with key ${emitText(e.key)} with title ${emitText(e.title)}`
+                    : `a keyed boss bar with key ${emitText(e.key)} with title ${emitText(e.title)}`;
+            }
+            return `a keyed ${e.color !== undefined ? `${e.color} ` : ""}boss bar with key ${emitText(e.key)}`;
+        case "keyedBossBarOf":
+            return `boss bar with key ${emitText(e.key)}`;
+        case "bossBarKeyOf":
+            return e.bar.kind === "arith"
+                ? `boss bar key of (${emitValue(e.bar)})`
+                : `boss bar key of ${emitValue(e.bar)}`;
+        case "bossBarStyleOf":
+            return e.bar.kind === "arith"
+                ? `style of (${emitValue(e.bar)})`
+                : `style of ${emitValue(e.bar)}`;
+        case "eventBossBar":
+            return "event-bossbar";
         case "arith":
             // Arithmetic is always parenthesized so the emitted tree
             // means the same thing regardless of Skript's own
@@ -368,6 +392,11 @@ function emitString(e: Expr): string {
         case "bossBar":
         case "bossBarTitleOf":
         case "bossBarProgressOf":
+        case "keyedBossBar":
+        case "keyedBossBarOf":
+        case "bossBarKeyOf":
+        case "bossBarStyleOf":
+        case "eventBossBar":
         case "timespan":
         case "fishingWaitTime":
         case "fishingBiteTime":
@@ -480,6 +509,18 @@ function emitLeafCond(c: Cond, negated: boolean): string {
             return negated
                 ? `${emitValue(c.target)} does not end with ${emitValue(c.suffix)}`
                 : `${emitValue(c.target)} ends with ${emitValue(c.suffix)}`;
+        case "bossBarDarkensSky":
+            return negated
+                ? `${emitValue(c.bar)} does not darken the sky`
+                : `${emitValue(c.bar)} darkens the sky`;
+        case "bossBarCreatesFog":
+            return negated
+                ? `${emitValue(c.bar)} does not create fog`
+                : `${emitValue(c.bar)} creates fog`;
+        case "bossBarPlaysBossMusic":
+            return negated
+                ? `${emitValue(c.bar)} does not play boss music`
+                : `${emitValue(c.bar)} plays boss music`;
         case "timerActive":
         case "fileExists":
             throw new Error(`Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`);
@@ -637,6 +678,26 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             return [own(`${prefix}add ${emitValue(s.viewer)} to viewers of ${emitValue(s.bar)}`, path, s.loc)];
         case "removeBossBarViewer":
             return [own(`${prefix}remove ${emitValue(s.viewer)} from viewers of ${emitValue(s.bar)}`, path, s.loc)];
+        case "deleteKeyedBossBar":
+            return [own(`${prefix}delete boss bar with key ${emitText(s.key)}`, path, s.loc)];
+        case "setBossBarStyle":
+            return [own(`${prefix}set style of ${emitValue(s.bar)} to ${s.style}`, path, s.loc)];
+        case "setBossBarFlag": {
+            const verb = s.flag === "darkenSky"
+                ? "darken the sky"
+                : s.flag === "createFog" ? "create fog" : "play boss music";
+            return [own(s.enabled
+                ? `${prefix}make ${emitValue(s.bar)} ${verb}`
+                : `${prefix}make ${emitValue(s.bar)} no longer ${verb}`, path, s.loc)];
+        }
+        case "createBossBarSection": {
+            const head = s.key !== undefined
+                ? `set ${emitValue(s.target)} to a keyed ${s.color !== undefined ? `${s.color} ` : ""}boss bar with key ${emitText(s.key)}:`
+                : `set ${emitValue(s.target)} to a ${s.color !== undefined ? `${s.color} ` : ""}boss bar:`;
+            const lines = [own(`${prefix}${head}`, path, s.loc)];
+            lines.push(...emitBlock(s.body, level + 1, path, "body"));
+            return lines;
+        }
         case "give":
             return [own(`${prefix}give ${String(s.amount)} ${s.itemName} to ${emitValue(s.target)}`, path, s.loc)];
         case "teleport":

@@ -1,0 +1,40 @@
+command /bossbar:
+    trigger:
+        set {_bar} to a keyed boss bar with key "sktest:main"
+        set title of {_bar} to "Alpha"
+        set progress of {_bar} to 0.25
+        set {_fetched} to boss bar with key "sktest:main"
+        add player to viewers of {_fetched}
+        broadcast "BB1 title=%title of {_fetched}% progress=%progress of {_fetched}%"
+        set {_bar} to a keyed boss bar with key "sktest:main"
+        set {_fetched} to boss bar with key "sktest:main"
+        broadcast "BB2 title=%title of {_fetched}% progress=%progress of {_fetched}%"
+        set style of {_fetched} to 6 notches
+        broadcast "BB3 style=%style of {_fetched}%"
+        make {_fetched} create fog
+        if {_fetched} creates fog:
+            broadcast "BB4 fog=on"
+        make {_fetched} no longer create fog
+        if {_fetched} does not create fog:
+            broadcast "BB4 fog=off"
+        broadcast "BB5 key=%boss bar key of {_fetched}%"
+        set {_sec} to a keyed boss bar with key "sktest:sec":
+            set title of event-bossbar to "SecT"
+            set progress of event-bossbar to 0.3
+            make event-bossbar darken the sky
+        set {_secFetched} to boss bar with key "sktest:sec"
+        broadcast "BB6 title=%title of {_secFetched}% progress=%progress of {_secFetched}%"
+        if {_secFetched} darkens the sky:
+            broadcast "BB6 sky=on"
+        set {_plain} to a boss bar:
+            set title of event-bossbar to "PlainT"
+        broadcast "BB7 title=%title of {_plain}%"
+        set {bb24} to boss bar with key "sktest:sec"
+        broadcast "BB8 title=%title of {bb24}%"
+        delete boss bar with key "sktest:main"
+        set {_gone} to boss bar with key "sktest:main"
+        broadcast "BB9 title=%title of {_gone}%"
+        if {_gone} creates fog:
+            broadcast "BB9 present"
+        else:
+            broadcast "BB9 deleted"

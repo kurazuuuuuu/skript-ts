@@ -17,8 +17,10 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarFlag;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
+import org.bukkit.boss.KeyedBossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -226,6 +228,7 @@ final class Engine {
         FishHook fishingHook; // "fishing hook" in fishing events
         String fishingState; // "event-fishing state" in fishing events (the Skript state name)
         Inventory eventInventory; // "event-inventory" in inventory click/close events (the view's top inventory)
+        BossBar eventBossBar; // "event-bossbar" inside a boss bar creation section (phase 24); null elsewhere
         Double clickedSlot; // "index of event-slot" in inventory click events; null elsewhere
         Double clickedRawSlot; // "raw index of event-slot" in inventory click events; null elsewhere
         Cancellable cancellable; // the Bukkit event being handled, when it can be cancelled
@@ -257,6 +260,7 @@ final class Engine {
             c.fishingHook = fishingHook;
             c.fishingState = fishingState;
             c.eventInventory = eventInventory;
+            c.eventBossBar = eventBossBar;
             c.clickedSlot = clickedSlot;
             c.clickedRawSlot = clickedRawSlot;
             c.cancellable = cancellable;
@@ -1020,6 +1024,93 @@ final class Engine {
         };
     }
 
+    /**
+     * A boss bar key text to a NamespacedKey (phase 24), or null
+     * when the key is invalid. The original validates keys with
+     * runtime script errors (an invalid key makes the keyed
+     * expressions yield nothing): the text is a full namespaced
+     * key split at the first ':' (a bare key lives in the
+     * minecraft namespace); both parts must be non-empty, the
+     * namespace allows lowercase letters, digits and . _ -, the
+     * key part additionally allows /. Anything else (uppercase,
+     * spaces, a second colon, an empty part) is invalid.
+     */
+    private static NamespacedKey bossBarKey(String text) {
+        if (text == null) return null;
+        String namespace = "minecraft";
+        String key = text;
+        int colon = text.indexOf(':');
+        if (colon >= 0) {
+            namespace = text.substring(0, colon);
+            key = text.substring(colon + 1);
+            if (key.indexOf(':') >= 0) return null;
+        }
+        if (namespace.isEmpty() || key.isEmpty()) return null;
+        for (int i = 0; i < namespace.length(); i++) {
+            char c = namespace.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '.' || c == '_' || c == '-')) return null;
+        }
+        for (int i = 0; i < key.length(); i++) {
+            char c = key.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '.' || c == '_' || c == '-' || c == '/')) return null;
+        }
+        return new NamespacedKey(namespace, key);
+    }
+
+    /** A boss bar style literal (phase 24) to Bukkit's enum; anything else — including no style — is solid. */
+    private static BarStyle bossBarStyle(String name) {
+        if (name == null) return BarStyle.SOLID;
+        return switch (name) {
+            case "6 notches" -> BarStyle.SEGMENTED_6;
+            case "10 notches" -> BarStyle.SEGMENTED_10;
+            case "12 notches" -> BarStyle.SEGMENTED_12;
+            case "20 notches" -> BarStyle.SEGMENTED_20;
+            default -> BarStyle.SOLID;
+        };
+    }
+
+    /** A Bukkit bar style to the text the original's `style of` read prints (phase 24, probed): "solid" or "N segments". */
+    private static String bossBarStyleName(BarStyle style) {
+        return switch (style) {
+            case SEGMENTED_6 -> "6 segments";
+            case SEGMENTED_10 -> "10 segments";
+            case SEGMENTED_12 -> "12 segments";
+            case SEGMENTED_20 -> "20 segments";
+            default -> "solid";
+        };
+    }
+
+    /** A boss bar flag name (phase 24) to Bukkit's BarFlag; null for anything else. */
+    private static BarFlag bossBarFlag(String name) {
+        if (name == null) return null;
+        return switch (name) {
+            case "darkenSky" -> BarFlag.DARKEN_SKY;
+            case "createFog" -> BarFlag.CREATE_FOG;
+            case "playBossMusic" -> BarFlag.PLAY_BOSS_MUSIC;
+            default -> null;
+        };
+    }
+
+    /**
+     * The bar a createBossBarSection statement creates (phase
+     * 24): keyed when the node carries a key (resetting any bar
+     * stored under it, like the keyedBossBar expression), plain
+     * otherwise. Null means the key was invalid.
+     */
+    private BossBar createSectionBar(Map<String, Object> stmt, Ctx ctx) {
+        BarColor color = bossBarColor(str(stmt.get("color")));
+        if (stmt.get("key") != null) {
+            Object k = evalExpr(node(stmt.get("key")), ctx);
+            NamespacedKey nk = k == null ? null : bossBarKey(String.valueOf(k));
+            if (nk == null) return null;
+            if (Bukkit.getBossBar(nk) != null) Bukkit.removeBossBar(nk);
+            return Bukkit.createBossBar(nk, "", color, BarStyle.SOLID);
+        }
+        return Bukkit.createBossBar("", color, BarStyle.SOLID);
+    }
+
     private void execStmt(Map<String, Object> stmt, Ctx ctx, Runnable cont) {
         switch (kind(stmt)) {
             case "send" -> {
@@ -1114,6 +1205,59 @@ final class Engine {
                     bar.removePlayer(p);
                 }
                 cont.run();
+            }
+            case "deleteKeyedBossBar" -> {
+                Object k = evalExpr(node(stmt.get("key")), ctx);
+                NamespacedKey nk = k == null ? null : bossBarKey(String.valueOf(k));
+                if (nk != null) {
+                    Bukkit.removeBossBar(nk);
+                }
+                cont.run();
+            }
+            case "setBossBarStyle" -> {
+                if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar) {
+                    bar.setStyle(bossBarStyle(str(stmt.get("style"))));
+                }
+                cont.run();
+            }
+            case "setBossBarFlag" -> {
+                BarFlag flag = bossBarFlag(str(stmt.get("flag")));
+                if (flag != null
+                        && evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar) {
+                    if (Boolean.TRUE.equals(stmt.get("enabled"))) {
+                        bar.addFlag(flag);
+                    } else {
+                        bar.removeFlag(flag);
+                    }
+                }
+                cont.run();
+            }
+            case "createBossBarSection" -> {
+                // The section creation form (phase 24): create
+                // the bar, run the body with it in the
+                // event-bossbar slot, then bind the target
+                // variable (setVar's assignment, scalar or
+                // whole-list) and restore the slot. An invalid
+                // key yields no bar: the body is skipped and the
+                // target keeps its old value, mirroring how the
+                // original's runtime error aborts the set.
+                BossBar bar = createSectionBar(stmt, ctx);
+                if (bar == null) {
+                    cont.run();
+                } else {
+                    BossBar previous = ctx.eventBossBar;
+                    ctx.eventBossBar = bar;
+                    execRange(list(stmt.get("body")), 0, ctx, () -> {
+                        ctx.eventBossBar = previous;
+                        Map<String, Object> target = node(stmt.get("target"));
+                        if ("variableList".equals(kind(target)) || "localVariableList".equals(kind(target))) {
+                            assignList(storeFor(target, ctx), str(target.get("name")), bar);
+                        } else {
+                            storeFor(target, ctx).set(varKey(target, ctx), scalarValue(bar));
+                        }
+                        cont.run();
+                    });
+                }
             }
             case "give" -> {
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
@@ -2188,6 +2332,18 @@ final class Engine {
                 Object suffix = evalExpr(node(cond.get("suffix")), ctx);
                 yield target instanceof String s && suffix instanceof String p && s.endsWith(p);
             }
+            case "bossBarDarkensSky" -> {
+                Object b = evalExpr(node(cond.get("bar")), ctx);
+                yield b instanceof BossBar bar && bar.hasFlag(BarFlag.DARKEN_SKY);
+            }
+            case "bossBarCreatesFog" -> {
+                Object b = evalExpr(node(cond.get("bar")), ctx);
+                yield b instanceof BossBar bar && bar.hasFlag(BarFlag.CREATE_FOG);
+            }
+            case "bossBarPlaysBossMusic" -> {
+                Object b = evalExpr(node(cond.get("bar")), ctx);
+                yield b instanceof BossBar bar && bar.hasFlag(BarFlag.PLAY_BOSS_MUSIC);
+            }
             case "timerActive" -> {
                 String name = renderText(node(cond.get("name")), ctx);
                 yield timerHost != null && name != null && timerHost.isActive(name);
@@ -2524,6 +2680,39 @@ final class Engine {
                 Object b = evalExpr(node(expr.get("bar")), ctx);
                 yield b instanceof BossBar bar ? bar.getProgress() : null;
             }
+            // Keyed boss bars (phase 24): a keyed bar is a live
+            // Bukkit KeyedBossBar in the server's persistent boss
+            // bar storage. Creating resets any bar stored under
+            // the key to a fresh one (probed on the original);
+            // Bukkit's createBossBar starts at progress 0 with
+            // the given title, the probed fresh state. Fetching
+            // never creates; an invalid key yields no value.
+            case "keyedBossBar" -> {
+                Object k = evalExpr(node(expr.get("key")), ctx);
+                NamespacedKey nk = k == null ? null : bossBarKey(String.valueOf(k));
+                if (nk == null) yield null;
+                if (Bukkit.getBossBar(nk) != null) {
+                    Bukkit.removeBossBar(nk);
+                }
+                String title = expr.get("title") != null
+                        ? renderText(node(expr.get("title")), ctx) : "";
+                yield Bukkit.createBossBar(nk, title,
+                        bossBarColor(str(expr.get("color"))), BarStyle.SOLID);
+            }
+            case "keyedBossBarOf" -> {
+                Object k = evalExpr(node(expr.get("key")), ctx);
+                NamespacedKey nk = k == null ? null : bossBarKey(String.valueOf(k));
+                yield nk == null ? null : Bukkit.getBossBar(nk);
+            }
+            case "bossBarKeyOf" -> {
+                Object b = evalExpr(node(expr.get("bar")), ctx);
+                yield b instanceof KeyedBossBar keyed ? keyed.getKey().toString() : null;
+            }
+            case "bossBarStyleOf" -> {
+                Object b = evalExpr(node(expr.get("bar")), ctx);
+                yield b instanceof BossBar bar ? bossBarStyleName(bar.getStyle()) : null;
+            }
+            case "eventBossBar" -> ctx.eventBossBar;
             case "eventBlock" -> ctx.eventBlock;
             case "eventItem" -> ctx.eventItem;
             case "clickedEntity" -> ctx.clickedEntity;

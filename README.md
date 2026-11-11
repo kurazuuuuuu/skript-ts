@@ -1020,6 +1020,46 @@ development log).
   the engine keeps the value in memory and drops it on
   variable save instead of erroring (recorded divergence).
 
+- **Keyed boss bars, styles, flags, sections** (phase 24,
+  probed on 2.17.1): `keyedBossBar(key, { title?, color? })`
+  creates a bar in the server's persistent boss bar storage;
+  evaluating the create **replaces** any bar stored under
+  the key with a fresh one (empty title, progress **0** —
+  the vanilla custom-bossbar default). `keyedBossBarOf(key)`
+  fetches by key: a missing key yields no value and never
+  creates a bar. Keys are full namespaced keys (a bare key
+  lives in `minecraft:`; lowercase letters, digits, `.`
+  `_` `-`, plus `/` in the key part) — an invalid key is a
+  runtime error in the original and yields nothing here.
+  `deleteKeyedBossBar(key)` removes a stored bar (a silent
+  no-op when missing). Keyed bars **can** be saved: a
+  persistent variable records the key and resolves it on
+  load. They survive restarts — except progress, which the
+  vanilla storage does not save and which reads back 0.
+  `bossBarKeyOf(bar)` reads the full `namespace:key` text
+  (not set for plain bars). `setBossBarStyle(bar, style)`
+  writes a style literal (`solid`, `6 notches`, `10
+  notches`, `12 notches`, `20 notches`);
+  `bossBarStyleOf(bar)` reads it back as `solid` or
+  `N segments` (the original's asymmetric spellings).
+  `setBossBarFlag(bar, flag, enabled)` with flags
+  `darkenSky` / `createFog` / `playBossMusic` emits the
+  make / make-no-longer effects; the conditions
+  `bossBarDarkensSky` / `bossBarCreatesFog` /
+  `bossBarPlaysBossMusic` read them (fresh bars have all
+  flags off). `createBossBarSection(target, body, { key?,
+  color? })` is the section creation form: the body
+  addresses the new bar as `eventBossBar()` (`event-bossbar`)
+  and the target is bound after the body runs; the section
+  head takes a color but no title clause (the docs'
+  keyed+title section example does not parse in the
+  original — set the title in the body). Recorded, not
+  reproduced: deleting the keyed **create** expression
+  crashes the original (ClassCastException), so deletion
+  here emits the fetch form; and the enclosing event's
+  `player` is not visible inside a section in the original
+  either.
+
 `examples/display.ts` exercises all of it — a timed title
 with subtitle and an action bar on join, the `/dtplain`,
 `/dtstay`, `/dtsub`, `/dtclear`, `/dtreset` and `/dbar`
@@ -1028,22 +1068,16 @@ lifecycles — and `examples/behavior/display.behavior.ts`
 asserts on the client's actual title / action bar /
 boss bar packets under both runtimes.
 
-Deliberate deferrals (recorded): **keyed** boss bars (the
-keyed + color + title create form does not even parse in
-the original, and keyed bars are persistent server storage
-addressed by key — a lifecycle of their own), the section
-creation form (`set {_b} to a boss bar:` with an
-event-bossbar body — this subset has no section
-expressions; the one-line create plus the property
-statements cover the same ground), bar **styles** (notches)
-and the darken-sky / fog / boss-music **flags** (both parse
-and run in the original; outside this slice's
-create / show / progress scope), expression timespans for
-title timings (the original accepts a timespan variable;
-this subset has no timespan value type, so timings are
-literals like the periodical amount), and plural audiences
-as title targets (the original's `%audiences%`; this
-subset's sends target one player, as elsewhere).
+`examples/bossbar.ts` runs the keyed battery as the
+`/bossbar` command, and
+`examples/behavior/bossbar.behavior.ts` asserts the
+narrated sequence (create / reset / style / flag / key /
+sections / variable storage / delete) and the shown bar's
+wire packet under both runtimes.
+
+Deliberate deferrals (recorded): plural audiences as title
+targets (the original's `%audiences%`; this subset's sends
+target one player, as elsewhere).
 
 ### Generalized events: death, entity pickup/drop and fishing
 

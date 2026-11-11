@@ -351,14 +351,9 @@ export type Expr =
   //   parse and run). A fresh bar has an empty title, progress
   //   1, color white and a solid style (the add-viewer packet
   //   showed health 1, color 6 = white, dividers 0). Keyed
-  //   bars are NOT offered: the keyed+color+title create form
-  //   does not even parse in the original, and keyed bars live
-  //   in persistent server storage addressed by key — a
-  //   lifecycle of their own. The section creation form
-  //   (`set {_b} to a boss bar:` with an event-bossbar body)
-  //   parses too but is not offered: this subset has no section
-  //   expressions, and the one-line create plus the property
-  //   statements cover the same ground imperatively.
+  //   bars, styles, flags and the section creation form were
+  //   deferred in this phase and are covered in phase 24
+  //   (keyedBossBar and friends below).
   // - bossBarTitleOf / bossBarProgressOf read the properties
   //   (`title of %bossbar%`, `progress of %bossbar%`); a fresh
   //   bar reads back its title text and progress 1.
@@ -373,7 +368,44 @@ export type Expr =
   //   a documented divergence.
   | { kind: "bossBar"; title?: Expr; color?: BossBarColorName }
   | { kind: "bossBarTitleOf"; bar: Expr }
-  | { kind: "bossBarProgressOf"; bar: Expr };
+  | { kind: "bossBarProgressOf"; bar: Expr }
+  // Keyed boss bars, styles, flags and the section creation form
+  // (phase 24), all probed against the real Skript 2.17.1:
+  //
+  // - keyedBossBar creates a keyed bar (`a keyed boss bar with
+  //   key %text%`, color and `with title %text%` clauses probed).
+  //   Evaluating the create REPLACES any bar stored under the key
+  //   with a fresh one (title "", progress 0 — the vanilla
+  //   custom-bossbar default, NOT the plain bar's 1). The value's
+  //   property writes reach the stored bar while it is the
+  //   registered one; a later create under the same key resets it.
+  //   Keyed bars persist in server storage across restarts (title
+  //   probed surviving; progress does NOT survive — the vanilla
+  //   custom-bossbar storage saves name/color/style/flags but not
+  //   the value, so a fetched bar reads progress 0 after a
+  //   restart) and CAN be stored in persistent variables.
+  // - keyedBossBarOf fetches by key (`boss bar with key %text%`);
+  //   a missing key yields no value and never creates a bar, and
+  //   property writes through a missing fetch do not create one.
+  // - Keys are full namespaced keys: the text is split at the
+  //   first ':' (a bare key lives in the `minecraft:` namespace),
+  //   lowercase letters/digits and `.` `_` `-` in both parts plus
+  //   `/` in the key part. An invalid key is a runtime script
+  //   error in the original and the expression yields nothing.
+  // - bossBarKeyOf reads a keyed bar's full `namespace:key` text
+  //   (`boss bar key of %bar%`); a plain bar's key is not set.
+  // - bossBarStyleOf reads `style of %bar%` as text: "solid" or
+  //   "N segments" (the original's read spellings, probed).
+  // - eventBossBar is the section body's bar (`event-bossbar`),
+  //   only meaningful inside a createBossBarSection body; the
+  //   enclosing event's player is NOT visible inside the section
+  //   in the original (it errors), matching how the section is a
+  //   create-bossbar event of its own.
+  | { kind: "keyedBossBar"; key: Expr; title?: Expr; color?: BossBarColorName }
+  | { kind: "keyedBossBarOf"; key: Expr }
+  | { kind: "bossBarKeyOf"; bar: Expr }
+  | { kind: "bossBarStyleOf"; bar: Expr }
+  | { kind: "eventBossBar" };
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
@@ -415,7 +447,13 @@ export type Cond =
   | { kind: "timerActive"; name: TextExpr }
   // Engine-builtin condition (skUtilities slice, phase 9): a file or
   // directory exists under the engine's files root.
-  | { kind: "fileExists"; path: TextExpr };
+  | { kind: "fileExists"; path: TextExpr }
+  // Boss bar flag conditions (phase 24), probed on Skript 2.17.1:
+  // `%bar% darkens the sky`, `%bar% creates fog`,
+  // `%bar% plays boss music` (with native negative spellings).
+  | { kind: "bossBarDarkensSky"; bar: Expr }
+  | { kind: "bossBarCreatesFog"; bar: Expr }
+  | { kind: "bossBarPlaysBossMusic"; bar: Expr };
 
 /** Represents a Skript variable expression. */
 export type VariableExpr = Extract<Expr, { kind: "variable" }>;
@@ -530,6 +568,24 @@ export interface TitleTiming { amount: number; unit: TimespanUnit }
  */
 export type BossBarColorName =
   | "pink" | "blue" | "red" | "green" | "yellow" | "purple" | "white";
+
+/**
+ * A boss bar style literal (phase 24), spelled the way the subset
+ * emits it in `set style of %bar% to ...`. The original accepts
+ * many spellings (notches / segments / number words / "notched
+ * with N segments"); the subset fixes one canonical spelling per
+ * style. Note the read form is asymmetric in the original:
+ * `style of %bar%` prints "solid" or "N segments" (probed).
+ */
+export type BossBarStyleName =
+  | "solid" | "6 notches" | "10 notches" | "12 notches" | "20 notches";
+
+/**
+ * A boss bar flag (phase 24), the subset's names for Bukkit's
+ * BarFlag values DARKEN_SKY / CREATE_FOG / PLAY_BOSS_MUSIC
+ * (Skript boss bar flags exist since 2.16; probed on 2.17.1).
+ */
+export type BossBarFlagName = "darkenSky" | "createFog" | "playBossMusic";
 
 /** Source position in the TypeScript file where a builder call was made. */
 export interface SourceLoc { file: string; line: number; column: number }
@@ -719,9 +775,9 @@ export type Stmt =
   //   percent literals in hand-written Skript are the same
   //   fraction divided by 100), `add %player% to viewers of
   //   %bossbar%` and `remove %player% from viewers of
-  //   %bossbar%`. Style (notches) and the sky/fog/music flags
-  //   parse in the original but are not offered: the slice is
-  //   create / show / progress (see the bossBar expression).
+  //   %bossbar%`. (Style (notches) and the sky/fog/music
+  //   flags were deferred in this phase and are covered in
+  //   phase 24 — see setBossBarStyle / setBossBarFlag below.)
   | { kind: "sendTitle"; target: Expr; title?: Expr; subtitle?: Expr; fadeIn?: Expr; stay?: Expr; fadeOut?: Expr; loc?: SourceLoc }
   | { kind: "sendActionBar"; target: Expr; message: Expr; loc?: SourceLoc }
   | { kind: "clearTitle"; target: Expr; reset: boolean; loc?: SourceLoc }
@@ -730,6 +786,34 @@ export type Stmt =
   | { kind: "setBossBarProgress"; bar: Expr; value: Expr; loc?: SourceLoc }
   | { kind: "addBossBarViewer"; bar: Expr; viewer: Expr; loc?: SourceLoc }
   | { kind: "removeBossBarViewer"; bar: Expr; viewer: Expr; loc?: SourceLoc }
+  // Boss bar completion (phase 24), probed on Skript 2.17.1:
+  // deleteKeyedBossBar emits the fetch expression under `delete`
+  // (`delete boss bar with key %text%`), which removes the stored
+  // bar and is a silent no-op for a missing key. (Deleting the
+  // keyed CREATE expression crashes the original with a
+  // ClassCastException — an original bug the subset does not
+  // reproduce; deleting a variable holding a keyed bar only
+  // clears the variable, the bar survives.)
+  | { kind: "deleteKeyedBossBar"; key: Expr; loc?: SourceLoc }
+  // setBossBarStyle emits `set style of %bar% to <literal>` with
+  // the canonical BossBarStyleName spellings.
+  | { kind: "setBossBarStyle"; bar: Expr; style: BossBarStyleName; loc?: SourceLoc }
+  // setBossBarFlag emits the make / make-no-longer effect family:
+  // `make %bar% darken the sky` / `create fog` / `play boss music`
+  // and `make %bar% no longer ...` for enabled=false (the
+  // stop-from family also exists in the original; the subset
+  // fixes the make family). Fresh bars have all flags off.
+  | { kind: "setBossBarFlag"; bar: Expr; flag: BossBarFlagName; enabled: boolean; loc?: SourceLoc }
+  // createBossBarSection is the section creation form:
+  // `set <target> to a [keyed] boss bar [with key %text%]:` with
+  // the body addressing the new bar as eventBossBar. A color word
+  // is allowed in the section head (probed, plain and keyed), but
+  // there is no title clause (the docs' keyed+title section
+  // example does not parse in 2.17.1); the body's property
+  // statements on event-bossbar do that work. With `key` present
+  // the bar is keyed (and the create resets any stored bar under
+  // the key, like keyedBossBar); without it, a plain bar.
+  | { kind: "createBossBarSection"; target: VarTarget; key?: Expr; color?: BossBarColorName; body: Stmt[]; loc?: SourceLoc }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration

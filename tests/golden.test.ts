@@ -15,6 +15,18 @@ import {
   bossBar,
   bossBarProgressOf,
   bossBarTitleOf,
+  bossBarCreatesFog,
+  bossBarDarkensSky,
+  bossBarKeyOf,
+  bossBarPlaysBossMusic,
+  bossBarStyleOf,
+  createBossBarSection,
+  deleteKeyedBossBar,
+  eventBossBar,
+  keyedBossBar,
+  keyedBossBarOf,
+  setBossBarFlag,
+  setBossBarStyle,
   broadcast,
   call,
   callStmt,
@@ -211,6 +223,7 @@ import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
 import { commandsScript } from "../examples/commands.js";
 import { displayScript } from "../examples/display.js";
+import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
 
 function fixture(name: string): string {
@@ -1808,6 +1821,131 @@ describe("display effects and boss bars (phase 21)", () => {
   });
   it("the display sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(displayScript)).toBe(false);
+  });
+});
+
+describe("keyed boss bars, styles, flags and sections (phase 24)", () => {
+  it("keyed create forms", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("a"), keyedBossBar(str("ex:a"))),
+            set(localVar("b"), keyedBossBar(str("ex:b"), { color: "purple" })),
+            set(localVar("c"), keyedBossBar(str("ex:c"), { title: str("T") })),
+            set(localVar("d"), keyedBossBar(str("ex:d"), { title: str("T"), color: "red" })),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        '    set {_a} to a keyed boss bar with key "ex:a"\n' +
+        '    set {_b} to a keyed purple boss bar with key "ex:b"\n' +
+        '    set {_c} to a keyed boss bar with key "ex:c" with title "T"\n' +
+        '    set {_d} to a keyed red bossbar with key "ex:d" with title "T"\n',
+    );
+  });
+  it("fetch, key and style reads", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("f"), keyedBossBarOf(str("ex:a"))),
+            broadcast(fmt("k=", bossBarKeyOf(variable("bar")), " s=", bossBarStyleOf(variable("bar")))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        '    set {_f} to boss bar with key "ex:a"\n' +
+        '    broadcast "k=%boss bar key of {bar}% s=%style of {bar}%"\n',
+    );
+  });
+  it("delete, style and flag statements", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            deleteKeyedBossBar(str("ex:a")),
+            setBossBarStyle(variable("bar"), "6 notches"),
+            setBossBarStyle(variable("bar"), "solid"),
+            setBossBarFlag(variable("bar"), "darkenSky", true),
+            setBossBarFlag(variable("bar"), "createFog", false),
+            setBossBarFlag(variable("bar"), "playBossMusic", true),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        '    delete boss bar with key "ex:a"\n' +
+        "    set style of {bar} to 6 notches\n" +
+        "    set style of {bar} to solid\n" +
+        "    make {bar} darken the sky\n" +
+        "    make {bar} no longer create fog\n" +
+        "    make {bar} play boss music\n",
+    );
+  });
+  it("flag conditions, positive and negated", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            ifElse(bossBarDarkensSky(variable("bar")), [broadcast(str("sky"))]),
+            ifElse(not(bossBarCreatesFog(variable("bar"))), [broadcast(str("nofog"))]),
+            ifElse(bossBarPlaysBossMusic(variable("bar")), [broadcast(str("music"))]),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    if {bar} darkens the sky:\n" +
+        '        broadcast "sky"\n' +
+        "    if {bar} does not create fog:\n" +
+        '        broadcast "nofog"\n' +
+        "    if {bar} plays boss music:\n" +
+        '        broadcast "music"\n',
+    );
+  });
+  it("section creation forms", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            createBossBarSection(localVar("a"), [
+              setBossBarTitle(eventBossBar(), str("Sec")),
+              setBossBarProgress(eventBossBar(), num(0.5)),
+            ]),
+            createBossBarSection(localVar("b"), [
+              setBossBarTitle(eventBossBar(), str("Keyed")),
+            ], { key: str("ex:k") }),
+            createBossBarSection(localVar("c"), [
+              setBossBarFlag(eventBossBar(), "createFog", true),
+            ], { key: str("ex:c"), color: "red" }),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_a} to a boss bar:\n" +
+        '        set title of event-bossbar to "Sec"\n' +
+        "        set progress of event-bossbar to 0.5\n" +
+        '    set {_b} to a keyed boss bar with key "ex:k":\n' +
+        '        set title of event-bossbar to "Keyed"\n' +
+        '    set {_c} to a keyed red boss bar with key "ex:c":\n' +
+        "        make event-bossbar create fog\n",
+    );
+  });
+  it("api guards: keyed colors, styles and flags", () => {
+    expect(() => keyedBossBar(str("ex:a"), { color: "orange" as never })).toThrow(RangeError);
+    expect(() => createBossBarSection(localVar("a"), [], { color: "black" as never })).toThrow(RangeError);
+    expect(() => setBossBarStyle(variable("bar"), "7 notches" as never)).toThrow(RangeError);
+    expect(() => setBossBarFlag(variable("bar"), "glow" as never, true)).toThrow(RangeError);
+  });
+  it("the bossbar sample matches the golden fixture", () => {
+    expect(emit(bossbarScript)).toBe(fixture("bossbar.sk"));
+  });
+  it("the bossbar sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(bossbarScript)).toBe(false);
   });
 });
 
