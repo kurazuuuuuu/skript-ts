@@ -8,6 +8,9 @@ name: CI
 #
 # Supply chain: every action is pinned to a full commit SHA (the
 # version comment is informational; Dependabot keeps both current).
+# Dependency auditing lives in audit.yml: it is a time-varying
+# external signal, so it gates dependency changes and releases
+# rather than every pull request.
 
 on:
   push:
@@ -22,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
@@ -41,41 +46,13 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-  dependency-audit:
-    name: Dependency audit (pnpm audit)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Hard gate: high and critical advisories fail the job. This
-      # package has no production dependencies, so the audit covers
-      # the dev toolchain that CI and contributors actually execute.
-      - name: Audit (high and above fail)
-        run: pnpm audit --audit-level high
-
-      # Full report for lower severities, without failing the job:
-      # moderate/low findings stay visible in the log instead of
-      # blocking every pull request.
-      - name: Audit (full report, informational)
-        if: always()
-        run: pnpm audit || true
-
   engine-jar:
     name: Engine jar
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin

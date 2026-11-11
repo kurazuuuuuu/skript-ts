@@ -14,16 +14,38 @@ if [ ! -x "$JDK/bin/javac" ]; then
     exit 1
 fi
 
-CP="$(ls libs/*.jar | tr '\n' ':' | sed 's/:$//')"
+# The compile classpath is exactly the set of jars fetch-libs.sh
+# verified: the names come from the committed .sha512 files, and any
+# other jar in libs/ aborts the build instead of being included
+# silently (an unverified jar on the classpath is a code-execution
+# surface, not just a compile input).
+CP=""
+for sum in libs/*.sha512; do
+    [ -f "$sum" ] || continue
+    jar="${sum%.sha512}"
+    if [ ! -f "$jar" ]; then
+        echo "missing $jar — run engine/fetch-libs.sh first" >&2
+        exit 1
+    fi
+    CP="${CP:+$CP:}$jar"
+done
 if [ -z "$CP" ]; then
     echo "no libraries in engine/libs — run engine/fetch-libs.sh first" >&2
     exit 1
 fi
+for jar in libs/*.jar; do
+    [ -f "$jar" ] || continue
+    if [ ! -f "$jar.sha512" ]; then
+        echo "unverified jar in engine/libs: $jar (no committed .sha512) — refusing to build" >&2
+        exit 1
+    fi
+done
 
 rm -rf build/classes
 mkdir -p build/classes
 find src/main/java -name '*.java' | sort > build/sources.txt
-"$JDK/bin/javac" -encoding UTF-8 -cp "$CP" -d build/classes @build/sources.txt
+# -proc:none: never run annotation processors found on the classpath.
+"$JDK/bin/javac" -proc:none -encoding UTF-8 -cp "$CP" -d build/classes @build/sources.txt
 cp src/main/resources/plugin.yml build/classes/plugin.yml
 "$JDK/bin/jar" --create --file build/skript-ts.jar -C build/classes .
 echo "built engine/build/skript-ts.jar"

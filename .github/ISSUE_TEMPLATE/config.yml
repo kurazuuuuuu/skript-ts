@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/kurazuuuuuu/skript-ts/security/advisories/new
+    about: Please report security problems privately, not as a public issue
   - name: Documentation (supported subset)
     url: https://github.com/kurazuuuuuu/skript-ts/blob/master/docs/reference.md
     about: Check what is currently in the supported subset before filing

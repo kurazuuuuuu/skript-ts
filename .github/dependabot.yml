@@ -4,14 +4,31 @@
 # pnpm-lock.yaml). The github-actions ecosystem keeps the SHA-pinned
 # actions current: Dependabot updates the commit SHA and the version
 # comment together.
+#
+# The 7-day cooldown keeps freshly published versions out of update
+# PRs until the ecosystem has had a chance to spot a bad release;
+# it complements minimumReleaseAge in pnpm-workspace.yaml.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"

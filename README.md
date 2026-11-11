@@ -126,6 +126,9 @@ server in both modes.
 - [Addon inventory](docs/addon-inventory.md) (Japanese) — the
   pre-port license check and behavior notes for each addon considered
   for the engine.
+- [Security policy](SECURITY.md) — how to report a vulnerability
+  privately, and how to verify a release's build provenance
+  attestation.
 
 ## Development
 

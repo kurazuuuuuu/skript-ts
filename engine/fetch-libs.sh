@@ -7,6 +7,12 @@
 # jars are fetched with curl, which handles the proxy correctly.
 # The downloaded jars are gitignored; the .sha512 files are committed
 # so a fresh checkout can reproduce and verify the exact same bits.
+#
+# Provenance: a .sha512 file pins the bits that were first fetched.
+# When bumping a library, cross-check the new jar against the
+# upstream project's own published checksum or signature before
+# committing the new hash — the hash only proves "same as last
+# time", not "genuine".
 set -eu
 cd "$(dirname "$0")"
 mkdir -p libs
@@ -16,15 +22,11 @@ PAPER_API="paper-api-${PAPER_API_VERSION}.jar"
 PAPER_URL="https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21.11-R0.1-SNAPSHOT/${PAPER_API}"
 ADVENTURE_VERSION="4.26.1"
 
-fetch() {
-    file="$1"
-    url="$2"
-    if [ ! -f "libs/$file" ]; then
-        echo "downloading $file"
-        curl -fSL --max-time 600 -o "libs/$file" "$url"
-    fi
+verify() {
+    path="$1"
+    file="$2"
     expected="$(cat "libs/$file.sha512")"
-    actual="$(sha512sum "libs/$file" | cut -d' ' -f1)"
+    actual="$(sha512sum "$path" | cut -d' ' -f1)"
     if [ "$expected" != "$actual" ]; then
         echo "SHA-512 mismatch for $file" >&2
         echo "  expected: $expected" >&2
@@ -32,6 +34,24 @@ fetch() {
         exit 1
     fi
     echo "verified $file"
+}
+
+fetch() {
+    file="$1"
+    url="$2"
+    if [ ! -f "libs/$file" ]; then
+        echo "downloading $file"
+        # HTTPS only, including across redirects (the committed hash
+        # is the real integrity check; this is defence in depth).
+        # Download to a .part file and verify before moving it into
+        # place, so an interrupted download cannot leave a corrupt
+        # jar that fails verification on every later run.
+        curl -fSL --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --retry 3 --max-time 600 -o "libs/$file.part" "$url"
+        verify "libs/$file.part" "$file"
+        mv "libs/$file.part" "libs/$file"
+    fi
+    verify "libs/$file" "$file"
 }
 
 fetch "$PAPER_API" "$PAPER_URL"

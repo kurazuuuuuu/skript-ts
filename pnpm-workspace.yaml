@@ -1,2 +1,21 @@
 allowBuilds:
   esbuild: true
+
+# Supply-chain settings (checked whenever the lockfile is resolved
+# or installed):
+# - Do not resolve versions published less than a day ago, so a
+#   freshly published malicious release cannot flow straight into
+#   the lockfile through an update. A longer floor was considered
+#   and rejected for now: the current lockfile's youngest entries
+#   were published two days before this setting was introduced, and
+#   pnpm rejects the whole lockfile when any entry is too young —
+#   a 7-day floor would break every install until the tree aged
+#   past it. The 7-day wait lives in the Dependabot cooldown
+#   (.github/dependabot.yml), which covers the automated update
+#   path; revisit the floor once the tree is older.
+minimumReleaseAge: 1440
+# - Refuse resolutions whose trust evidence (provenance/signatures)
+#   is weaker than a previously seen version of the same package.
+trustPolicy: no-downgrade
+# - Refuse non-registry (git/tarball/file) transitive dependencies.
+blockExoticSubdeps: true
