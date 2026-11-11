@@ -2205,17 +2205,20 @@ export function playSound(name: string, at: Expr): Stmt {
 // - Action bar: `send action bar %object% to %player%` — one
 //   packet, no timing concept.
 // - Boss bars (core since Skript 2.16): the create expression
-//   `a boss bar` / `a <color> bossbar [with title %text%]`
 //   makes a bar value (fresh: empty title, progress 1, white,
-//   solid). Properties are written with the change forms
-//   (title / color / progress — progress is a fraction 0..1
-//   that the original clamps) and the viewer set with
-//   add/remove; title and progress read back as expressions.
-//   Not offered: keyed bars (the keyed+color+title create form
-//   does not parse even in the original, and keyed bars are
-//   persistent server storage addressed by key), the section
-//   creation form (no section expressions in this subset),
-//   bar styles and the darken-sky / fog / boss-music flags.
+//   solid). The plain create forms are `a boss bar`,
+//   `a <color> boss bar`, `a bossbar with title %text%` and
+//   `a <color> bossbar with title %text%`. Properties are
+//   written with the change forms (title / color / progress —
+//   progress is a fraction 0..1 that the original clamps) and
+//   the viewer set with add/remove; title and progress read
+//   back as expressions. Phase 24 added the keyed forms
+//   (`a keyed boss bar with key %text%` plus its color and
+//   title variants, the `boss bar with key %text%` fetch and
+//   `delete boss bar with key %text%`), bar styles, the
+//   darken-sky / fog / boss-music flags, and the section
+//   creation form (`set <var> to a boss bar:` with an
+//   `event-bossbar` body).
 // ---------------------------------------------------------------------------
 
 /** The optional timing parts of a title send (phase 21, extended in phase 23): a literal timing or any timespan-valued expression for the fade-in, the stay (`for ...`) and the fade-out. Literal timings are normalized into timespan literal expressions; unspecified parts are filled with the original's defaults (10 / 70 / 20 ticks) whenever any timing is given. */
