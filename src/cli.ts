@@ -11,6 +11,7 @@
  *   skript-ts probe stop   [--server-dir <dir>] [--json]
  *   skript-ts probe status [--server-dir <dir>] [--json]
  *   skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>] [--json]
+ *   skript-ts skills install [--dir <dir>] [--json]
  *
  * build:  typecheck -> transpile -> deploy (with --deploy)
  * verify: typecheck -> transpile -> deploy -> server start -> script load
@@ -32,17 +33,24 @@
  *         server — save -> typecheck -> transpile -> deploy IR ->
  *         the engine reloads via marker files. Watch never starts
  *         or stops the server; it only deploys into it.
+ * skills: installs the bundled agent skill pack (the skills/skript-ts
+ *         directory of this package) into an agent's skills
+ *         directory — ~/.claude/skills by default, --dir to choose
+ *         another. Changed files are refreshed, identical files are
+ *         left alone and unrelated files are never touched, so
+ *         re-running install is safe.
  *
  * With --json, progress is written to stderr and a single JSON result
  * object is printed to stdout. Exit code is 0 on success, 1 on failure.
  */
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createBehaviorContext, type BehaviorTest } from "./behavior.js";
 import { installEngine, uninstallEngine } from "./cli/engine.js";
 import { readProbeState, runProbeRound, startProbeServer, stopProbeServer } from "./cli/probe.js";
+import { installSkillPack } from "./cli/skills.js";
 import { runWatch } from "./cli/watch.js";
 import { createProgress, type ProgressReporter, type StageHandle } from "./cli/progress.js";
 import {
@@ -56,7 +64,7 @@ import { SandboxServer } from "./cli/server.js";
 import { SkriptLogParser, mapError, type MappedError } from "./cli/skript-log.js";
 
 interface CliOptions {
-  command: "build" | "verify" | "probe" | "watch";
+  command: "build" | "verify" | "probe" | "watch" | "skills";
   srcDir: string;
   outDir: string;
   serverDir: string;
@@ -78,6 +86,9 @@ interface CliOptions {
   probeOutFile: string | null;
   paceMs: number;
   settleMs: number;
+  // skills only
+  skillsAction: "install";
+  skillsDir: string;
 }
 
 interface StageResult {
@@ -113,7 +124,8 @@ const USAGE = `usage:
                    [--server-dir <dir>] [--json]
   skript-ts probe stop   [--server-dir <dir>] [--json]
   skript-ts probe status [--server-dir <dir>] [--json]
-  skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>] [--json]`;
+  skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>] [--json]
+  skript-ts skills install [--dir <dir>] [--json]`;
 
 function parseNonNegativeNumber(flag: string, raw: string): number {
   const n = Number(raw);
@@ -213,9 +225,46 @@ function parseWatchArgs(rest: string[], opts: CliOptions): void {
   }
 }
 
+function parseSkillsArgs(rest: string[], opts: CliOptions): void {
+  const [action, ...args] = rest;
+  if (action !== "install") {
+    throw new Error(`unknown skills action: ${action ?? "(none)"}\n${USAGE}`);
+  }
+  opts.skillsAction = action;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    const value = (): string => {
+      const v = args[++i];
+      if (v === undefined) throw new Error(`missing value for ${arg}\n${USAGE}`);
+      return v;
+    };
+    switch (arg) {
+      case "--dir":
+        opts.skillsDir = value();
+        break;
+      case "--json":
+        opts.json = true;
+        break;
+      case "--help":
+      case "-h":
+        console.log(USAGE);
+        process.exit(0);
+        break;
+      default:
+        throw new Error(`unknown option: ${arg}\n${USAGE}`);
+    }
+  }
+}
+
 function parseArgs(argv: string[]): CliOptions {
   const [command, ...rest] = argv;
-  if (command !== "build" && command !== "verify" && command !== "probe" && command !== "watch") {
+  if (
+    command !== "build" &&
+    command !== "verify" &&
+    command !== "probe" &&
+    command !== "watch" &&
+    command !== "skills"
+  ) {
     throw new Error(`unknown command: ${command ?? "(none)"}\n${USAGE}`);
   }
   const opts: CliOptions = {
@@ -238,6 +287,8 @@ function parseArgs(argv: string[]): CliOptions {
     probeOutFile: null,
     paceMs: 1000,
     settleMs: 3000,
+    skillsAction: "install",
+    skillsDir: join(homedir(), ".claude", "skills"),
   };
   if (command === "probe") {
     parseProbeArgs(rest, opts);
@@ -245,6 +296,10 @@ function parseArgs(argv: string[]): CliOptions {
   }
   if (command === "watch") {
     parseWatchArgs(rest, opts);
+    return opts;
+  }
+  if (command === "skills") {
+    parseSkillsArgs(rest, opts);
     return opts;
   }
   for (let i = 0; i < rest.length; i++) {
@@ -512,6 +567,77 @@ async function runProbeCommand(
   }
 }
 
+async function runSkillsCommand(
+  opts: CliOptions,
+  ctx: { rootDir: string; progress: ProgressReporter; startedAt: number },
+): Promise<number> {
+  const action = opts.skillsAction;
+  const fail = (err: unknown): number => {
+    const message = err instanceof Error ? err.message : String(err);
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          {
+            command: "skills",
+            action,
+            ok: false,
+            durationMs: Date.now() - ctx.startedAt,
+            error: message,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.error(message);
+    }
+    return 1;
+  };
+
+  // The pack ships inside this package, so resolve it from the
+  // module location — never from the working directory, which is
+  // arbitrary when the CLI runs through `npx github:...`.
+  const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const packDir = join(packageRoot, "skills", "skript-ts");
+  const skillsDir = resolve(ctx.rootDir, opts.skillsDir);
+
+  const handle = ctx.progress.begin("スキルパック導入");
+  try {
+    const res = installSkillPack({ packDir, skillsDir });
+    const counts = { installed: 0, updated: 0, unchanged: 0 };
+    for (const f of res.files) counts[f.status]++;
+    handle.finish(
+      "passed",
+      `${res.files.length} ファイル（新規 ${counts.installed}、更新 ${counts.updated}、変更なし ${counts.unchanged}）`,
+    );
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          {
+            command: "skills",
+            action,
+            ok: true,
+            durationMs: Date.now() - ctx.startedAt,
+            pack: res.pack,
+            sourceDir: res.sourceDir,
+            targetDir: res.targetDir,
+            files: res.files,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      for (const f of res.files) console.log(`  ${f.status} ${f.file}`);
+      console.log(`  導入先: ${res.targetDir}`);
+    }
+    return 0;
+  } catch (err) {
+    handle.finish("failed", firstLine(err));
+    return fail(err);
+  }
+}
+
 async function main(): Promise<number> {
   const startedAt = Date.now();
   const opts = parseArgs(process.argv.slice(2));
@@ -522,6 +648,10 @@ async function main(): Promise<number> {
 
   const progressStream = opts.json ? process.stderr : process.stdout;
   const progress = createProgress({ stream: progressStream, tty: progressStream.isTTY === true });
+
+  if (opts.command === "skills") {
+    return runSkillsCommand(opts, { rootDir, progress, startedAt });
+  }
 
   if (opts.command === "probe") {
     return runProbeCommand(opts, { rootDir, serverDir, progress, startedAt });
