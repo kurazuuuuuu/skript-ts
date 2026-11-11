@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation (supported subset)
+    url: https://github.com/kurazuuuuuu/skript-ts/blob/master/docs/reference.md
+    about: Check what is currently in the supported subset before filing
