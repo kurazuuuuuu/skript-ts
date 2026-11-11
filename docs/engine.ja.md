@@ -1,0 +1,157 @@
+# エンジン jar とエンジン内蔵機能
+
+Skript プラグインなしで skript-ts のプログラムを Paper 上で実行する
+クリーンルーム実装のエンジンと、アドオン機能のエンジン内蔵について
+説明します。README から移設しました。言語仕様は
+[reference.ja.md](reference.ja.md) を参照してください。
+
+## エンジン jar（Skript プラグインなし）
+
+目標像は「TS で書ける実質的な Skript 本体」であり、単なる変換層ではありません。`engine/` は skript-ts のプログラムを単独で実行する Paper プラグイン（`skript-ts.jar`）です。
+
+- TS 側のビルドは各 `.sk` の隣に **IR** ファイル（`<name>.ir.json`）を出力します。スクリプト AST の JSON で、TS の呼び出し位置情報は含みません
+- エンジンは `plugins/skript-ts/scripts/` の IR を読み込み、スクリプトのコマンドをサーバーのコマンドマップへ登録し、サブセットのイベントを受けてエフェクト・式・条件を解釈実行します。変数は `plugins/skript-ts/variables.json` に永続化します
+- `/skript-ts reload` で IR フォルダを再読み込みします。読み込みのたびに `Loaded N script(s), M top-level structure(s)` をログに出し、失敗したファイルは `Failed to load <file>: ...` と記録します
+
+エンジンは**クリーンルーム再実装**です。Skript は GPL のためコードは持ち込まず、対応サブセットの振る舞い契約だけを共有します。その契約は [SPEC](reference.ja.md) で規定し、変換された `.sk` を検証するのと同じ mineflayer 振る舞いテスト（`examples/behavior/` の27本）で固定しています（エンジン内蔵機能にはエンジン専用のテストが加わります）。解釈の余地がある点の確定事項: 初回参加では `on first join` と `on join` の両方が発火する（Skript と同じ）、プレイヤーをキーにする変数はプレイヤー名で引く、整数の数値は小数部なしで表示する（`1.0` ではなく `1`）。
+
+### jar のビルド
+
+VM には Java がないため、`~/workspace/tools` の Temurin JDK 21 を使います。コンパイル用ライブラリは `engine/libs/`（gitignore 対象）に置き、初回だけチェックサム検証つきで取得します。Java の HTTPS はこの VM のプロキシを通れないため、取得は curl で行います。
+
+```sh
+engine/fetch-libs.sh   # paper-api 等をダウンロード＋SHA-512 検証
+engine/build.sh        # -> engine/build/skript-ts.jar
+```
+
+### エンジンの検証
+
+```sh
+bin/skript-ts.mjs verify --engine [--json]
+```
+
+ステージ構成は通常の verify と同じですが、配置で IR を `plugins/skript-ts/scripts/` に置き、`skript-ts.jar` を導入して `Skript.jar` を退避します。つまりサンドボックスは**エンジンだけ**で起動します。読み込み確認は `skript-ts reload` を実行し、エンジンの要約行が配置したスクリプト数と一致し、読み込み失敗がないことを要求します。通常の `verify` を後から実行すると `Skript.jar` が復帰しエンジン jar が除去されるため、2つのモードが混ざることはありません。
+
+## エンジン内蔵機能（アドオンをエンジンへ内蔵）
+
+主要アドオンは別プラグインにはせず、機能をエンジンへネイティブに再実装していく方針です（アドオンごと、文書化された振る舞いのみに基づくクリーンルーム。エンジン本体と同じルール）。内蔵構文には **`.sk` の形がありません**。使ったスクリプトは「エンジン専用」となり、ビルドは IR のみを出力し、Skript モードの配置からは除外され、`emit()` にかけるとエラーになります。内蔵機能の振る舞いテストは `verify --engine` のときだけ本体を実行します（テストコンテキストの `t.mode` で判定し、Skript モードでは何もせず合格）。サンプルは `examples/mundosk.ts` です。
+
+### MundoSK 第1弾: WebSocket クライアント＋ワールドボーダー
+
+WebSocket 接続はスクリプトが選んだ id で名前付けされ、エンジン内に保持されます（実体は JDK 標準の `java.net.http.WebSocket`）。接続が開く前に送信されたメッセージはキューに入り、開いた順に送られます。close イベントは、どちらが切断しても発火します。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `wsConnect(id, url)` | WebSocket クライアント接続を開く |
+| `wsSend(id, text)` | テキストメッセージを送る |
+| `wsDisconnect(id)` | 接続を閉じる |
+| `onWsOpen(body)` | イベント: 接続が開いた |
+| `onWsMessage(body)` | イベント: テキストを受信した |
+| `onWsClose(body)` | イベント: 接続が閉じた |
+| `wsMessage()` | 受信したテキスト（`onWsMessage` 内） |
+| `wsId()` | 接続 id（WebSocket イベント内） |
+| `worldOf(target)` | プレイヤー／場所のワールド（フェーズ18でコア言語へ昇格。*ワールド操作と周期イベント* を参照。このスライス起源としてここにも記載） |
+| `borderSize(world)` | そのワールドのボーダーの現在のサイズ |
+| `borderCenter(world)` | そのワールドのボーダーの中心位置 |
+| `setBorderSize(world, size)` | ボーダーのサイズを設定 |
+| `setBorderCenter(world, location)` | ボーダーの中心を設定 |
+
+検証は `examples/behavior/mundosk.behavior.ts`（ローカルの RFC 6455 エコーサーバーに対する 接続→エコー→ブロードキャスト→切断）と `examples/behavior/mundosk-border.behavior.ts`（設定＋読み戻し）で行います。なお WebSocket のテストは、サーバープロセスから外向き TCP が許可されている必要があります。環境側で直接 TCP が拒否されている場合、接続はエンジンのエラーログ経由で綺麗に失敗し、この1本だけがタイムアウトします。
+
+### SharpSK 第1弾: タイマー
+
+SharpSK の大半は他プラグインへのフックで、単独で効く看板機能は名前付きカウントダウンタイマーです。ここでは Bukkit スケジューラの上で再実装しています。タイマーは1秒ごとに進みます。先に残り時間を減らし、残りが正の間は tick イベントが発火し、0 に達すると complete イベントが発火してタイマーは消滅します。停止は complete を発火せずに除去し、一時停止は凍結します（active のまま、tick は止まります）。同名で作り直すとリスタートします。スクリプトのリロードで全タイマーは破棄されます。サンプルは `examples/sharpsk.ts` です。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `timerCreate(id, seconds)` | 名前付きカウントダウンを開始（同名あれば再開始） |
+| `timerStop(id)` | complete を発火せずにタイマーを除去 |
+| `timerPause(id)` | カウントダウンを凍結 |
+| `timerResume(id)` | 一時停止したタイマーを再開 |
+| `onTimerTick(body)` | イベント: タイマーが進んだ（1秒ごと） |
+| `onTimerComplete(body)` | イベント: カウントダウンが 0 に達した |
+| `timerId()` | タイマーの名前（タイマーイベント内） |
+| `timerTimeLeft(name)` | 名前付きタイマーの残り秒数 |
+| `timerActive(name)` | 条件: 名前付きタイマーが存在する（実行中または一時停止中） |
+
+検証は `examples/behavior/sharpsk.behavior.ts`（完了までの全カウントダウン、一時停止での凍結、無言の停止）で行います。
+
+### skript-db 第1弾: SQL データソース
+
+データソースは値です。ドキュメント化された URL から作って変数に入れて使います（`set(variable("sql"), dataSource(str("sqlite:data.db")))`。skript-db がドキュメントに示す形と同じです）。対応する URL 形式は `sqlite:<パス>`（相対パスは `plugins/skript-ts/data/` 配下に解決）、`mysql://ホスト[:ポート]/db?user=..&password=<redacted> と `postgresql://...` で、認証情報はクエリパラメータで渡します。データソースは実行時のみの値で、`variables.json` には書き出されません（認証情報がファイルに残りません）。作るだけでは接続は開きません。
+
+`dbExecute` は文を1つ実行します。クエリはテキスト式で、リテラル部分は作者自身の SQL、`fmt(...)` の式部分はすべて JDBC パラメータとしてエンジンが束縛し、SQL テキストへは決して埋め込みません。SQL のように見える値もデータとして格納されるため、skript-db の `unsafe` のようなオプトアウトは必要ありません。格納先の変数を渡すと、結果セットは `<変数>::<列名>::<行番号>` の形のエントリに対応付けられ（行は1始まり、変数配下の旧エントリは先に消去されます）、変数自体には行数が入ります。結果セットのない文では、変数に影響行数が入ります。実行は呼び出しスレッドで同期的に行われ、接続は実行ごとに開閉します。失敗は例外にならず、`dbLastError()` で読み取れます。JDBC ドライバはサーバー側が提供します（Paper は SQLite と MySQL のドライバを同梱しています）ので、エンジン jar には同梱しません。サーバーが持たないドライバのデータソースは、最終エラー式を通じて綺麗に失敗します。サンプルは `examples/skriptdb.ts` です。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `dataSource(url)` | ドキュメント化された URL からデータソース値を作る |
+| `dbExecute(ds, query)` | SQL 文を1つ実行する |
+| `dbExecute(ds, query, var)` | 実行し、結果／影響行数を変数へ格納する |
+| `dbLastError()` | 最後に失敗した実行のメッセージ（成功後は値なし） |
+
+検証は `examples/behavior/skriptdb.behavior.ts` でローカルの SQLite ファイルに対して行います（DDL、パラメータ束縛の insert、格納結果の読み戻し、インジェクション試行のデータ化、エラーの経路）。この環境ではサーバープロセスからの外向き TCP が制限されているためネットワーク DB は実地検証できず、MySQL 等はドキュメント化された URL 契約から実装した未検証の扱いです。検証済みの経路は SQLite です。
+
+### skUtilities 第1弾: テキストファイル中核
+
+skUtilities は GPL-3.0 のアドオンのため、このスライスもエンジン本体と同じく、ドキュメント化された振る舞いのみからのクリーンルーム再実装です（アドオンのコードは参照していません）。看板領域はファイル操作で、今回はその中核（作成、削除、全書き、追記、読み取り、行数と行の取得、存在確認）を対象にします。
+
+パスはテキスト式で、エンジンのファイルルート `plugins/skript-ts/files/` の中に閉じ込められます。相対パスはその配下に解決し、絶対パスと正規化後にルートを抜けるパスは拒否します（文は何もせず、式は値なし、条件は false）。原典はパスについて意図的に非制限的です（README にサーバーへ損害を与えうる旨の注意書きがあります）ので、この閉じ込めはドキュメント化された振る舞いではなく、エンジン側の意図的な安全規則です。`fileCreate` は親ディレクトリと空ファイルを作り、既存ファイルの中身は変えません。`fileWrite` はファイル全体を置き換え（UTF-8）、`fileAppend` はテキスト＋改行を追記し、`fileDelete` は通常ファイルか**空の**ディレクトリだけを消します（再帰削除はありません）。`fileContents` は全文を1つの文字列で返し、`fileLine` は1始まり、`fileLineCount` は行数を数えます（空ファイルは 0）。3つともファイルが無ければ値なしです。失敗は例外にならず、エンジン側に警告ログを残します。サンプルは `examples/skutil.ts` です。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `fileCreate(path)` | 空ファイルを作成（親も作成）、既存ファイルはそのまま |
+| `dirCreate(path)` | ディレクトリを親ごと作成 |
+| `fileDelete(path)` | 通常ファイルか空のディレクトリを削除 |
+| `fileWrite(path, text)` | ファイル全体をテキストで置き換え |
+| `fileAppend(path, text)` | テキスト＋改行をファイルへ追記 |
+| `fileContents(path)` | ファイルの全文（無ければ値なし） |
+| `fileLine(path, n)` | ファイルの n 行目（1始まり。範囲外・無ければ値なし） |
+| `fileLineCount(path)` | ファイルの行数（無ければ値なし） |
+| `fileExists(path)` | 条件: そのパスにファイルかディレクトリが存在する |
+
+検証は `examples/behavior/skutil.behavior.ts` で行います（作成→追記→全文の読み戻し→行ごとの読み戻し→行数→`../` 脱出の拒否→削除）。アドオンの URL 系機能（テキスト取得・ダウンロード）はこの環境ではサーバープロセスからの外向きネットワークが制限され検証できないため、今回の対象外です。
+
+### Ersatz 第1弾: PlaceholderAPI 連携
+
+Ersatz は Skript と PlaceholderAPI の橋渡しアドオンで、このスライスはその橋渡しをエンジンへ内蔵するクリーンルーム再実装です（GPL-3.0 のためアドオンのコードは参照していません。着手前に出所も確定させました。原著作者は Pikachu920 で、現存リポジトリは改名済みアカウント配下にある著者本人のもので、初日から GPL-3.0 です。詳細は `docs/addon-inventory.md`）。PlaceholderAPI 自体は外部プラグインのままです。エンジンは `softdepend` で任意依存とし、検証ハーネスは公式 2.12.3 の jar（`engine/fetch-libs.sh` がチェックサム固定で取得）をエンジンと並べてサンドボックスへ配置します。PlaceholderAPI の無いサーバーでは橋渡しは単に無効で、取得式は値なし、リクエストイベントは発火しません。
+
+読み取り側: `placeholderValue(player, text)` は、そのプレイヤーについてテキスト中の PAPI プレースホルダを評価します。`%...%` を含まないテキストは単一のプレースホルダ名として扱い（文書化された裸名の形。例: `player_ping`）、トークンを含むテキストは文字列全体を置換します。誰も解決できないプレースホルダは、PAPI 自身の契約通り文字列にそのまま残ります。
+
+提供側: `onPlaceholderRequest(prefix, body)` で、その prefix（PAPI 拡張の識別子）へのリクエストにスクリプトが応答します。本文では `placeholderIdentifier()` がリクエストのパラメータ部（`%prefix_<identifier>%`）、`placeholderPrefix()` がマッチした prefix、`player()` が評価対象のプレイヤー（オフライン／コンソール由来では値なし）です。`setPlaceholderResult(text)` で返答を決め、設定しなければそのプレースホルダは未解決のままになります。登録はロードされたプログラムに追随し、スクリプトのリロードごとに再同期します。メインスレッド外から来たリクエストは、上限つきでメインスレッドへ移して処理します。サンプルは `examples/ersatz.ts` です。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `placeholderValue(player, text)` | テキスト中の PAPI プレースホルダをプレイヤーについて評価（裸名／全体置換） |
+| `onPlaceholderRequest(prefix, body)` | イベント: その prefix のプレースホルダが要求された |
+| `placeholderIdentifier()` | リクエストのパラメータ部（イベント内） |
+| `placeholderPrefix()` | マッチした prefix（イベント内） |
+| `setPlaceholderResult(text)` | 処理中のリクエストへ返答する |
+
+検証は `examples/behavior/ersatz.behavior.ts` で、実物の PlaceholderAPI を通した往復として行います（自前の2つの prefix を提供し、裸名・前後にリテラルを持つ全体置換・対象プレイヤー名の解決を読み戻し、解決できないプレースホルダがリテラルのまま残ることも確認）。relational プレースホルダ（後継アドオンで追加された発展機能）と MVdWPlaceholderAPI（別プラグイン）は今回の対象外です。コア言語に文字列の等値条件が加わった（フェーズ11）ため、ハンドラは identifier で分岐もできます。サンプルでは `%skriptts_name%` にプレイヤー自身の名前を返し、それ以外の identifier はエコーします。
+
+### フェーズ26: HTTP リクエストと `env()`（skript-ts 独自拡張）
+
+原典 Skript に HTTP クライアントは無いため、このスライスは skript-ts の独自拡張です。形は既存のイベント／継続実行モデルに合わせ、リクエストは非同期に発射され、完了がイベントとしてスクリプトへ戻ります。
+
+| TypeScript | 意味 |
+| --- | --- |
+| `httpFetch(id, url, opts?)` | 文: 非同期 GET を開始し、本文をテキストで受け取る |
+| `httpDownload(id, url, path, opts?)` | 文: 非同期 GET を開始し、本文をファイルルート配下へ保存する |
+| `onHttpResponse(body)` | イベント: リクエストが完了した（成否を問わない） |
+| `httpId()` | 完了したリクエストの id（イベント内のみ） |
+| `httpStatus()` | HTTP ステータスコード（イベント内のみ） |
+| `httpBody()` | フェッチの応答本文（イベント内のみ） |
+| `httpError()` | 失敗種別。成功時は値なし（イベント内のみ） |
+| `httpSavedPath()` | ダウンロードの保存先（ファイルルート相対、イベント内のみ） |
+| `httpOk()` | 条件: 完了にエラーが無い |
+
+`id` は自リクエストを識別するためにスクリプトが選ぶ空でないリテラルです。`opts.timeoutSeconds` はリクエスト全体の上限（1〜120、既定の締切は15秒）です。失敗種別は `policy` / `network` / `timeout` / `size` / `io` / `busy` の6つで、`httpError()` が返すのは種別のみです（URL に秘密が含まれうるため、詳細はサーバーログにのみ出します）。本文の上限は 8 MiB、接続タイムアウトは5秒、同時実行は最大8件（超過分は `busy` で完了）です。リダイレクトは最大3ホップまで手動で追い、ホップごとに再検証します。ダウンロードは一時 `.part` ファイルへ書いてから原子的にリネームし、HTTP ステータスにかかわらず本文を保存するので、成否は `httpStatus()` でスクリプトが判断します。
+
+SSRF ポリシー（既定）: スキームは `http`/`https` のみ、URL 内のユーザ情報は拒否、ポートは 80/443 のみ。初期 URL と各リダイレクト先について解決した全アドレスを検査し、ループバック、リンクローカル、サイトローカル（RFC 1918、fc00::/7）、CGNAT（100.64/10）、未指定、マルチキャストを `policy` として拒否します。開発用フィクスチャ向けの逃げ道として、`plugins/skript-ts/config.json` の `"http": {"allowPrivateAddresses": true}` でプライベート宛先と全ポートを許可できます（有効時はエンジンが目立つ警告をログに出します。本番サーバーでは使わないでください）。既知の制限が1つあります。JDK は接続時にホスト名を再解決するため、検査と接続の間に DNS リバインディングの窓が残ります。
+
+`env(name)` はサーバー側で `System.getenv(name)` を解決し、未設定なら値なしを返します。JVM は起動元の環境変数を継承するため、変更にはサーバーの再起動が必要です（スクリプトから実行時に設定・更新はできません）。
+
+サンプルは `examples/http.ts`（ローカルエコーサーバー相手の9コマンド）と `examples/env.ts` です。検証は `examples/behavior/http.behavior.ts` で、成功・404・リダイレクト・サイズ超過・タイムアウト・ポリシー拒否・ダウンロードと読み戻し、それに `env()` の振る舞いを実サーバーで確認します。
+
+ネットワーク DB（skript-db スライス）はこのフェーズで実 VM 検証を行いました。MySQL 8.0 は Paper 同梱の Connector/J で動作し、PostgreSQL 16 はドライバをプラグインへ渡した場合（jar へのマージやプラグインライブラリ等）に動作します。エンジンは接続前にスキーム既知のドライバクラスを初期化します。そのようなドライバは、クラスがロードされて初めて `DriverManager` へ登録されるためです。`mariadb://` 形式は、MariaDB ドライバが無い環境では `dbLastError()` で綺麗に失敗します。
+
