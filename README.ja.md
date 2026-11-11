@@ -112,6 +112,13 @@ on join:
 - [検証とビルド／検証 CLI](docs/verification.ja.md) — 2段階の
   検証、`build`／`verify`／`probe`／`watch` コマンド、
   振る舞いテストについて。
+- [エージェント用セットアップガイド](docs/agent-setup.ja.md) —
+  AI コーディングエージェント向けの手順書。セットアップ一式を
+  エージェントへ任せるコピペ用プロンプトテンプレート付き。
+  エージェントは先に [AGENTS.md](AGENTS.md) も読んでください。
+- [スキルパック](skills/) — skript-ts の書き方をエージェントへ
+  教える SKILL.md 形式のパック（書き方ガイド、意味論の要点、
+  検証手順）。
 - [アドオン棚卸し](docs/addon-inventory.md) — エンジンへ
   内蔵するアドオンごとの、移植前ライセンス確認と振る舞いの
   メモ。

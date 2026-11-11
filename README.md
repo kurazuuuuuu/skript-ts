@@ -108,6 +108,13 @@ server in both modes.
 - [Verification and the build / verify CLI](docs/verification.md) —
   the two verification stages, the `build` / `verify` / `probe` /
   `watch` commands, and the behavior tests.
+- [Agent setup guide](docs/agent-setup.md) — step-by-step setup
+  for AI coding agents, including a copy-paste prompt template
+  that hands the whole setup to an agent. Agents should also
+  read [AGENTS.md](AGENTS.md) first.
+- [Skill pack](skills/) — a SKILL.md-based pack that teaches an
+  agent how to write skript-ts (writing guide, semantics summary,
+  verification procedure).
 - [Addon inventory](docs/addon-inventory.md) (Japanese) — the
   pre-port license check and behavior notes for each addon considered
   for the engine.
