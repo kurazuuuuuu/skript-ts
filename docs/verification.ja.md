@@ -90,8 +90,10 @@ Skript の `variables.csv`、`ops.json`）を消去し、振る舞いテスト�
 ## CI とリリース
 
 GitHub Actions（`.github/workflows/ci.yml`）は push と pull request の
-たびに fast gates（`pnpm install --frozen-lockfile`、`pnpm typecheck`、
-`pnpm test`）とエンジン jar のビルドを実行します。上記のサーバーを
+たびに fast gates（`pnpm install --frozen-lockfile`、`pnpm check`、
+`pnpm test`）とエンジン jar のビルドを実行します。`pnpm check` は
+Vite+ のツールチェーン検査で、Oxfmt のフォーマットチェック、Oxlint、
+tsgolint の型チェックを一括で実行します（`vite.config.ts` 参照）。上記のサーバーを
 使う `verify` は CI v1 には含めません。実 Paper サーバーの起動が
 重いため、振る舞い検証は Freestyle の検証ファームが担当します。
 `v*` タグを push すると `.github/workflows/release.yml` が走り、

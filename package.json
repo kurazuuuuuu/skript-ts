@@ -5,16 +5,24 @@
     "mineflayer": "^4.39.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@^1.5.1",
+    "vite-plus": "^1.5.1",
+    "vitest": "^5.1.0"
   },
   "name": "skript-ts",
   "packageManager": "pnpm@12.15.0",
+  "overrides": {
+    "vite": "$vite"
+  },
   "private": true,
   "scripts": {
+    "check": "vp check",
+    "cli": "tsx src/cli.ts",
     "emit-examples": "tsx examples/print-all.ts",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "cli": "tsx src/cli.ts"
+    "format": "vp fmt",
+    "lint": "vp lint",
+    "test": "vp test run",
+    "typecheck": "tsc --noEmit"
   },
   "type": "module",
   "version": "2026.11.11",

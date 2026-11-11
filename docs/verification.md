@@ -90,8 +90,10 @@ builtins.
 ## CI and releases
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the fast gates
-(`pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm test`) and
-the engine jar build on every push and pull request. The server-backed
+(`pnpm install --frozen-lockfile`, `pnpm check`, `pnpm test`) and
+the engine jar build on every push and pull request. `pnpm check`
+is the Vite+ toolchain check: Oxfmt format check, Oxlint, and the
+tsgolint type check in one pass (see `vite.config.ts`). The server-backed
 `verify` above is not part of CI v1 — booting a real Paper server is
 heavy, so behavior verification stays on the Freestyle verification
 farm. Pushing a `v*` tag runs `.github/workflows/release.yml`, which
