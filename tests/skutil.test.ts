@@ -61,8 +61,7 @@ describe("skUtilities builtin slice (phase 9, engine-only)", () => {
         {
           kind: "command",
           name: "x",
-          argType: null,
-          argOptional: false,
+          args: [],
           body: [{ kind: "setVar", variable: variable("v"), value: fileContents(str("a.txt")) }],
         },
       ],
@@ -74,8 +73,7 @@ describe("skUtilities builtin slice (phase 9, engine-only)", () => {
         {
           kind: "command",
           name: "x",
-          argType: null,
-          argOptional: false,
+          args: [],
           body: [fileAppend(str("a.txt"), str("hi"))],
         },
       ],

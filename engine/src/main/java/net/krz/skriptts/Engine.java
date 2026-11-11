@@ -7,6 +7,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.World;
@@ -42,7 +43,8 @@ import java.util.logging.Logger;
 /**
  * Interpreter for skript-ts IR programs, covering exactly the v0
  * subset from the project SPEC (README): events join / first join /
- * quit / chat / death, commands with at most one argument, the effects
+ * quit / chat / death, commands with any number of typed arguments
+ * (phase 20), the effects
  * send / broadcast / give / teleport / set / add / if-else / loop all
  * players, the documented expressions, and the conditions
  * has permission / is op.
@@ -206,8 +208,7 @@ final class Engine {
         String papiPrefix;  // matched expansion prefix in placeholder request events
         String papiIdentifier; // parameter part of the placeholder being requested
         String papiResult;  // answer set by the set-result statement (read back after dispatch)
-        String argType;     // command argument type ("text"/"player"/"integer") or null
-        String[] rawArgs = new String[0];
+        List<Object> argValues = List.of(); // parsed command argument values (phase 20); a null entry is an omitted optional
         Frame frame = new Frame(); // locals + return state of the running body
 
         Ctx copy() {
@@ -234,8 +235,7 @@ final class Engine {
             c.papiPrefix = papiPrefix;
             c.papiIdentifier = papiIdentifier;
             c.papiResult = papiResult;
-            c.argType = argType;
-            c.rawArgs = rawArgs;
+            c.argValues = argValues;
             c.frame = frame;
             return c;
         }
@@ -544,15 +544,304 @@ final class Engine {
         return ctx.papiResult;
     }
 
-    void runCommand(Map<String, Object> node, CommandSender sender, String[] args) {
+    void runCommand(Map<String, Object> node, CommandSender sender, String label, String[] args) {
+        String input = args.length == 0 ? label : label + " " + String.join(" ", args);
+        // Permission gate (probed against the real Skript 2.17.1):
+        // a sender without the declared permission cannot address
+        // the command at all — the attempt fails exactly like an
+        // unknown command. The original's "permission message"
+        // entry is deprecated there and never delivered, so there
+        // is nothing else to send.
+        if (node.get("permission") instanceof String permission && !sender.hasPermission(permission)) {
+            sender.sendMessage("Unknown or incomplete command. See below for error\n"
+                    + syntaxContext(input, input.length()));
+            return;
+        }
+        List<Map<String, Object>> specs = new ArrayList<>();
+        if (node.get("args") instanceof List<?> rawSpecs) {
+            for (Object raw : rawSpecs) {
+                if (raw instanceof Map<?, ?>) specs.add(node(raw));
+            }
+        }
+        String usage = node.get("usage") instanceof String u ? u : null;
+        ArgMatcher matcher = new ArgMatcher(specs, args, label, input, usage);
+        List<Object> values = matcher.match();
+        if (values == null) {
+            matcher.sendError(sender);
+            return;
+        }
         Ctx ctx = new Ctx();
         if (sender instanceof Player p) {
             ctx.player = p;
             ctx.eventPlayer = p;
         }
-        ctx.argType = str(node.get("argType"));
-        ctx.rawArgs = args;
+        ctx.argValues = values;
         execBlock(list(node.get("body")), ctx);
+    }
+
+    /**
+     * Brigadier's error context line: the input from ten
+     * characters before the error cursor (prefixed with "..."
+     * when the cursor is past ten) through the end of the input,
+     * followed by "<--[HERE]".
+     */
+    private static String syntaxContext(String input, int cursor) {
+        StringBuilder sb = new StringBuilder();
+        if (cursor > 10) sb.append("...");
+        sb.append(input.substring(Math.max(0, cursor - 10)));
+        sb.append("<--[HERE]");
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------------
+    // Command argument matching (phase 20)
+    //
+    // Semantics probed against the real Skript 2.17.1, which
+    // registers its commands with Brigadier — the failure modes
+    // below are Brigadier's, with its exact message texts:
+    //
+    // - A text argument consumes one token, or the rest of the
+    //   line in last position. Every other type consumes one token.
+    // - Optional arguments are matched by backtracking: when the
+    //   remainder fails after consuming an optional argument, the
+    //   matcher retries with the argument omitted (an optional
+    //   integer before a text reads "hello" as the text, not as a
+    //   failed number).
+    // - When every branch fails, the error that got furthest
+    //   through the input wins; at the same position a type error
+    //   beats the structural ones. The player-not-found error is
+    //   the one failure with no context line.
+    // - Running out of input with required arguments left is the
+    //   "incomplete" failure: the declared usage line when there
+    //   is one, the generic unknown/incomplete message otherwise.
+    //   Leftover tokens are "Incorrect argument for command".
+    // - One deliberate divergence, shared with the item form:
+    //   Brigadier's reader can stop mid-token (it reads "12" out
+    //   of "12a"); the matcher works on whole space-separated
+    //   tokens, so junk inside a numeric token is a type error
+    //   for the whole token.
+    // ------------------------------------------------------------------
+
+    private static final class ArgMatcher {
+        private final List<Map<String, Object>> specs;
+        private final String[] tokens;
+        /** offsets[i] = index of token i in the input; offsets[tokens.length] = the input length. */
+        private final int[] offsets;
+        private final String input;
+        private final String usage;
+        private String bestReason;
+        private int bestCursor = -1;
+        private int bestPriority = -1;
+        private boolean bestContext;
+
+        ArgMatcher(List<Map<String, Object>> specs, String[] tokens, String label, String input, String usage) {
+            this.specs = specs;
+            this.tokens = tokens;
+            this.input = input;
+            this.usage = usage;
+            this.offsets = new int[tokens.length + 1];
+            int pos = label.length();
+            for (int i = 0; i < tokens.length; i++) {
+                pos += 1;
+                this.offsets[i] = pos;
+                pos += tokens[i].length();
+            }
+            this.offsets[tokens.length] = input.length();
+        }
+
+        /** The parsed values (one per spec, null for an omitted optional), or null with an error recorded. */
+        List<Object> match() {
+            return matchFrom(0, 0);
+        }
+
+        void sendError(CommandSender sender) {
+            // One chat message: the reason, and the context line
+            // after an embedded newline — the wire shape the
+            // original's Brigadier feedback takes (a behavior
+            // test reads it as a single message entry).
+            sender.sendMessage(bestContext
+                    ? bestReason + "\n" + syntaxContext(input, bestCursor)
+                    : bestReason);
+        }
+
+        private void fail(String reason, int cursor, int priority, boolean context) {
+            if (cursor > bestCursor || (cursor == bestCursor && priority > bestPriority)) {
+                bestReason = reason;
+                bestCursor = cursor;
+                bestPriority = priority;
+                bestContext = context;
+            }
+        }
+
+        private List<Object> matchFrom(int specIdx, int tokIdx) {
+            if (specIdx == specs.size()) {
+                if (tokIdx == tokens.length) return new ArrayList<>();
+                fail("Incorrect argument for command", offsets[tokIdx], 1, true);
+                return null;
+            }
+            Map<String, Object> spec = specs.get(specIdx);
+            boolean optional = Boolean.TRUE.equals(spec.get("optional"));
+            if (tokIdx >= tokens.length) {
+                // Out of input: fine when every remaining argument
+                // is optional (each reads as no value); otherwise
+                // the invocation is incomplete.
+                boolean restOptional = true;
+                for (int i = specIdx; i < specs.size(); i++) {
+                    if (!Boolean.TRUE.equals(specs.get(i).get("optional"))) {
+                        restOptional = false;
+                        break;
+                    }
+                }
+                if (restOptional) {
+                    List<Object> out = new ArrayList<>();
+                    for (int i = specIdx; i < specs.size(); i++) out.add(null);
+                    return out;
+                }
+                if (usage != null) {
+                    fail(usage, input.length(), 1, false);
+                } else {
+                    fail("Unknown or incomplete command. See below for error", input.length(), 1, true);
+                }
+                return null;
+            }
+            Consumed consumed = consume(spec, specIdx == specs.size() - 1, tokIdx);
+            if (consumed != null) {
+                List<Object> rest = matchFrom(specIdx + 1, consumed.nextTok());
+                if (rest != null) {
+                    rest.add(0, consumed.value());
+                    return rest;
+                }
+            }
+            if (optional) {
+                List<Object> rest = matchFrom(specIdx + 1, tokIdx);
+                if (rest != null) {
+                    rest.add(0, null);
+                    return rest;
+                }
+            }
+            return null;
+        }
+
+        private record Consumed(Object value, int nextTok) {
+        }
+
+        /** Parse the token(s) for one spec at tokIdx; null (with the error recorded) when the parse fails. */
+        private Consumed consume(Map<String, Object> spec, boolean last, int tokIdx) {
+            String token = tokens[tokIdx];
+            int start = offsets[tokIdx];
+            switch (str(spec.get("type"))) {
+                case "text" -> {
+                    if (last) {
+                        return new Consumed(
+                                String.join(" ", List.of(tokens).subList(tokIdx, tokens.length)),
+                                tokens.length);
+                    }
+                    return new Consumed(token, tokIdx + 1);
+                }
+                case "integer" -> {
+                    Double v = parseLongArg(token, start);
+                    return v == null ? null : new Consumed(v, tokIdx + 1);
+                }
+                case "number" -> {
+                    Double v = parseDoubleArg(token, start);
+                    return v == null ? null : new Consumed(v, tokIdx + 1);
+                }
+                case "boolean" -> {
+                    if (token.equals("true")) return new Consumed(Boolean.TRUE, tokIdx + 1);
+                    if (token.equals("false")) return new Consumed(Boolean.FALSE, tokIdx + 1);
+                    fail("Invalid boolean: expected 'true' or 'false' but found '" + token + "'", start, 2, true);
+                    return null;
+                }
+                case "player" -> {
+                    if (token.startsWith("@")) {
+                        fail("Selector not allowed", start, 2, true);
+                        return null;
+                    }
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        if (p.getName().equalsIgnoreCase(token)) return new Consumed(p, tokIdx + 1);
+                    }
+                    // The player-not-found error carries no context
+                    // line (probed); its cursor sits past the token
+                    // so it beats the structural errors of the
+                    // branches that did not take the argument.
+                    fail("No player was found", start + token.length(), 2, false);
+                    return null;
+                }
+                case "offlinePlayer" -> {
+                    if (token.startsWith("@")) {
+                        fail("Selector not allowed", start, 2, true);
+                        return null;
+                    }
+                    return new Consumed(Bukkit.getOfflinePlayer(token), tokIdx + 1);
+                }
+                case "item" -> {
+                    String name = parseItemArg(token, start);
+                    return name == null ? null : new Consumed(name, tokIdx + 1);
+                }
+                default -> {
+                    return null;
+                }
+            }
+        }
+
+        private Double parseLongArg(String token, int start) {
+            char first = token.isEmpty() ? '\0' : token.charAt(0);
+            if (!(first == '-' || (first >= '0' && first <= '9'))) {
+                fail("Expected long", start, 2, true);
+                return null;
+            }
+            try {
+                return (double) Long.parseLong(token);
+            } catch (NumberFormatException e) {
+                fail("Invalid long '" + token + "'", start, 2, true);
+                return null;
+            }
+        }
+
+        private Double parseDoubleArg(String token, int start) {
+            // Brigadier's number reader accepts only digits, dots
+            // and a leading minus — no exponent, no NaN/Infinity
+            // spellings — and every failure reads the same.
+            if (!token.matches("-?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)")) {
+                fail("Expected double", start, 2, true);
+                return null;
+            }
+            try {
+                return Double.parseDouble(token);
+            } catch (NumberFormatException e) {
+                fail("Expected double", start, 2, true);
+                return null;
+            }
+        }
+
+        /** An item id token to the subset's item value (its Skript type name), or null with the error recorded. */
+        private String parseItemArg(String token, int start) {
+            String shown = token;
+            String path = token;
+            int colon = token.indexOf(':');
+            if (colon >= 0) {
+                if (!token.substring(0, colon).equals("minecraft")) {
+                    fail("Unknown item '" + token + "'", start, 2, true);
+                    return null;
+                }
+                path = token.substring(colon + 1);
+            } else {
+                shown = "minecraft:" + token;
+            }
+            Material material = null;
+            if (path.matches("[a-z0-9_.]+")) {
+                try {
+                    material = Material.valueOf(path.toUpperCase(Locale.ROOT));
+                } catch (IllegalArgumentException e) {
+                    material = null;
+                }
+            }
+            if (material == null || (!material.isItem() && material != Material.AIR)) {
+                fail("Unknown item '" + shown + "'", start, 2, true);
+                return null;
+            }
+            return materialName(material);
+        }
     }
 
     /**
@@ -1743,6 +2032,7 @@ final class Engine {
             };
         }
         if (value instanceof Player) return "player";
+        if (value instanceof OfflinePlayer) return "offline player";
         if (value instanceof Entity entity) {
             return entity.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
         }
@@ -2202,21 +2492,15 @@ final class Engine {
         };
     }
 
-    /** Skript text arguments swallow the rest of the line; player/integer args parse one token. */
+    /**
+     * The value of command argument {@code index} (1-based): the
+     * value the argument matcher parsed for that declared
+     * argument, or no value when the index is out of range or the
+     * argument was an omitted optional.
+     */
     private Object resolveArgument(int index, Ctx ctx) {
-        if (ctx.argType == null || index < 1 || ctx.rawArgs.length < index) return null;
-        return switch (ctx.argType) {
-            case "text" -> String.join(" ", List.of(ctx.rawArgs).subList(index - 1, ctx.rawArgs.length));
-            case "integer" -> {
-                try {
-                    yield Double.parseDouble(ctx.rawArgs[index - 1]);
-                } catch (NumberFormatException e) {
-                    yield null;
-                }
-            }
-            case "player" -> Bukkit.getPlayerExact(ctx.rawArgs[index - 1]);
-            default -> null;
-        };
+        if (index < 1 || index > ctx.argValues.size()) return null;
+        return ctx.argValues.get(index - 1);
     }
 
     // ------------------------------------------------------------------
@@ -2606,6 +2890,7 @@ final class Engine {
         if (value instanceof List<?> list) return joinList(list);
         if (value instanceof Database.DataSource ds) return ds.display();
         if (value instanceof Player p) return p.getName();
+        if (value instanceof OfflinePlayer op) return op.getName() == null ? "" : op.getName();
         if (value instanceof Block block) {
             // A block prints in Skript's own form (probed phase
             // 18): '<type>' at <center x>, <center y>, <center z>

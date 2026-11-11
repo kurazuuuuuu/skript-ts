@@ -641,8 +641,39 @@ export interface EventFilter {
   withTypes?: readonly string[];
 }
 
-/** Represents a Skript command argument type. */
-export type CommandArgType = "text" | "player" | "integer";
+/**
+ * Represents a Skript command argument type. The set mirrors the
+ * classes Skript 2.17.1 accepts in command headers, which it maps
+ * onto Brigadier argument types (all probed against the real
+ * Skript in phase 20):
+ * - "text": one word, or the rest of the line in last position.
+ * - "player": an ONLINE player by name (case-insensitive); an
+ *   offline name is a parse failure, and selectors (@p etc.) are
+ *   rejected outright.
+ * - "offlinePlayer": emitted as "offline player"; ANY name
+ *   resolves (the value is the offline player of that name).
+ * - "integer": a Brigadier long (fractional input is invalid).
+ * - "number": a Brigadier double.
+ * - "boolean": only the literals "true" / "false".
+ * - "item": a single-token item id ("diamond_sword",
+ *   "minecraft:diamond_sword").
+ */
+export type CommandArgType =
+  | "text" | "player" | "offlinePlayer" | "integer" | "number" | "boolean" | "item";
+
+/**
+ * One declared command argument (phase 20). There is deliberately
+ * no default value: the original's `[<type> = <expr>]` form loads
+ * under 2.17.1 but is broken there — omission yields no value (the
+ * default never applies) and supplying a value fails dispatch
+ * ("Unknown or incomplete command") — so the subset does not
+ * offer it.
+ */
+export interface CommandArgSpec {
+  type: CommandArgType;
+  /** Optional arguments emit as [<type>] and may be omitted; an omitted argument has no value. */
+  optional: boolean;
+}
 
 /** Represents a Skript top-level declaration. */
 export type TopLevel =
@@ -650,7 +681,15 @@ export type TopLevel =
   // PlaceholderAPI expansion identifiers this handler serves.
   // `filter` is set only for filtered gameplay events (phase 16).
   | { kind: "event"; event: EventKind; body: readonly Stmt[]; prefixes?: readonly string[]; filter?: EventFilter; loc?: SourceLoc }
-  | { kind: "command"; name: string; argType: CommandArgType | null; argOptional: boolean; body: readonly Stmt[]; loc?: SourceLoc }
+  // A command (generalized in phase 20): a list of typed arguments
+  // plus the section entries the original supports — permission,
+  // usage, aliases. The legacy single-argument builder maps onto
+  // a one-element args list. `permissionMessage` is deliberately
+  // absent: 2.17.1 deprecates the entry (a load-time deprecation)
+  // and never delivers the message — a sender without permission
+  // cannot address the command at all and gets the same
+  // "Unknown or incomplete command" failure as an unknown command.
+  | { kind: "command"; name: string; args: readonly CommandArgSpec[]; permission?: string; usage?: string; aliases?: readonly string[]; body: readonly Stmt[]; loc?: SourceLoc }
   // A custom function (phase 13). `returnType` is null for a void
   // function (no `:: type` in the .sk form). Functions are global:
   // they can be called from any script, before or after their

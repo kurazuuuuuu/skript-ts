@@ -1,0 +1,39 @@
+command /cpoke <player> [<integer>]:
+    trigger:
+        broadcast "cpoke target=%arg-1% n=%arg-2%"
+        send "cpoke: poked by %player%" to arg-1
+
+command /croll <number> <boolean>:
+    trigger:
+        broadcast "croll num=%arg-1% bool=%arg-2%"
+
+command /citem <item>:
+    trigger:
+        broadcast "citem item=%arg-1%"
+
+command /ctell <player> <text>:
+    trigger:
+        broadcast "ctell to=%arg-1% text=%arg-2%"
+
+command /cmix [<integer>] <text>:
+    trigger:
+        broadcast "cmix n=%arg-1% text=%arg-2%"
+
+command /coff <offline player>:
+    trigger:
+        broadcast "coff p=%arg-1%"
+
+command /cadmin:
+    permission: skriptts.test.admin
+    trigger:
+        broadcast "cadmin ran by %player%"
+
+command /cuse <integer>:
+    usage: USAGE /cuse <count>
+    trigger:
+        broadcast "cuse n=%arg-1%"
+
+command /calias:
+    aliases: /ca2, ca3
+    trigger:
+        broadcast "calias ran"

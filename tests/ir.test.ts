@@ -58,9 +58,13 @@ describe("toIr / emitIr", () => {
       "event:join",
     ]);
     const kit = JSON.parse(emitIr(kitScript)) as {
-      body: { kind: string; name?: string; argType?: string }[];
+      body: { kind: string; name?: string; args?: { type: string; optional: boolean }[] }[];
     };
-    expect(kit.body[0]).toMatchObject({ kind: "command", name: "kit", argType: "text" });
+    expect(kit.body[0]).toMatchObject({
+      kind: "command",
+      name: "kit",
+      args: [{ type: "text", optional: true }],
+    });
     const death = JSON.parse(emitIr(deathScript)) as {
       body: { body: { kind: string }[] }[];
     };

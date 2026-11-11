@@ -24,6 +24,7 @@ import {
   clockTime,
   closeInventory,
   colored,
+  cmdArg,
   command,
   contains,
   currentInventoryOf,
@@ -184,6 +185,7 @@ import { events2Script } from "../examples/events2.js";
 import { guiScript } from "../examples/gui.js";
 import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
+import { commandsScript } from "../examples/commands.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -234,6 +236,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("state", () => {
     expect(emit(stateScript)).toBe(fixture("state.sk"));
+  });
+  it("commands", () => {
+    expect(emit(commandsScript)).toBe(fixture("commands.sk"));
   });
 });
 
@@ -562,6 +567,68 @@ describe("commands", () => {
     expect(emit(script(command("give2", "integer", [broadcast(str("x"))])))).toBe(
       'command /give2 [<integer>]:\n    trigger:\n        broadcast "x"\n',
     );
+  });
+});
+
+describe("commands (phase 20)", () => {
+  it("multiple typed arguments, required and optional", () => {
+    expect(
+      emit(
+        script(
+          command("mix", [cmdArg("player"), cmdArg("integer", true), cmdArg("text")], [
+            broadcast(str("x")),
+          ]),
+        ),
+      ),
+    ).toBe(
+      'command /mix <player> [<integer>] <text>:\n    trigger:\n        broadcast "x"\n',
+    );
+  });
+  it("the newer argument types, with offline player spelled as two words", () => {
+    expect(
+      emit(
+        script(
+          command("types", [
+            cmdArg("number"),
+            cmdArg("boolean"),
+            cmdArg("item"),
+            cmdArg("offlinePlayer"),
+          ], [broadcast(str("x"))]),
+        ),
+      ),
+    ).toBe(
+      'command /types <number> <boolean> <item> <offline player>:\n    trigger:\n        broadcast "x"\n',
+    );
+  });
+  it("permission, usage and aliases sections precede the trigger", () => {
+    expect(
+      emit(
+        script(
+          command("adm", [cmdArg("integer")], [broadcast(str("x"))], {
+            permission: "test.admin",
+            usage: "/adm <n>",
+            aliases: ["/ad2", "ad3"],
+          }),
+        ),
+      ),
+    ).toBe(
+      'command /adm <integer>:\n    permission: test.admin\n    usage: /adm <n>\n    aliases: /ad2, ad3\n    trigger:\n        broadcast "x"\n',
+    );
+  });
+  it("options also attach to the legacy single-argument form", () => {
+    expect(
+      emit(
+        script(command("one", "text", [broadcast(str("x"))], { permission: "test.one" })),
+      ),
+    ).toBe(
+      'command /one [<text>]:\n    permission: test.one\n    trigger:\n        broadcast "x"\n',
+    );
+  });
+  it("an unknown argument type and a boolean fourth argument are rejected", () => {
+    expect(() => cmdArg("bogus" as never)).toThrow(RangeError);
+    expect(() =>
+      command("x", [cmdArg("text")], [broadcast(str("x"))], true as never),
+    ).toThrow(RangeError);
   });
 });
 

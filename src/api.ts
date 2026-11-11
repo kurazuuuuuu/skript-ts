@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName, GameModeName } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName, GameModeName } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -812,10 +812,104 @@ export function setDamage(value: Expr): Stmt {
   return withLoc({ kind: "setDamage", value });
 }
 
-/** Construct a command declaration with resolved optional-argument flag. */
-export function command(name: string, argType: CommandArgType | null, body: readonly Stmt[], argOptional?: boolean): TopLevel {
-  const resolved = argOptional === undefined ? argType !== null : argOptional;
-  return withLoc({ kind: "command", name, argType, argOptional: resolved, body });
+/** The section entries a command declaration can carry (phase 20). */
+export interface CommandOptions {
+  /**
+   * The permission a sender must hold to run the command. Senders
+   * without it cannot address the command at all: under the real
+   * Skript (2.17.1, Brigadier) the attempt fails exactly like an
+   * unknown command, and the engine mirrors that. (The original's
+   * separate "permission message" entry is deprecated there and
+   * the message is never delivered, so the subset has no such
+   * option.)
+   */
+  permission?: string;
+  /** Text sent verbatim to the sender when required arguments are missing. */
+  usage?: string;
+  /** Alternative names for the command, with or without a leading slash. */
+  aliases?: readonly string[];
+}
+
+const COMMAND_ARG_TYPES: ReadonlySet<string> = new Set([
+  "text", "player", "offlinePlayer", "integer", "number", "boolean", "item",
+]);
+
+/** Construct one typed argument for the multi-argument form of command(). */
+export function cmdArg(type: CommandArgType, optional = false): CommandArgSpec {
+  if (!COMMAND_ARG_TYPES.has(type)) {
+    throw new RangeError(`unknown command argument type: ${String(type)}`);
+  }
+  return { type, optional };
+}
+
+function isSpecList(
+  args: CommandArgType | null | readonly CommandArgSpec[],
+): args is readonly CommandArgSpec[] {
+  return Array.isArray(args);
+}
+
+function requireCommandName(name: string): void {
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+    throw new RangeError(`invalid command name: ${JSON.stringify(name)}`);
+  }
+}
+
+/**
+ * Construct a command declaration. Two forms:
+ *
+ * - Legacy: `command(name, argType | null, body, argOptional?)` —
+ *   at most one argument; the argument is optional unless the
+ *   fourth parameter says otherwise.
+ * - General (phase 20): `command(name, cmdArg(...)[], body,
+ *   options?)` — any number of typed arguments, plus the
+ *   permission / usage / aliases section entries via
+ *   CommandOptions (the legacy form accepts an options object as
+ *   its fourth argument too).
+ */
+export function command(
+  name: string,
+  args: CommandArgType | null | readonly CommandArgSpec[],
+  body: readonly Stmt[],
+  extra?: boolean | CommandOptions,
+): TopLevel {
+  requireCommandName(name);
+  let specs: readonly CommandArgSpec[];
+  let options: CommandOptions | undefined;
+  if (isSpecList(args)) {
+    if (typeof extra === "boolean") {
+      throw new RangeError(
+        "the multi-argument form of command() takes CommandOptions as its fourth argument, not the legacy boolean",
+      );
+    }
+    options = extra;
+    specs = args.map((a) => cmdArg(a.type, a.optional === true));
+  } else {
+    options = typeof extra === "object" ? extra : undefined;
+    const optional = typeof extra === "boolean" ? extra : args !== null;
+    specs = args === null ? [] : [{ type: args, optional }];
+  }
+  if (options?.permission !== undefined && !/^\S+$/.test(options.permission)) {
+    throw new RangeError(`invalid command permission: ${JSON.stringify(options.permission)}`);
+  }
+  if (options?.usage !== undefined && (options.usage === "" || /[\r\n]/.test(options.usage))) {
+    throw new RangeError("command usage must be a single non-empty line");
+  }
+  const aliases = options?.aliases?.map((a) => {
+    const bare = a.startsWith("/") ? a.slice(1) : a;
+    if (!/^[A-Za-z0-9_-]+$/.test(bare)) {
+      throw new RangeError(`invalid command alias: ${JSON.stringify(a)}`);
+    }
+    return a;
+  });
+  return withLoc({
+    kind: "command",
+    name,
+    args: specs,
+    ...(options?.permission !== undefined ? { permission: options.permission } : {}),
+    ...(options?.usage !== undefined ? { usage: options.usage } : {}),
+    ...(aliases !== undefined && aliases.length > 0 ? { aliases } : {}),
+    body,
+  });
 }
 
 /** Construct a script from top-level declarations. */

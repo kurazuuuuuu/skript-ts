@@ -91,9 +91,13 @@ Anything not listed here is out of scope for v0.
 | `onBedLeave` | `on bed leave:` |
 
 ### Commands
-`command(name, argType, body, argOptional?)` — at most **one** argument.
-`argType` is `"text"`, `"player"`, or `"integer"`; optional arguments emit
-as `[<type>]`, required ones as `<type>`. The body becomes the `trigger:`
+`command(name, args, body, options?)` — any number of typed
+arguments (see **Command definitions** below for the full
+semantics). `args` is either one legacy argument type
+(`"text"`, `"player"` or `"integer"`, always optional, with an
+optional boolean fourth argument) or a list of `cmdArg(type,
+optional?)` specs. Optional arguments emit as `[<type>]`,
+required ones as `<type>`. The body becomes the `trigger:`
 section.
 
 ### Effects (statements)
@@ -897,6 +901,71 @@ max health and saturation (unprobed for those two
 expressions), and food / game-mode state on
 non-player entities (player-only in the
 original's type system).
+
+### Command definitions
+
+Commands take any number of typed arguments, plus the
+`permission`, `usage` and `aliases` section entries — core
+language, identical under Skript and under the engine jar.
+Every behavior below was probed against the real Skript
+2.17.1 (see the development log): the original registers its
+commands with **Brigadier**, so argument failures are
+vanilla Brigadier messages and the trigger never runs; the
+engine's matcher reproduces them exactly.
+
+- **Arguments**: `command(name, [cmdArg(type, optional?),
+  ...], body, options?)`. Types: `"text"`, `"player"`,
+  `"offlinePlayer"`, `"integer"`, `"number"`, `"boolean"`,
+  `"item"`; `argument(n)` reads the parsed value (1-based)
+  in the body. The legacy single-argument form is unchanged.
+- **Parsing**: a `player` argument resolves an **online**
+  player by full name, case-insensitively; an offline or
+  unknown name fails with `No player was found` (no context
+  line) and selectors (`@a`, ...) are rejected. `integer`
+  is Brigadier's long (`Expected long`, `Invalid long
+  '...'`), `number` its double (`Expected double`),
+  `boolean` only the lowercase literals `true` / `false`.
+  An `item` argument is one token, a namespaced item id
+  (`diamond_sword`, `minecraft:diamond_sword`); unknown ids
+  fail with `Unknown item 'minecraft:...'`. `offlinePlayer`
+  accepts **any** name. A `text` argument takes one token —
+  or the rest of the line in last position. A bad value,
+  leftover tokens (`Incorrect argument for command`) and
+  missing required arguments all fail the invocation; the
+  feedback is **one** chat message: the reason, a newline,
+  and a `<--[HERE]` context line.
+- **Optional arguments** (`[<type>]`): omitting one yields
+  no value; a supplied value is still validated. Optional
+  arguments before required ones **backtrack** — in
+  `[<integer>] <text>`, the input `hello` reads as the text.
+  **Argument defaults are not offered**: the original's
+  `[<type> = <expr>]` form loads but is broken (probed: a
+  supplied value fails dispatch, an omitted one never
+  applies the default), so the subset has no defaults.
+- **Sections**: `permission` (a sender without it cannot
+  address the command — the failure reads like an unknown
+  command, operator and console senders pass), `usage`
+  (sent verbatim, and only for the missing-argument
+  failure), `aliases` (extra names, with or without a
+  leading slash). **`permission message` is not offered**:
+  deprecated in the original and never delivered (probed).
+
+`examples/commands.ts` exercises all of it — `/cpoke`,
+`/croll`, `/citem`, `/ctell`, `/cmix`, `/coff`, `/cadmin`,
+`/cuse`, `/calias` (+ `/ca2`, `/ca3`) — and
+`examples/behavior/commands.behavior.ts` drives two bots
+through the whole flow under both runtimes, including the
+exact failure messages and the permission gate seen from a
+sender without the permission.
+
+Deliberate divergences and deferrals (recorded): the
+engine matches whole space-separated tokens where
+Brigadier's reader can stop mid-token (junk fused to a
+number is a whole-token error here, not a partial parse);
+tab completion is the platform default in engine mode
+versus Brigadier's suggestions; `executable by` /
+`prefix` / cooldown sections and expression-typed custom
+arguments are out of scope for this slice.
 
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal

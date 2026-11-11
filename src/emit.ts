@@ -1,4 +1,4 @@
-import type { Cond, Expr, Script, SourceLoc, Stmt, TextExpr, TopLevel, VariableExpr } from "./ast.js";
+import type { CommandArgType, Cond, Expr, Script, SourceLoc, Stmt, TextExpr, TopLevel, VariableExpr } from "./ast.js";
 import type { LineMapping } from "./source-map.js";
 
 function escapeText(s: string): string {
@@ -789,16 +789,33 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
             return [own(header, path, t.loc), ...emitBlock(t.body, 1, path, "body")];
         }
         case "command": {
+            // Phase 20: any number of typed arguments ([<type>]
+            // for optional ones) plus the permission / usage /
+            // aliases section entries before the trigger. The
+            // "offlinePlayer" type spells "offline player" in the
+            // header; every other type is its own name.
+            const skArgType = (ty: CommandArgType): string =>
+                ty === "offlinePlayer" ? "offline player" : ty;
             const argPart =
-                t.argType === null
+                t.args.length === 0
                     ? ""
-                    : ` ${t.argOptional ? `[<${t.argType}>]` : `<${t.argType}>`}`;
-            const header = `command /${t.name}${argPart}:`;
-            return [
-                own(header, path, t.loc),
-                own("    trigger:", path, t.loc),
-                ...emitBlock(t.body, 2, path, "body"),
-            ];
+                    : " " +
+                      t.args
+                          .map((a) => (a.optional ? `[<${skArgType(a.type)}>]` : `<${skArgType(a.type)}>`))
+                          .join(" ");
+            const lines: OwnedLine[] = [own(`command /${t.name}${argPart}:`, path, t.loc)];
+            if (t.permission !== undefined) {
+                lines.push(own(`    permission: ${t.permission}`, path, t.loc));
+            }
+            if (t.usage !== undefined) {
+                lines.push(own(`    usage: ${t.usage}`, path, t.loc));
+            }
+            if (t.aliases !== undefined && t.aliases.length > 0) {
+                lines.push(own(`    aliases: ${t.aliases.join(", ")}`, path, t.loc));
+            }
+            lines.push(own("    trigger:", path, t.loc));
+            lines.push(...emitBlock(t.body, 2, path, "body"));
+            return lines;
         }
         case "function": {
             const params = t.params

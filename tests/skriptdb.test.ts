@@ -53,8 +53,7 @@ describe("skript-db builtin slice (phase 8, engine-only)", () => {
         {
           kind: "command",
           name: "x",
-          argType: null,
-          argOptional: false,
+          args: [],
           body: [dbExecute(variable("s"), str("select 1"))],
         },
       ],
