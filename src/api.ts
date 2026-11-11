@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName, GameModeName } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -1650,4 +1650,261 @@ export function every(amount: number, unit: TimeUnit, body: readonly Stmt[]): To
     throw new RangeError(`invalid periodical unit: ${String(unit)}`);
   }
   return withLoc({ kind: "periodical", amount, unit, body });
+}
+// ---------------------------------------------------------------------------
+// Core language (phase 19): player / entity state and effects
+//
+// Semantics mirror the real Skript 2.17.1, verified against the
+// sandbox server with hand-written probe scripts (five rounds,
+// NBT ground truth read back through the server console; see the
+// development log):
+//
+// - Units: health and max health are in HEARTS (half the Bukkit
+//   hit points), food level in drumsticks (half the food points),
+//   saturation unscaled. Setting health clamps to the maximum
+//   (0 kills); setting food rounds to whole points (6.3
+//   drumsticks lands on 13 points); setting max health rewrites
+//   the attribute base and leaves current health alone;
+//   saturation is not clamped to the food level. `heal` refills,
+//   `heal by n` heals n hearts.
+// - Game mode: reading yields the bare name text; comparing and
+//   setting need the bare literal (gameModeType) — a quoted text
+//   never compares (it is a parse error in conditions) and a set
+//   from a text variable silently does nothing, exactly the
+//   phase-18 weather situation.
+// - Experience is the TOTAL points (level + progress share);
+//   setting it re-derives level and progress, adding adds
+//   points. Setting the level preserves the progress fraction.
+// - Potions: apply takes a type name, an optional level
+//   (default 1) and an optional duration in seconds (default 30
+//   seconds in the original — a durationless apply leaves a
+//   600-tick effect). Every vanilla type name was probed,
+//   including "swiftness" as an alias of speed. Remove takes one
+//   type; the original has no remove-all form.
+// - Spawn / drop / play sound are the plain effects: spawn
+//   [<n> of] <type> at a location or entity (the spawned entity
+//   is readable as lastSpawnedEntity), drop an item expression
+//   at a location, and play a registry sound name at a location
+//   or entity (no volume/pitch options — see ast.ts).
+// ---------------------------------------------------------------------------
+
+/** Construct a health expression: the living entity's health in hearts (`health of %entity%`; 10 is full for a player). */
+export function healthOf(target: Expr): Expr {
+  return { kind: "healthOf", target };
+}
+
+/** Construct a max-health expression: the living entity's maximum health in hearts (`max health of %entity%`). */
+export function maxHealthOf(target: Expr): Expr {
+  return { kind: "maxHealthOf", target };
+}
+
+/** Construct a food-level expression: the player's food level in drumsticks (`food level of %player%`; 10 is full). */
+export function foodLevelOf(target: Expr): Expr {
+  return { kind: "foodLevelOf", target };
+}
+
+/** Construct a saturation expression: the player's saturation, unscaled (`saturation of %player%`). */
+export function saturationOf(target: Expr): Expr {
+  return { kind: "saturationOf", target };
+}
+
+/** Construct a game-mode expression: the player's game mode as its name text (`gamemode of %player%`). For comparisons use gameModeType — a plain text never compares equal in the original. */
+export function gameModeOf(target: Expr): Expr {
+  return { kind: "gameModeOf", target };
+}
+
+const GAME_MODE_NAMES: ReadonlySet<string> = new Set([
+  "survival", "creative", "adventure", "spectator",
+]);
+
+/** Construct a game-mode literal (survival / creative / adventure / spectator): the value gameModeOf compares against and setGameMode writes. Emitted bare, as the original's gamemode literals are. */
+export function gameModeType(name: GameModeName): Expr {
+  if (!GAME_MODE_NAMES.has(name)) {
+    throw new RangeError(`invalid game mode name: ${String(name)}`);
+  }
+  return { kind: "gameModeType", name };
+}
+
+/** Construct an experience expression: the player's total experience points (`experience of %player%`). */
+export function experienceOf(target: Expr): Expr {
+  return { kind: "experienceOf", target };
+}
+
+/** Construct a level expression: the player's experience level (`level of %player%`). */
+export function levelOf(target: Expr): Expr {
+  return { kind: "levelOf", target };
+}
+
+/** Construct a last-spawned-entity expression: the entity the most recent spawn created (`last spawned entity`). */
+export function lastSpawnedEntity(): Expr {
+  return { kind: "lastSpawnedEntity" };
+}
+
+/** Construct a set-health statement (`set health of <target> to <value>`), in hearts; clamps to the maximum, 0 kills. */
+export function setHealth(target: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "setHealth", target, value });
+}
+
+/** Construct a set-max-health statement (`set max health of <target> to <value>`), in hearts; rewrites the attribute base, current health untouched. */
+export function setMaxHealth(target: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "setMaxHealth", target, value });
+}
+
+/** Construct a set-food-level statement (`set food level of <target> to <value>`), in drumsticks; rounds to whole food points. */
+export function setFoodLevel(target: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "setFoodLevel", target, value });
+}
+
+/** Construct a set-saturation statement (`set saturation of <target> to <value>`), unscaled; not clamped to the food level. */
+export function setSaturation(target: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "setSaturation", target, value });
+}
+
+/** Construct a set-game-mode statement (`set gamemode of <target> to creative`): the mode is a literal name. */
+export function setGameMode(target: Expr, name: GameModeName): Stmt {
+  if (!GAME_MODE_NAMES.has(name)) {
+    throw new RangeError(`invalid game mode name: ${String(name)}`);
+  }
+  return withLoc({ kind: "setGameMode", target, name });
+}
+
+/** Construct a set-experience statement (`set experience of <target> to <value>`): sets the total points exactly; level and progress are re-derived. */
+export function setExperience(target: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "setExperience", target, value });
+}
+
+/** Construct a set-level statement (`set level of <target> to <value>`): sets the experience level, keeping the progress fraction. */
+export function setLevel(target: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "setLevel", target, value });
+}
+
+/** Construct a heal statement (`heal <target>` or `heal <target> by <amount>`): without an amount, refills to full; with one, heals that many hearts. */
+export function heal(target: Expr, amount?: Expr): Stmt {
+  return amount === undefined
+    ? withLoc({ kind: "heal", target })
+    : withLoc({ kind: "heal", target, amount });
+}
+
+const ADDABLE_STATE_KINDS: ReadonlySet<string> = new Set([
+  "healthOf", "foodLevelOf", "experienceOf", "levelOf",
+]);
+
+function requireStateExpr(builder: string, expr: Expr): Expr {
+  if (!ADDABLE_STATE_KINDS.has(expr.kind)) {
+    throw new RangeError(
+      `${builder} target must be a numeric state expression (healthOf / foodLevelOf / experienceOf / levelOf); use add() for variables`,
+    );
+  }
+  return expr;
+}
+
+/** Construct an add-to-state statement (`add <value> to health of <target>`): Skript's generic add changer over a numeric state expression. */
+export function addTo(expr: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "addToExpr", expr: requireStateExpr("addTo", expr), value });
+}
+
+/** Construct a remove-from-state statement (`remove <value> from food level of <target>`): Skript's generic remove changer over a numeric state expression. */
+export function removeFrom(expr: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "removeFromExpr", expr: requireStateExpr("removeFrom", expr), value });
+}
+
+/**
+ * The potion effect type names of the original (all probed
+ * against Skript 2.17.1): the lowercase display names, spaces
+ * included. "swiftness" is an accepted alias of "speed".
+ */
+const POTION_TYPES: ReadonlySet<string> = new Set([
+  "absorption", "bad omen", "blindness", "conduit power", "darkness",
+  "dolphin's grace", "fire resistance", "glowing", "haste", "health boost",
+  "hero of the village", "hunger", "instant damage", "instant health",
+  "invisibility", "jump boost", "levitation", "luck", "mining fatigue",
+  "nausea", "night vision", "poison", "regeneration", "resistance",
+  "slow falling", "slowness", "speed", "strength", "unluck",
+  "water breathing", "weakness", "wither", "swiftness",
+]);
+
+function requirePotionType(name: string): string {
+  const canonical = typeof name === "string" ? name.trim().toLowerCase().replace(/\s+/g, " ") : "";
+  if (!POTION_TYPES.has(canonical)) {
+    throw new RangeError(`invalid potion effect type: ${String(name)}`);
+  }
+  return canonical;
+}
+
+/**
+ * Construct an apply-potion statement (`apply <type> [<level>] to
+ * <target> [for <seconds> seconds]`). Options: `level` (default
+ * 1) and `durationSeconds` (default: the original's 30 seconds).
+ */
+export function applyPotion(
+  target: Expr,
+  potion: string,
+  options?: { level?: number; durationSeconds?: number },
+): Stmt {
+  const canonical = requirePotionType(potion);
+  const level = options?.level;
+  const durationSeconds = options?.durationSeconds;
+  if (level !== undefined && (!Number.isInteger(level) || level < 1)) {
+    throw new RangeError("potion level must be a positive integer");
+  }
+  if (durationSeconds !== undefined && (!Number.isFinite(durationSeconds) || durationSeconds <= 0)) {
+    throw new RangeError("potion duration must be a positive number of seconds");
+  }
+  return withLoc({
+    kind: "applyPotion",
+    target,
+    potion: canonical,
+    ...(level !== undefined ? { level } : {}),
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+  });
+}
+
+/** Construct a remove-potion statement (`remove <type> from <target>`): removes one effect type. The original has no remove-all form. */
+export function removePotion(target: Expr, potion: string): Stmt {
+  return withLoc({ kind: "removePotion", target, potion: requirePotionType(potion) });
+}
+
+function requireEntityType(name: string): string {
+  const canonical = typeof name === "string" ? name.trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ") : "";
+  if (!/^[a-z][a-z0-9 ]*$/.test(canonical)) {
+    throw new RangeError(`invalid entity type name: ${String(name)}`);
+  }
+  return canonical;
+}
+
+/**
+ * Construct a spawn statement (`spawn [<count> of] <type> at
+ * <at>`): spawn entities of the named type at a location or at
+ * an entity. The last spawned entity is readable afterwards via
+ * lastSpawnedEntity(). The count defaults to 1.
+ */
+export function spawnEntity(entityType: string, at: Expr, count?: number): Stmt {
+  const canonical = requireEntityType(entityType);
+  if (count !== undefined && (!Number.isInteger(count) || count < 1)) {
+    throw new RangeError("spawn count must be a positive integer");
+  }
+  return withLoc({
+    kind: "spawnEntity",
+    entityType: canonical,
+    at,
+    ...(count !== undefined ? { count } : {}),
+  });
+}
+
+/** Construct a drop-item statement (`drop <item> at <at>`): drop an item-valued expression at a location or at an entity. */
+export function dropItem(itemValue: Expr, at: Expr): Stmt {
+  return withLoc({ kind: "dropItem", item: itemValue, at });
+}
+
+/**
+ * Construct a play-sound statement (`play sound "<name>" at
+ * <at>`): play the named registry sound at a location or at an
+ * entity. The original offers no working volume or pitch option
+ * for named sounds (probed), so neither is taken.
+ */
+export function playSound(name: string, at: Expr): Stmt {
+  if (typeof name !== "string" || !/^[a-z0-9][a-z0-9_.:/-]*$/i.test(name.trim())) {
+    throw new RangeError(`invalid sound name: ${String(name)}`);
+  }
+  return withLoc({ kind: "playSound", name: name.trim(), at });
 }

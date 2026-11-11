@@ -3,18 +3,28 @@ package net.krz.skriptts;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
+import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -141,6 +151,18 @@ import java.util.logging.Logger;
  * (a block as '<type>' at <center> in world '<name>', a location
  * as "x: ..., yaw: ..., in '<world>'"), and a block's location
  * is its center — all probed against the real Skript 2.17.1.
+ * Phase 19 adds core-language player / entity state and effects
+ * (no addon scope): health and max health in hearts, food level
+ * in drumsticks and saturation unscaled (the original's units,
+ * probed against NBT ground truth), game mode as its name text
+ * with a bare-literal set form, experience as total points
+ * (read through the computed total, written through the total
+ * setter; setting the level alone preserves the progress
+ * fraction), heal, the generic add / remove changers over the
+ * state expressions, potion apply / remove through plain Bukkit
+ * calls (defaults probed: level 1, 600 ticks), entity spawning
+ * with a server-wide last-spawned value, item drops, and sounds
+ * resolved through the registry like the original.
  */
 final class Engine {
 
@@ -274,6 +296,8 @@ final class Engine {
     private TimerHost timerHost;
     private DelayHost delayHost;
     private PlaceholderHost placeholderHost;
+    /** The entity the most recent spawn created (phase 19); the original's `last spawned entity` is likewise one server-wide value. */
+    private Entity lastSpawned;
     private Database database;
     private Files files;
     /**
@@ -870,6 +894,145 @@ final class Engine {
                             world.setThundering(true);
                         }
                         default -> logger.warning("skript-ts: unknown weather '" + stmt.get("name") + "'");
+                    }
+                }
+                cont.run();
+            }
+            case "setHealth", "setMaxHealth", "setFoodLevel", "setSaturation",
+                    "setExperience", "setLevel" -> {
+                // State writes (phase 19) share one conversion
+                // core with the generic add / remove changers:
+                // build the matching state-expression node and
+                // write through writeStateValue, so the units
+                // (hearts / drumsticks / points) convert in
+                // exactly one place.
+                String exprKind = switch (kind(stmt)) {
+                    case "setHealth" -> "healthOf";
+                    case "setMaxHealth" -> "maxHealthOf";
+                    case "setFoodLevel" -> "foodLevelOf";
+                    case "setSaturation" -> "saturationOf";
+                    case "setExperience" -> "experienceOf";
+                    default -> "levelOf";
+                };
+                Object v = evalExpr(node(stmt.get("value")), ctx);
+                if (v instanceof Number n) {
+                    Map<String, Object> exprNode = new LinkedHashMap<>();
+                    exprNode.put("kind", exprKind);
+                    exprNode.put("target", stmt.get("target"));
+                    writeStateValue(exprNode, ctx, n.doubleValue());
+                }
+                cont.run();
+            }
+            case "setGameMode" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    try {
+                        target.setGameMode(GameMode.valueOf(
+                                str(stmt.get("name")).toUpperCase(Locale.ROOT)));
+                    } catch (IllegalArgumentException e) {
+                        logger.warning("skript-ts: unknown game mode '" + stmt.get("name") + "'");
+                    }
+                }
+                cont.run();
+            }
+            case "heal" -> {
+                // `heal %entity% [by %number%]` (phase 19): no
+                // amount refills to the maximum; an amount heals
+                // that many hearts.
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof LivingEntity le) {
+                    double max = maxHealth(le);
+                    if (stmt.get("amount") == null) {
+                        le.setHealth(max);
+                    } else {
+                        Object a = evalExpr(node(stmt.get("amount")), ctx);
+                        if (a instanceof Number n) {
+                            le.setHealth(clampHealth(le.getHealth() + n.doubleValue() * 2.0, max));
+                        }
+                    }
+                }
+                cont.run();
+            }
+            case "addToExpr", "removeFromExpr" -> {
+                // Skript's generic add / remove changers over the
+                // numeric state expressions (phase 19): read the
+                // current value, shift it, write it back through
+                // the same conversion core as the set statements.
+                Map<String, Object> exprNode = node(stmt.get("expr"));
+                Object cur = evalExpr(exprNode, ctx);
+                Object dv = evalExpr(node(stmt.get("value")), ctx);
+                if (cur instanceof Number c && dv instanceof Number d) {
+                    double delta = kind(stmt).equals("addToExpr")
+                            ? d.doubleValue() : -d.doubleValue();
+                    writeStateValue(exprNode, ctx, c.doubleValue() + delta);
+                }
+                cont.run();
+            }
+            case "applyPotion" -> {
+                // `apply <type> [<level>] to %entity% [for
+                // <seconds> seconds]` (phase 19). Defaults probed
+                // in the original: level 1, duration 600 ticks
+                // (30 seconds). The plain Bukkit call matches the
+                // original's wire behavior, including how this
+                // Paper version stores instant effects.
+                Object t = evalExpr(node(stmt.get("target")), ctx);
+                PotionEffectType type = resolvePotionType(str(stmt.get("potion")));
+                if (t instanceof LivingEntity le && type != null) {
+                    int level = stmt.get("level") == null ? 1 : (int) num(stmt.get("level"));
+                    int duration = stmt.get("durationSeconds") == null
+                            ? 600
+                            : (int) Math.round(num(stmt.get("durationSeconds")) * 20.0);
+                    le.addPotionEffect(new PotionEffect(type, duration, Math.max(0, level - 1)));
+                }
+                cont.run();
+            }
+            case "removePotion" -> {
+                Object t = evalExpr(node(stmt.get("target")), ctx);
+                PotionEffectType type = resolvePotionType(str(stmt.get("potion")));
+                if (t instanceof LivingEntity le && type != null) {
+                    le.removePotionEffect(type);
+                }
+                cont.run();
+            }
+            case "spawnEntity" -> {
+                // `spawn [<n> of] <type> at %location/entity%`
+                // (phase 19); the last spawned entity is kept
+                // for the lastSpawnedEntity expression.
+                Location loc = asLocation(evalExpr(node(stmt.get("at")), ctx));
+                EntityType type = resolveEntityType(str(stmt.get("entityType")));
+                if (loc != null && loc.getWorld() != null && type != null) {
+                    int count = stmt.get("count") == null ? 1 : (int) num(stmt.get("count"));
+                    for (int i = 0; i < count; i++) {
+                        lastSpawned = loc.getWorld().spawnEntity(loc, type);
+                    }
+                }
+                cont.run();
+            }
+            case "dropItem" -> {
+                // `drop %item% at %location/entity%` (phase 19):
+                // the item appears in the world at the spot (the
+                // original scatters it slightly, like
+                // dropItemNaturally).
+                Location loc = asLocation(evalExpr(node(stmt.get("at")), ctx));
+                ItemStack stack = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                if (loc != null && loc.getWorld() != null && stack != null
+                        && !stack.getType().isAir() && stack.getAmount() > 0) {
+                    loc.getWorld().dropItemNaturally(loc, stack);
+                }
+                cont.run();
+            }
+            case "playSound" -> {
+                // `play sound "<name>" at %location/entity%`
+                // (phase 19): the name resolves through the
+                // sound registry, like the original — the packet
+                // carries the registry id, at full volume and
+                // normal pitch (the original has no working
+                // volume option and ignores its pitch option).
+                Location loc = asLocation(evalExpr(node(stmt.get("at")), ctx));
+                if (loc != null && loc.getWorld() != null) {
+                    Sound sound = resolveSound(str(stmt.get("name")));
+                    if (sound != null) {
+                        loc.getWorld().playSound(loc, sound, 1.0f, 1.0f);
+                    } else {
+                        logger.warning("skript-ts: unknown sound '" + stmt.get("name") + "'");
                     }
                 }
                 cont.run();
@@ -1737,6 +1900,41 @@ final class Engine {
                 yield w instanceof World world ? weatherName(world) : null;
             }
             case "weatherType" -> str(expr.get("name"));
+            // Player / entity state (phase 19): health values are
+            // in hearts (half the Bukkit hit points) and food in
+            // drumsticks, exactly as the original reads them
+            // (probed); saturation is unscaled. Experience is the
+            // total points, computed from level + progress.
+            case "healthOf" -> {
+                Object t = evalExpr(node(expr.get("target")), ctx);
+                yield t instanceof LivingEntity le ? le.getHealth() / 2.0 : null;
+            }
+            case "maxHealthOf" -> {
+                Object t = evalExpr(node(expr.get("target")), ctx);
+                yield t instanceof LivingEntity le ? maxHealth(le) / 2.0 : null;
+            }
+            case "foodLevelOf" -> {
+                Object t = evalExpr(node(expr.get("target")), ctx);
+                yield t instanceof Player p ? p.getFoodLevel() / 2.0 : null;
+            }
+            case "saturationOf" -> {
+                Object t = evalExpr(node(expr.get("target")), ctx);
+                yield t instanceof Player p ? (double) p.getSaturation() : null;
+            }
+            case "gameModeOf" -> {
+                Object t = evalExpr(node(expr.get("target")), ctx);
+                yield t instanceof Player p ? p.getGameMode().name().toLowerCase(Locale.ROOT) : null;
+            }
+            case "gameModeType" -> str(expr.get("name"));
+            case "experienceOf" -> {
+                Object t = evalExpr(node(expr.get("target")), ctx);
+                yield t instanceof Player p ? (double) p.calculateTotalExperiencePoints() : null;
+            }
+            case "levelOf" -> {
+                Object t = evalExpr(node(expr.get("target")), ctx);
+                yield t instanceof Player p ? (double) p.getLevel() : null;
+            }
+            case "lastSpawnedEntity" -> lastSpawned;
             case "eventBlock" -> ctx.eventBlock;
             case "eventItem" -> ctx.eventItem;
             case "clickedEntity" -> ctx.clickedEntity;
@@ -2622,6 +2820,154 @@ final class Engine {
 
     /** Legacy-section serializer bridging this engine's §-coded strings and Bukkit components. */
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+
+    // ------------------------------------------------------------------
+    // Player / entity state (phase 19)
+    // ------------------------------------------------------------------
+
+    /** A living entity's maximum health in Bukkit hit points (the max-health attribute's value). */
+    private static double maxHealth(LivingEntity entity) {
+        AttributeInstance attr = entity.getAttribute(Attribute.MAX_HEALTH);
+        return attr != null ? attr.getValue() : 20.0;
+    }
+
+    /** Clamp a hit-point value into the range Bukkit's setHealth accepts. */
+    private static double clampHealth(double hp, double max) {
+        return Math.max(0.0, Math.min(max, hp));
+    }
+
+    /**
+     * Write a numeric state expression (phase 19): the value is in
+     * the expression's own units and converts here — health and
+     * max health in hearts (×2 into hit points / the attribute
+     * base), food level in drumsticks (×2, rounded to whole
+     * points, clamped to 0..20 — all probed), saturation raw,
+     * experience as total points, level as whole levels. A target
+     * of the wrong kind (food on a zombie, health on a text) is
+     * left alone, like the original's failed changes.
+     */
+    private void writeStateValue(Map<String, Object> expr, Ctx ctx, double value) {
+        Object target = evalExpr(node(expr.get("target")), ctx);
+        switch (kind(expr)) {
+            case "healthOf" -> {
+                if (target instanceof LivingEntity le) {
+                    le.setHealth(clampHealth(value * 2.0, maxHealth(le)));
+                }
+            }
+            case "maxHealthOf" -> {
+                if (target instanceof LivingEntity le) {
+                    AttributeInstance attr = le.getAttribute(Attribute.MAX_HEALTH);
+                    if (attr != null) {
+                        attr.setBaseValue(Math.max(0.0, value * 2.0));
+                        double max = maxHealth(le);
+                        if (le.getHealth() > max) le.setHealth(max);
+                    }
+                }
+            }
+            case "foodLevelOf" -> {
+                if (target instanceof Player p) {
+                    long points = Math.round(value * 2.0);
+                    p.setFoodLevel((int) Math.max(0, Math.min(20, points)));
+                }
+            }
+            case "saturationOf" -> {
+                if (target instanceof Player p) {
+                    p.setSaturation((float) Math.max(0.0, value));
+                }
+            }
+            case "experienceOf" -> {
+                if (target instanceof Player p) {
+                    setTotalExperience((int) Math.max(0, Math.round(value)), p);
+                }
+            }
+            case "levelOf" -> {
+                if (target instanceof Player p) {
+                    p.setLevel((int) Math.max(0, Math.round(value)));
+                }
+            }
+            default -> logger.warning("skript-ts: not a writable state expression: " + kind(expr));
+        }
+    }
+
+    /**
+     * Set a player's experience from a TOTAL point count (phase
+     * 19). Bukkit's own setTotalExperience(int) writes only the
+     * total field — it does not move the level or the progress
+     * bar (probed: after it, getLevel() still read 0) — so the
+     * total is decomposed with the vanilla level curve and all
+     * three fields are written, the state the original's set
+     * produces (level 4 + progress 7/15 for a total of 47).
+     */
+    private static void setTotalExperience(int total, Player player) {
+        int level = 0;
+        while (totalExperienceForLevel(level + 1) <= total) level++;
+        int atLevel = totalExperienceForLevel(level);
+        int toNext = experienceToNextLevel(level);
+        float progress = toNext <= 0 ? 0.0f : (float) (total - atLevel) / (float) toNext;
+        player.setLevel(level);
+        player.setExp(progress);
+        player.setTotalExperience(total);
+    }
+
+    /** Total experience points needed to REACH a level (the vanilla cumulative curve). */
+    private static int totalExperienceForLevel(int level) {
+        if (level <= 16) return level * level + 6 * level;
+        if (level <= 31) return (int) (2.5 * level * level - 40.5 * level + 360);
+        return (int) (4.5 * level * level - 162.5 * level + 2220);
+    }
+
+    /** Points from a level to the next (the vanilla per-level curve). */
+    private static int experienceToNextLevel(int level) {
+        if (level < 15) return 2 * level + 7;
+        if (level < 30) return 5 * level - 38;
+        return 9 * level - 158;
+    }
+
+    /**
+     * A value as a location for the at-position effects (phase
+     * 19): a location itself, a block's center (matching
+     * locationOf), or an entity's position. Anything else yields
+     * null.
+     */
+    private static Location asLocation(Object value) {
+        if (value instanceof Location l) return l;
+        if (value instanceof Block b) return b.getLocation().add(0.5, 0.5, 0.5);
+        if (value instanceof Entity e) return e.getLocation();
+        return null;
+    }
+
+    /**
+     * A potion effect type from its Skript display name (phase
+     * 19): spaces become underscores and the two irregular names
+     * map by hand ("dolphin's grace" is `dolphins_grace` in the
+     * registry, "swiftness" is an alias of speed).
+     */
+    private static PotionEffectType resolvePotionType(String displayName) {
+        String key = switch (displayName) {
+            case "dolphin's grace" -> "dolphins_grace";
+            case "swiftness" -> "speed";
+            default -> displayName.replace(' ', '_');
+        };
+        return Registry.POTION_EFFECT_TYPE.get(NamespacedKey.minecraft(key));
+    }
+
+    /** An entity type from its Skript type name ("cave spider" -> CAVE_SPIDER), or null when unknown. */
+    private EntityType resolveEntityType(String typeName) {
+        try {
+            return EntityType.valueOf(typeName.toUpperCase(Locale.ROOT).replace(' ', '_'));
+        } catch (IllegalArgumentException e) {
+            logger.warning("skript-ts: unknown entity type '" + typeName + "'");
+            return null;
+        }
+    }
+
+    /** A sound from its registry name ("block.note_block.pling", optionally namespaced), or null when unknown. */
+    private static Sound resolveSound(String name) {
+        NamespacedKey key = name.contains(":")
+                ? NamespacedKey.fromString(name)
+                : NamespacedKey.minecraft(name);
+        return key == null ? null : Registry.SOUNDS.get(key);
+    }
 
     /**
      * Materialize an item value as a real stack: a type name (the

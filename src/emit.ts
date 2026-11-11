@@ -167,6 +167,24 @@ function emitValue(e: Expr): string {
             return `weather in ${emitValue(e.world)}`;
         case "weatherType":
             return e.name;
+        case "healthOf":
+            return `health of ${emitValue(e.target)}`;
+        case "maxHealthOf":
+            return `max health of ${emitValue(e.target)}`;
+        case "foodLevelOf":
+            return `food level of ${emitValue(e.target)}`;
+        case "saturationOf":
+            return `saturation of ${emitValue(e.target)}`;
+        case "gameModeOf":
+            return `gamemode of ${emitValue(e.target)}`;
+        case "gameModeType":
+            return e.name;
+        case "experienceOf":
+            return `experience of ${emitValue(e.target)}`;
+        case "levelOf":
+            return `level of ${emitValue(e.target)}`;
+        case "lastSpawnedEntity":
+            return "last spawned entity";
         case "arith":
             // Arithmetic is always parenthesized so the emitted tree
             // means the same thing regardless of Skript's own
@@ -283,6 +301,15 @@ function emitString(e: Expr): string {
         case "clockTime":
         case "worldWeather":
         case "weatherType":
+        case "healthOf":
+        case "maxHealthOf":
+        case "foodLevelOf":
+        case "saturationOf":
+        case "gameModeOf":
+        case "gameModeType":
+        case "experienceOf":
+        case "levelOf":
+        case "lastSpawnedEntity":
             return `%${emitValue(e)}%`;
         case "arith":
             return `%${emitValue(e)}%`;
@@ -599,6 +626,50 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             return [own(`${prefix}set time in ${emitValue(s.world)} to ${emitValue(s.value)}`, path, s.loc)];
         case "setWorldWeather":
             return [own(`${prefix}set weather in ${emitValue(s.world)} to ${s.name}`, path, s.loc)];
+        case "setHealth":
+            return [own(`${prefix}set health of ${emitValue(s.target)} to ${emitValue(s.value)}`, path, s.loc)];
+        case "setMaxHealth":
+            return [own(`${prefix}set max health of ${emitValue(s.target)} to ${emitValue(s.value)}`, path, s.loc)];
+        case "setFoodLevel":
+            return [own(`${prefix}set food level of ${emitValue(s.target)} to ${emitValue(s.value)}`, path, s.loc)];
+        case "setSaturation":
+            return [own(`${prefix}set saturation of ${emitValue(s.target)} to ${emitValue(s.value)}`, path, s.loc)];
+        case "setGameMode":
+            return [own(`${prefix}set gamemode of ${emitValue(s.target)} to ${s.name}`, path, s.loc)];
+        case "setExperience":
+            return [own(`${prefix}set experience of ${emitValue(s.target)} to ${emitValue(s.value)}`, path, s.loc)];
+        case "setLevel":
+            return [own(`${prefix}set level of ${emitValue(s.target)} to ${emitValue(s.value)}`, path, s.loc)];
+        case "heal":
+            return [own(
+                s.amount !== undefined
+                    ? `${prefix}heal ${emitValue(s.target)} by ${emitValue(s.amount)}`
+                    : `${prefix}heal ${emitValue(s.target)}`,
+                path,
+                s.loc,
+            )];
+        case "addToExpr":
+            return [own(`${prefix}add ${emitValue(s.value)} to ${emitValue(s.expr)}`, path, s.loc)];
+        case "removeFromExpr":
+            return [own(`${prefix}remove ${emitValue(s.value)} from ${emitValue(s.expr)}`, path, s.loc)];
+        case "applyPotion":
+            return [own(
+                `${prefix}apply ${s.potion}${s.level !== undefined && s.level !== 1 ? ` ${String(s.level)}` : ""} to ${emitValue(s.target)}${s.durationSeconds !== undefined ? ` for ${String(s.durationSeconds)} seconds` : ""}`,
+                path,
+                s.loc,
+            )];
+        case "removePotion":
+            return [own(`${prefix}remove ${s.potion} from ${emitValue(s.target)}`, path, s.loc)];
+        case "spawnEntity":
+            return [own(
+                `${prefix}spawn ${s.count !== undefined && s.count !== 1 ? `${String(s.count)} of ` : ""}${s.entityType} at ${emitValue(s.at)}`,
+                path,
+                s.loc,
+            )];
+        case "dropItem":
+            return [own(`${prefix}drop ${emitValue(s.item)} at ${emitValue(s.at)}`, path, s.loc)];
+        case "playSound":
+            return [own(`${prefix}play sound "${escapeText(s.name)}" at ${emitValue(s.at)}`, path, s.loc)];
         case "stop":
             return [own(`${prefix}stop`, path, s.loc)];
         case "callStmt":

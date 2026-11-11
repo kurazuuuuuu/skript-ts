@@ -254,7 +254,43 @@ export type Expr =
   | { kind: "worldTime"; world: Expr }
   | { kind: "clockTime"; text: string }
   | { kind: "worldWeather"; world: Expr }
-  | { kind: "weatherType"; name: WeatherName };
+  | { kind: "weatherType"; name: WeatherName }
+  // Core-language player / entity state (phase 19). All semantics
+  // were probed against the real Skript 2.17.1 in the sandbox (see
+  // the development log for the probe rounds):
+  //
+  // - healthOf / maxHealthOf are in HEARTS (half the Bukkit hit
+  //   points): a full-health player reads 10, a zombie reads 10,
+  //   and fractional hearts are exact (6.3 hearts is 12.6 HP).
+  //   foodLevelOf is in drumsticks (half the food points) and
+  //   saturationOf is NOT scaled (it reads the raw saturation).
+  //   All four work on any living entity that has them (health
+  //   and max health are entity-general; food and saturation are
+  //   player-only and yield no value elsewhere).
+  // - gameModeOf reads a player's game mode as its bare name
+  //   text ("survival", ...). gameModeType is a game mode
+  //   literal, emitted BARE (`creative`) — the original compares
+  //   game modes against the bare literal only: a quoted text
+  //   comparison is a parse error there, and setting the mode
+  //   from a plain text silently does nothing (all probed; the
+  //   same pattern as phase 18's weather).
+  // - experienceOf is a player's TOTAL experience points,
+  //   computed from level + progress (probed: after setting the
+  //   level alone, the total reads as the cumulative total for
+  //   that level plus the preserved progress share). levelOf is
+  //   the experience level itself.
+  // - lastSpawnedEntity is the entity the most recent spawn (by
+  //   any script) created (`last spawned entity`); no value
+  //   before the first spawn.
+  | { kind: "healthOf"; target: Expr }
+  | { kind: "maxHealthOf"; target: Expr }
+  | { kind: "foodLevelOf"; target: Expr }
+  | { kind: "saturationOf"; target: Expr }
+  | { kind: "gameModeOf"; target: Expr }
+  | { kind: "gameModeType"; name: GameModeName }
+  | { kind: "experienceOf"; target: Expr }
+  | { kind: "levelOf"; target: Expr }
+  | { kind: "lastSpawnedEntity" };
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
@@ -367,6 +403,9 @@ export type RelativeDirection =
 /** A weather name (phase 18): the three states of Skript's weather type. */
 export type WeatherName = "clear" | "rain" | "thunder";
 
+/** A game mode name (phase 19): the four states of Skript's gamemode type. */
+export type GameModeName = "survival" | "creative" | "adventure" | "spectator";
+
 /** Source position in the TypeScript file where a builder call was made. */
 export interface SourceLoc { file: string; line: number; column: number }
 
@@ -461,6 +500,63 @@ export type Stmt =
   | { kind: "setBlock"; location: Expr; item: Expr; loc?: SourceLoc }
   | { kind: "setWorldTime"; world: Expr; value: Expr; loc?: SourceLoc }
   | { kind: "setWorldWeather"; world: Expr; name: WeatherName; loc?: SourceLoc }
+  // Core-language state changes and effects (phase 19), mirroring
+  // the change / effect forms probed against the real Skript
+  // 2.17.1:
+  // - setHealth / setMaxHealth / setFoodLevel / setSaturation /
+  //   setExperience / setLevel write the matching expression
+  //   (`set health of %entity% to %number%` and friends) in the
+  //   expression's own units (hearts / drumsticks / raw
+  //   saturation / total points / levels). Health writes clamp
+  //   to the current maximum and 0 kills; a food write rounds to
+  //   whole food points (6.3 drumsticks lands on 13 points);
+  //   setting the max health rewrites the attribute base and
+  //   leaves the current health alone; setting the level keeps
+  //   the progress fraction; setting the experience sets the
+  //   total exactly (the level and progress are re-derived).
+  // - setGameMode takes the mode as a literal name (`set
+  //   gamemode of %player% to creative`).
+  // - heal without an amount refills to full; with an amount it
+  //   heals that many hearts (`heal %entity% [by %number%]`).
+  // - addToExpr / removeFromExpr are Skript's generic add /
+  //   remove changers over the numeric state expressions
+  //   (health, food level, experience, level): `add %number% to
+  //   health of %entity%`. Variables keep their own addVar /
+  //   list statements.
+  // - applyPotion applies a potion effect by type name
+  //   (`apply <type> [<level>] to %entity% [for <seconds>
+  //   seconds]`): the level defaults to 1 and the duration to
+  //   30 seconds in the original (both probed — a durationless
+  //   apply showed 600 ticks in the entity's NBT). removePotion
+  //   removes one type (`remove <type> from %entity%`); the
+  //   original has NO remove-all form (three candidate phrasings
+  //   all failed to parse), so none is offered.
+  // - spawnEntity spawns entities of a named type at a location
+  //   or at an entity (`spawn [<n> of] <type> at %location%`) and
+  //   updates lastSpawnedEntity. dropItem drops an item-valued
+  //   expression at a location (`drop %item% at %location%`).
+  //   playSound plays a sound by registry name at a location or
+  //   entity (`play sound "<name>" at %location%`); the original
+  //   resolves the name through the sound registry (the packet
+  //   carries the registry id), has no working volume option
+  //   (the form does not parse) and parses but does not apply a
+  //   pitch option (the wire pitch stayed 1 for 0.5 and 2), so
+  //   neither is offered.
+  | { kind: "setHealth"; target: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "setMaxHealth"; target: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "setFoodLevel"; target: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "setSaturation"; target: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "setGameMode"; target: Expr; name: GameModeName; loc?: SourceLoc }
+  | { kind: "setExperience"; target: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "setLevel"; target: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "heal"; target: Expr; amount?: Expr; loc?: SourceLoc }
+  | { kind: "addToExpr"; expr: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "removeFromExpr"; expr: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "applyPotion"; target: Expr; potion: string; level?: number; durationSeconds?: number; loc?: SourceLoc }
+  | { kind: "removePotion"; target: Expr; potion: string; loc?: SourceLoc }
+  | { kind: "spawnEntity"; entityType: string; at: Expr; count?: number; loc?: SourceLoc }
+  | { kind: "dropItem"; item: Expr; at: Expr; loc?: SourceLoc }
+  | { kind: "playSound"; name: string; at: Expr; loc?: SourceLoc }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration

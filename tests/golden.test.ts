@@ -3,9 +3,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   add,
+  addTo,
   amountOf,
   and,
   argument,
+  applyPotion,
   attacker,
   blockAt,
   bool,
@@ -30,6 +32,7 @@ import {
   defineFunction,
   deleteVar,
   dividedBy,
+  dropItem,
   emit,
   endsWith,
   equals,
@@ -38,20 +41,28 @@ import {
   eventInventory,
   eventItem,
   eventPlayer,
+  experienceOf,
   firstChars,
   fmt,
+  foodLevelOf,
   formatted,
   give,
+  gameModeOf,
+  gameModeType,
   giveItem,
   greaterOrEqual,
   greaterThan,
   hasPermission,
+  heal,
+  healthOf,
   ifElse,
   isEngineOnlyScript,
   isOp,
   item,
   joinText,
   lastChars,
+  lastSpawnedEntity,
+  levelOf,
   lessOrEqual,
   lessThan,
   listAdd,
@@ -71,6 +82,7 @@ import {
   loopValue,
   loreOf,
   lowerCase,
+  maxHealthOf,
   minus,
   nameOf,
   not,
@@ -99,24 +111,36 @@ import {
   or,
   param,
   player,
+  playSound,
   plus,
   relativeBlock,
   remainder,
+  removeFrom,
+  removePotion,
   replaceAllIn,
   replaceFirstIn,
   returnValue,
   script,
+  saturationOf,
   send,
   set,
   setBlockAt,
   setDamage,
+  setExperience,
+  setFoodLevel,
+  setGameMode,
+  setHealth,
   setItemAmount,
   setItemLore,
   setItemName,
+  setLevel,
+  setMaxHealth,
+  setSaturation,
   setSlot,
   setWorldTime,
   setWorldWeather,
   slotItem,
+  spawnEntity,
   splitText,
   startsWith,
   stopTrigger,
@@ -159,6 +183,7 @@ import { textScript } from "../examples/text.js";
 import { events2Script } from "../examples/events2.js";
 import { guiScript } from "../examples/gui.js";
 import { worldScript } from "../examples/world.js";
+import { stateScript } from "../examples/state.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -206,6 +231,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("world", () => {
     expect(emit(worldScript)).toBe(fixture("world.sk"));
+  });
+  it("state", () => {
+    expect(emit(stateScript)).toBe(fixture("state.sk"));
   });
 });
 
@@ -1375,5 +1403,174 @@ describe("world operations and periodical events (phase 18)", () => {
         ),
       ),
     ).toBe(false);
+  });
+});
+
+describe("player state and effects (phase 19)", () => {
+  it("state expressions in value position", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("h"), healthOf(player())),
+            set(localVar("m"), maxHealthOf(player())),
+            set(localVar("f"), foodLevelOf(player())),
+            set(localVar("s"), saturationOf(player())),
+            set(localVar("g"), gameModeOf(player())),
+            set(localVar("x"), experienceOf(player())),
+            set(localVar("l"), levelOf(player())),
+            set(localVar("e"), lastSpawnedEntity()),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_h} to health of player\n" +
+        "    set {_m} to max health of player\n" +
+        "    set {_f} to food level of player\n" +
+        "    set {_s} to saturation of player\n" +
+        "    set {_g} to gamemode of player\n" +
+        "    set {_x} to experience of player\n" +
+        "    set {_l} to level of player\n" +
+        "    set {_e} to last spawned entity\n",
+    );
+  });
+  it("state expressions interpolate into texts", () => {
+    expect(
+      emit(script(onJoin([broadcast(fmt("hp=", healthOf(player()), " gm=", gameModeOf(player())))]))),
+    ).toBe('on join:\n    broadcast "hp=%health of player% gm=%gamemode of player%"\n');
+  });
+  it("gamemode comparisons use the bare literal", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            ifElse(equals(gameModeOf(player()), gameModeType("creative")), [broadcast(str("c"))]),
+          ]),
+        ),
+      ),
+    ).toBe('on join:\n    if gamemode of player is creative:\n        broadcast "c"\n');
+  });
+  it("state set statements and heal", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            setHealth(player(), num(6)),
+            setMaxHealth(player(), num(15)),
+            setFoodLevel(player(), num(4)),
+            setSaturation(player(), num(2.5)),
+            setGameMode(player(), "creative"),
+            setExperience(player(), num(50)),
+            setLevel(player(), num(2)),
+            heal(player()),
+            heal(player(), num(2)),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set health of player to 6\n" +
+        "    set max health of player to 15\n" +
+        "    set food level of player to 4\n" +
+        "    set saturation of player to 2.5\n" +
+        "    set gamemode of player to creative\n" +
+        "    set experience of player to 50\n" +
+        "    set level of player to 2\n" +
+        "    heal player\n" +
+        "    heal player by 2\n",
+    );
+  });
+  it("generic add / remove changers over state expressions", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            addTo(experienceOf(player()), num(41)),
+            addTo(healthOf(victim()), num(1)),
+            removeFrom(foodLevelOf(player()), num(3)),
+            removeFrom(levelOf(player()), num(1)),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    add 41 to experience of player\n" +
+        "    add 1 to health of victim\n" +
+        "    remove 3 from food level of player\n" +
+        "    remove 1 from level of player\n",
+    );
+  });
+  it("potion apply and remove forms", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            applyPotion(player(), "speed"),
+            applyPotion(player(), "regeneration", { durationSeconds: 6 }),
+            applyPotion(player(), "speed", { level: 2, durationSeconds: 10 }),
+            applyPotion(player(), "instant health"),
+            applyPotion(player(), "swiftness"),
+            removePotion(player(), "poison"),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    apply speed to player\n" +
+        "    apply regeneration to player for 6 seconds\n" +
+        "    apply speed 2 to player for 10 seconds\n" +
+        "    apply instant health to player\n" +
+        "    apply swiftness to player\n" +
+        "    remove poison from player\n",
+    );
+  });
+  it("spawn, drop and sound effects", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            spawnEntity("zombie", locationOf(player())),
+            spawnEntity("cow", locationOf(player()), 2),
+            spawnEntity("cave spider", locationOf(player())),
+            dropItem(withAmount(item("diamond"), num(1)), locationOf(player())),
+            playSound("block.note_block.pling", locationOf(player())),
+            playSound("entity.player.levelup", player()),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    spawn zombie at location of player\n" +
+        "    spawn 2 of cow at location of player\n" +
+        "    spawn cave spider at location of player\n" +
+        "    drop 1 of diamond at location of player\n" +
+        '    play sound "block.note_block.pling" at location of player\n' +
+        '    play sound "entity.player.levelup" at player\n',
+    );
+  });
+  it("api guards: gamemode, potion, spawn and sound validation", () => {
+    expect(() => gameModeType("hardcore" as never)).toThrow(RangeError);
+    expect(() => setGameMode(player(), "hardcore" as never)).toThrow(RangeError);
+    expect(() => applyPotion(player(), "swiftnes")).toThrow(RangeError);
+    expect(() => applyPotion(player(), "speed", { level: 0 })).toThrow(RangeError);
+    expect(() => applyPotion(player(), "speed", { level: 1.5 })).toThrow(RangeError);
+    expect(() => applyPotion(player(), "speed", { durationSeconds: 0 })).toThrow(RangeError);
+    expect(() => applyPotion(player(), "speed", { durationSeconds: -3 })).toThrow(RangeError);
+    expect(() => removePotion(player(), "glow")).toThrow(RangeError);
+    expect(() => spawnEntity("zombie!", locationOf(player()))).toThrow(RangeError);
+    expect(() => spawnEntity("zombie", locationOf(player()), 0)).toThrow(RangeError);
+    expect(() => spawnEntity("zombie", locationOf(player()), 1.5)).toThrow(RangeError);
+    expect(() => playSound("bad name", locationOf(player()))).toThrow(RangeError);
+    expect(() => playSound("", locationOf(player()))).toThrow(RangeError);
+    expect(() => addTo(variable("x"), num(1))).toThrow(RangeError);
+    expect(() => removeFrom(saturationOf(player()), num(1))).toThrow(RangeError);
+    // Potion names canonicalize (case and spacing).
+    expect(emit(script(onJoin([applyPotion(player(), " Fire  Resistance ")])))).toBe(
+      "on join:\n    apply fire resistance to player\n",
+    );
+  });
+  it("the state sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(stateScript)).toBe(false);
   });
 });

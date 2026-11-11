@@ -1,0 +1,92 @@
+command /ststat:
+    trigger:
+        send "hp=%health of player%/%max health of player% food=%food level of player% sat=%saturation of player% gm=%gamemode of player% xp=%experience of player% lv=%level of player%" to player
+
+command /stset:
+    trigger:
+        set health of player to 6
+        set food level of player to 4
+        set saturation of player to 2.5
+        send "set done" to player
+
+command /stheal:
+    trigger:
+        set health of player to 3
+        heal player by 2
+        send "hp=%health of player%" to player
+
+command /stgm:
+    trigger:
+        set gamemode of player to creative
+        send "gm=%gamemode of player%" to player
+
+command /stgmback:
+    trigger:
+        set gamemode of player to survival
+        send "gm=%gamemode of player%" to player
+
+command /stxp:
+    trigger:
+        set experience of player to 50
+        send "xp=%experience of player% lv=%level of player%" to player
+        add 41 to experience of player
+        send "xp=%experience of player% lv=%level of player%" to player
+        set level of player to 2
+        send "xp=%experience of player% lv=%level of player%" to player
+
+command /stxpfrac:
+    trigger:
+        set experience of player to 47
+        set level of player to 2
+        send "xp=%experience of player% lv=%level of player%" to player
+
+command /stmax:
+    trigger:
+        set max health of player to 15
+        heal player
+        send "hp=%health of player%/%max health of player%" to player
+
+command /stmaxback:
+    trigger:
+        set max health of player to 10
+        set health of player to 10
+        send "hp=%health of player%/%max health of player%" to player
+
+command /stfx:
+    trigger:
+        set health of player to 5
+        apply regeneration to player for 6 seconds
+        send "regen applied" to player
+
+command /stpoison:
+    trigger:
+        apply poison to player for 10 seconds
+        send "poison applied" to player
+
+command /stcure:
+    trigger:
+        remove poison from player
+        send "poison removed" to player
+
+command /stinstant:
+    trigger:
+        set health of player to 5
+        apply instant health to player
+        send "instant applied" to player
+
+command /stspawn:
+    trigger:
+        spawn zombie at location of player
+        spawn 2 of cow at location of player
+        set {_t} to type of last spawned entity
+        broadcast "last=%{_t}%"
+
+command /stdrop:
+    trigger:
+        drop 1 of diamond at location of player
+        send "dropped" to player
+
+command /stsound:
+    trigger:
+        play sound "block.note_block.pling" at location of player
+        send "sound played" to player

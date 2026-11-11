@@ -51,6 +51,23 @@ export interface BehaviorBot {
   attackPlayer(username: string): Promise<void>;
   /** Current health (20 is full). */
   health(): number;
+  // Phase 19 controls: player state reads and sound / entity
+  // observation — enough to exercise the state expressions and
+  // the spawn / drop / play-sound effects.
+  /** Current food level in points (20 is full; half of the script's drumstick value ×2). */
+  food(): number;
+  /** Current saturation (unscaled, as the script reads it). */
+  saturation(): number;
+  /** Current game mode as its name ("survival", "creative", ...). */
+  gameMode(): string;
+  /** Current experience level. (Total points are NOT exposed: the client's points value mirrors a stale server field under script manipulation, so tests assert totals through script readbacks instead.) */
+  xpLevel(): number;
+  /** How many visible entities with this Minecraft name (e.g. "zombie") the bot currently sees. */
+  countEntities(entityName: string): number;
+  /** Sound-effect packets the bot has received, oldest first (positions in block coordinates). */
+  soundPackets(): readonly SoundPacket[];
+  /** Poll until a sound-effect packet arrives near the point, considering only packets from index `fromIndex` of soundPackets() on (snapshot it before triggering the sound). Throws on timeout. */
+  waitForSoundNear(x: number, y: number, z: number, radius?: number, timeoutMs?: number, fromIndex?: number): Promise<SoundPacket>;
   // Phase 16 controls: entity interaction, item tossing and
   // sleeping — enough to exercise the pickup / drop / bed events.
   /** Right-click the nearest visible entity with this Minecraft name (e.g. "villager"). */
@@ -75,6 +92,25 @@ export interface BehaviorBot {
   windowSlotItem(slot: number): WindowSlotItem | null;
   /** Left-click a window slot (raw window index: top inventory first, then the player's own inventory). */
   clickWindowSlot(slot: number): Promise<void>;
+}
+
+/**
+ * A sound-effect packet the bot received (phase 19). `soundId`
+ * is the registry id when the server sent one (the original's
+ * play-sound form does); `soundName` is set for direct-name
+ * packets (e.g. the vanilla /playsound command). Client-side
+ * name mapping of registry ids is version-sensitive, so tests
+ * assert on the packet's arrival, position and volume rather
+ * than on a decoded name.
+ */
+export interface SoundPacket {
+  soundId: number | null;
+  soundName: string | null;
+  volume: number;
+  pitch: number;
+  x: number;
+  y: number;
+  z: number;
 }
 
 /** An item seen in a window slot (phase 17): its Minecraft name, stack count, and custom meta text. */
@@ -115,8 +151,19 @@ function stripColor(s: string): string {
   return s.replace(/§[0-9a-fk-orx]/gi, "");
 }
 
+/** The raw sound_effect packet shape on the wire (phase 19): the sound is a holder (registry id or a direct name) and the position is fixed-point (×8). */
+interface RawSoundPacket {
+  sound?: { soundId?: number; data?: { soundName?: string } };
+  x?: number;
+  y?: number;
+  z?: number;
+  volume?: number;
+  pitch?: number;
+}
+
 class MineflayerBehaviorBot implements BehaviorBot {
   readonly messages: string[] = [];
+  private readonly sounds: SoundPacket[] = [];
   private readonly waiters: {
     pattern: RegExp | string;
     resolve: (msg: string) => void;
@@ -126,6 +173,24 @@ class MineflayerBehaviorBot implements BehaviorBot {
   private failure: Error | null = null;
 
   constructor(private readonly bot: Bot) {
+    // Raw sound packets (phase 19): the high-level
+    // soundEffectHeard event drops packets whose registry id
+    // the client's data tables cannot name, so capture the wire
+    // form directly.
+    const client = (this.bot as unknown as {
+      _client: { on(ev: string, fn: (p: RawSoundPacket) => void): void };
+    })._client;
+    client.on("sound_effect", (p) => {
+      this.sounds.push({
+        soundId: typeof p.sound?.soundId === "number" ? p.sound.soundId : null,
+        soundName: typeof p.sound?.data?.soundName === "string" ? p.sound.data.soundName : null,
+        volume: p.volume ?? 0,
+        pitch: p.pitch ?? 0,
+        x: (p.x ?? 0) / 8,
+        y: (p.y ?? 0) / 8,
+        z: (p.z ?? 0) / 8,
+      });
+    });
     this.bot.on("messagestr", (raw) => {
       const msg = stripColor(raw);
       this.messages.push(msg);
@@ -288,6 +353,46 @@ class MineflayerBehaviorBot implements BehaviorBot {
 
   health(): number {
     return this.bot.health;
+  }
+
+  food(): number {
+    return this.bot.food;
+  }
+
+  saturation(): number {
+    return this.bot.foodSaturation;
+  }
+
+  gameMode(): string {
+    return this.bot.game.gameMode;
+  }
+
+  xpLevel(): number {
+    return this.bot.experience.level;
+  }
+
+  countEntities(entityName: string): number {
+    return Object.values(this.bot.entities).filter((e) => e.name === entityName).length;
+  }
+
+  soundPackets(): readonly SoundPacket[] {
+    return this.sounds;
+  }
+
+  async waitForSoundNear(x: number, y: number, z: number, radius = 3, timeoutMs = 10_000, fromIndex = 0): Promise<SoundPacket> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const hit = this.sounds.slice(fromIndex).find(
+        (s) => Math.abs(s.x - x) <= radius && Math.abs(s.y - y) <= radius && Math.abs(s.z - z) <= radius,
+      );
+      if (hit !== undefined) return hit;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for a sound near ${x}, ${y}, ${z}; heard ${this.sounds.length} packets`,
+        );
+      }
+      await sleep(150);
+    }
   }
 
   async activateEntityByName(entityName: string, timeoutMs = 10_000): Promise<void> {

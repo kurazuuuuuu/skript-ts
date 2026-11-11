@@ -780,6 +780,124 @@ forgotten): facing-relative offsets from *entities*
 entity's facing needs a live-facing probe design),
 and world time arithmetic.
 
+### Player state and effects
+
+Player / entity state reads and writes, potion
+effects, and the spawn / drop / sound effects are
+core language: the same script runs under Skript
+(as emitted `.sk`) and under the engine jar. Every
+semantic below was probed against the real Skript
+2.17.1 with NBT ground truth read back through the
+server console (see the development log):
+
+- **Units — the load-bearing fact**: health and
+  max health are in **hearts** (half the Bukkit hit
+  points): a full-health player reads `10`, and
+  fractions are exact (`6.3` hearts is 12.6 HP).
+  Food level is in **drumsticks** (half the food
+  points); saturation is **not scaled**. The engine
+  applies the same ×2 / ÷2 conversions, so both
+  runtimes agree numerically.
+- **State expressions**: `healthOf(t)`,
+  `maxHealthOf(t)` (any living entity),
+  `foodLevelOf(p)`, `saturationOf(p)` (players),
+  `gameModeOf(p)` (the mode's name as text),
+  `experienceOf(p)`, `levelOf(p)`.
+- **State writes**: `setHealth`, `setMaxHealth`,
+  `setFoodLevel`, `setSaturation`, `setExperience`,
+  `setLevel` — each in the expression's own units.
+  Probed behavior: health writes clamp to the
+  maximum and `0` kills; a food write rounds to
+  whole food points (`6.3` drumsticks lands on 13
+  points); saturation is not clamped to the food
+  level; setting max health rewrites the attribute
+  base and leaves current health alone; setting
+  the level preserves the progress fraction
+  (total 47 → set level 2 → total reads 21);
+  setting the experience sets the total exactly
+  and re-derives level + progress. `heal(t)` refills
+  to full, `heal(t, n)` heals `n` hearts. The
+  generic changers `addTo(expr, n)` /
+  `removeFrom(expr, n)` cover the health, food,
+  experience and level expressions (`add 41 to
+  experience of player`).
+- **Game mode**: like weather in phase 18, the
+  value does not interconvert with plain text —
+  a quoted-text comparison is a parse error in the
+  original and a set from a text variable silently
+  does nothing (both probed). So `gameModeOf`
+  returns the name for display, `setGameMode(p,
+  "creative")` takes a validated literal, and
+  comparisons use the `gameModeType("creative")`
+  literal, emitted bare (`is creative`).
+- **Experience**: `experienceOf` is the **total**
+  points, computed from level + progress — not the
+  raw total field, which goes stale under script
+  writes (probed). One observability note: when a
+  single trigger writes experience several times,
+  the server syncs only the final state to the
+  client, so behavior tests assert intermediate
+  totals through script readbacks.
+- **Potions**: `applyPotion(t, type[, {level,
+  durationSeconds}])` and `removePotion(t, type)`.
+  The type is a validated display name (`"speed"`,
+  `"fire resistance"`, `"instant health"`, ... —
+  all 31 vanilla names probed, plus `swiftness` as
+  an alias of speed). Defaults in the original,
+  probed from the entity's NBT: **level 1** and a
+  **30-second** duration (600 ticks) when no
+  duration is given. The original has **no
+  remove-all form** (three candidate phrasings all
+  failed to parse), so none is offered; remove one
+  type per statement. Instant health / damage are
+  ordinary types here, with one platform quirk:
+  on this Paper version an applied instant effect
+  also lingers as a stored, decaying effect entry
+  (observed in NBT) — the engine makes the same
+  Bukkit call, so the behavior matches.
+- **Spawn**: `spawnEntity(type, at[, count])`
+  spawns at a location or at an entity;
+  `lastSpawnedEntity()` reads the most recent
+  spawn (`last spawned entity`), and `typeOf` it
+  prints its type name.
+- **Drop**: `dropItem(itemExpr, at)` drops an
+  item-valued expression (phase-17 stacks compose,
+  meta included) into the world at a location or
+  entity.
+- **Sound**: `playSound(name, at)` plays a sound
+  by registry name (`"block.note_block.pling"`)
+  at a location or entity. The original resolves
+  the name through the sound registry (the packet
+  carries the registry id — probed at the wire
+  level) and the engine does the same. There are
+  deliberately **no volume / pitch options**: the
+  volume form does not parse in the original, and
+  its pitch form parses but does not change the
+  wire pitch (0.5 and 2 both arrived as 1).
+
+`examples/state.ts` exercises all of it — `/ststat`
+state read-back, `/stset`, `/stheal`, `/stgm`
+game-mode round-trip, `/stxp` + `/stxpfrac`
+experience flows, `/stmax`, the potion trio
+`/stfx` / `/stpoison` / `/stcure`, `/stinstant`,
+`/stspawn`, `/stdrop` and `/stsound` — and
+`examples/behavior/state.behavior.ts` drives a bot
+through the whole flow under both runtimes,
+asserting on the bot's own health, food, game
+mode, experience level, visible entities,
+inventory and received sound packets.
+
+Out of scope for this slice (recorded, not
+forgotten): applying several potion types in one
+statement (the original parses `and` lists; the
+subset takes one type per statement), a
+remove-all potion form (does not exist in the
+original), the generic add / remove changers over
+max health and saturation (unprobed for those two
+expressions), and food / game-mode state on
+non-player entities (player-only in the
+original's type system).
+
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal
 `%` is doubled (`%%`). This applies to `str()` values, the literal parts of
