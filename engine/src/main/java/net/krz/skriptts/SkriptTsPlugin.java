@@ -35,10 +35,13 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -68,6 +71,10 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     // Repeating scheduler tasks of the loaded program's periodical
     // triggers (phase 18); replaced wholesale on every (re)load.
     private final List<BukkitTask> periodicalTasks = new ArrayList<>();
+    // Watch-trigger polling task (phase 25): watches the data folder
+    // for a `reload.request` marker file written by the CLI's watch
+    // loop after it deploys new IR, and answers with `reload.status`.
+    private BukkitTask reloadPollTask;
 
     @Override
     public void onEnable() {
@@ -181,11 +188,20 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         engine.setFiles(files);
         loadScripts();
         getServer().getPluginManager().registerEvents(this, this);
+        // Watch trigger (phase 25): poll for the CLI watch loop's
+        // reload.request marker every 10 ticks (0.5 s). The marker is
+        // written only after a deploy completes, so a poll can never
+        // observe a half-copied script set.
+        reloadPollTask = getServer().getScheduler().runTaskTimer(this, this::pollReloadRequest, 10L, 10L);
         getLogger().info("skript-ts engine enabled");
     }
 
     @Override
     public void onDisable() {
+        if (reloadPollTask != null) {
+            reloadPollTask.cancel();
+            reloadPollTask = null;
+        }
         cancelPeriodicals();
         unregisterScriptCommands();
         if (placeholders != null) placeholders.shutdown();
@@ -256,26 +272,41 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     // Script loading
     // ------------------------------------------------------------------
 
-    synchronized void loadScripts() {
+    /**
+     * Outcome of one script-load pass. {@code failedFiles} holds the
+     * failed scripts' identifiers — paths relative to the scripts
+     * folder with '/' separators (the plain file name for top-level
+     * files, matching the historical log lines).
+     */
+    record LoadResult(int scripts, int structures, List<String> failedFiles) {
+    }
+
+    synchronized LoadResult loadScripts() {
         // A reload replaces the program; timers created by the old
         // program would fire into handlers that may no longer exist,
         // so they are dropped (documented phase 7 semantics).
         if (timers != null) timers.clearAll();
         Path dir = getDataFolder().toPath().resolve("scripts");
         List<Map<String, Object>> tops = new ArrayList<>();
+        List<String> failedFiles = new ArrayList<>();
         int scripts = 0;
         int structures = 0;
         try {
             Files.createDirectories(dir);
             List<Path> files;
-            try (Stream<Path> stream = Files.list(dir)) {
+            // Recursive discovery (phase 25): the build/deploy side
+            // lays scripts out by their source-relative path, so the
+            // loader walks subfolders too. Sorted by the relative
+            // identifier for a deterministic load order.
+            try (Stream<Path> stream = Files.walk(dir)) {
                 files = stream
+                        .filter(Files::isRegularFile)
                         .filter(p -> p.getFileName().toString().endsWith(".ir.json"))
-                        .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                        .sorted(Comparator.comparing(p -> relativeScriptId(dir, p)))
                         .toList();
             }
             for (Path file : files) {
-                String name = file.getFileName().toString();
+                String name = relativeScriptId(dir, file);
                 try {
                     Object parsed = Json.parse(Files.readString(file, StandardCharsets.UTF_8));
                     if (!(parsed instanceof Map<?, ?> root) || !"script".equals(root.get("kind"))) {
@@ -296,6 +327,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
                     scripts++;
                 } catch (Exception e) {
                     getLogger().severe("Failed to load " + name + ": " + e.getMessage());
+                    failedFiles.add(name);
                 }
             }
         } catch (IOException e) {
@@ -308,6 +340,82 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         if (placeholders != null) placeholders.sync(engine.placeholderPrefixes());
         reregisterScriptCommands(tops);
         getLogger().info("Loaded " + scripts + " script(s), " + structures + " top-level structure(s)");
+        return new LoadResult(scripts, structures, failedFiles);
+    }
+
+    /** A script file's identifier: its path relative to the scripts folder, '/'-separated on every OS. */
+    private static String relativeScriptId(Path scriptsDir, Path file) {
+        return scriptsDir.relativize(file).toString().replace('\\', '/');
+    }
+
+    // ------------------------------------------------------------------
+    // Watch trigger (phase 25): marker-file reload requests.
+    //
+    // The CLI watch loop deploys new IR into the scripts folder and
+    // only then writes `reload.request` ({"buildId": "..."}) into
+    // the data folder root. The poll task picks the marker up, runs
+    // the same loadScripts() as `/skript-ts reload`, and answers
+    // with `reload.status`, written atomically (temp file + rename)
+    // so the CLI never reads a half-written status. Because the
+    // marker lands after the deploy completes, the load can never
+    // observe a partially copied script set — the structural
+    // advantage over watching the scripts folder itself.
+    // ------------------------------------------------------------------
+
+    private Path reloadRequestPath() {
+        return getDataFolder().toPath().resolve("reload.request");
+    }
+
+    private Path reloadStatusPath() {
+        return getDataFolder().toPath().resolve("reload.status");
+    }
+
+    /** One poll cycle; runs on the main thread via the scheduler and never throws. */
+    private void pollReloadRequest() {
+        Path request = reloadRequestPath();
+        if (!Files.exists(request)) return;
+        try {
+            String buildId = "";
+            try {
+                Object parsed = Json.parse(Files.readString(request, StandardCharsets.UTF_8));
+                if (parsed instanceof Map<?, ?> map && map.get("buildId") instanceof String id) {
+                    buildId = id;
+                }
+            } catch (Exception e) {
+                getLogger().warning("skript-ts: ignoring malformed reload.request: " + e.getMessage());
+            }
+            // Delete BEFORE loading: a request written while this
+            // load runs must survive and trigger the next cycle.
+            Files.deleteIfExists(request);
+            LoadResult result = loadScripts();
+            writeReloadStatus(buildId, result);
+        } catch (Exception e) {
+            getLogger().warning("skript-ts: reload request handling failed: " + e.getMessage());
+        }
+    }
+
+    private void writeReloadStatus(String buildId, LoadResult result) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("buildId", buildId);
+        status.put("ok", result.failedFiles().isEmpty());
+        status.put("scripts", result.scripts());
+        status.put("structures", result.structures());
+        status.put("failed", result.failedFiles());
+        status.put("completedAt", System.currentTimeMillis());
+        Path statusPath = reloadStatusPath();
+        Path tmp = statusPath.resolveSibling("reload.status.tmp");
+        try {
+            Files.writeString(tmp, Json.write(status), StandardCharsets.UTF_8);
+            try {
+                Files.move(tmp, statusPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                // Filesystem cannot rename atomically: a plain
+                // replace is the documented fallback.
+                Files.move(tmp, statusPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            getLogger().warning("skript-ts: failed to write reload.status: " + e.getMessage());
+        }
     }
 
     /**
