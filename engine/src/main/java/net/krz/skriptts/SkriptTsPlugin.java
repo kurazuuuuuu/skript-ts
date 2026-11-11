@@ -14,13 +14,15 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityDropItemEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
-import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerBedLeaveEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -401,10 +403,27 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     }
 
     @EventHandler
-    public void onDeath(PlayerDeathEvent event) {
-        Player player = event.getEntity();
-        Engine.Ctx ctx = baseCtx(player);
-        ctx.victim = player;
+    public void onDeath(EntityDeathEvent event) {
+        // Generalized in phase 22: Skript's death event covers
+        // EVERY living entity (the v0 listener took only player
+        // deaths). PlayerDeathEvent extends EntityDeathEvent,
+        // so this one handler receives both. The victim is the
+        // dead entity; the attacker is the damager of its last
+        // damage cause when that cause was an entity attack —
+        // any entity, matching the original (verified live: a
+        // zombie killed by an iron golem read attacker "iron
+        // golem"; a command kill read no attacker). The event
+        // is not cancellable in Bukkit, so no cancellable is
+        // packed (a cancel in a handler is the established
+        // no-op, as in the original). For a player victim the
+        // player values are set as well, so handlers written
+        // against the v0 form keep working.
+        org.bukkit.entity.LivingEntity entity = event.getEntity();
+        Engine.Ctx ctx = entity instanceof Player player ? baseCtx(player) : new Engine.Ctx();
+        ctx.victim = entity;
+        if (entity.getLastDamageCause() instanceof EntityDamageByEntityEvent byEntity) {
+            ctx.attacker = byEntity.getDamager();
+        }
         engine.fireEvent("death", ctx, false);
     }
 
@@ -482,15 +501,21 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPickup(EntityPickupItemEvent event) {
-        // Only player pickups are dispatched: Skript's bare
-        // "on pick up" does not fire for mobs (verified live — a
-        // zombie taking wheat fired only the explicit "entity
-        // pick up" variant, which is outside this subset).
-        if (!(event.getEntity() instanceof Player player)) return;
-        Engine.Ctx ctx = baseCtx(player);
+        // Generalized in phase 22: the explicit entity form
+        // fires for EVERY picker — mobs and players alike
+        // (verified live against the original: a player picking
+        // up wheat fired both forms; a zombie fired only the
+        // entity form). The bare form stays player-only. The
+        // picker travels as the event-entity value; the player
+        // values are set when the picker is a player (the
+        // original reads player as no value for a mob picker).
+        org.bukkit.entity.LivingEntity entity = event.getEntity();
+        Engine.Ctx ctx = entity instanceof Player player ? baseCtx(player) : new Engine.Ctx();
+        ctx.eventEntity = entity;
         ctx.eventItem = event.getItem().getItemStack();
         ctx.cancellable = event;
-        engine.fireEvent("pickup", ctx, false);
+        if (entity instanceof Player) engine.fireEvent("pickup", ctx, false);
+        engine.fireEvent("entityPickup", ctx, false);
     }
 
     @EventHandler
@@ -500,6 +525,72 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         ctx.eventItem = event.getItemDrop().getItemStack();
         ctx.cancellable = event;
         engine.fireEvent("drop", ctx, false);
+    }
+
+    @EventHandler
+    public void onEntityDrop(EntityDropItemEvent event) {
+        // The entity drop form (phase 22): a NON-player entity
+        // drops an item — a chicken laying an egg is the
+        // canonical case. Player drops never reach this event
+        // (they are PlayerDropItemEvent, the bare form above),
+        // matching the original, where the entity form stays
+        // silent for a player's toss (verified live). The
+        // dropper is the event-entity; the dropped Item entity
+        // itself travels as the dropped-item value, and its
+        // stack as the event-item.
+        Engine.Ctx ctx = new Engine.Ctx();
+        ctx.eventEntity = event.getEntity();
+        ctx.droppedItem = event.getItemDrop();
+        ctx.eventItem = event.getItemDrop().getItemStack();
+        ctx.cancellable = event;
+        engine.fireEvent("entityDrop", ctx, false);
+    }
+
+    // ------------------------------------------------------------------
+    // Fishing (phase 22): PlayerFishEvent states dispatch to the
+    // state sub-events, and every state also fires the generic
+    // state-change event with the state name the original prints
+    // (all mapping pairs verified live against the real Skript).
+    // The caught value exists only for the two catch states:
+    // an Item entity for a fish (the event-entity and the
+    // dropped-item values both), the hooked entity for an
+    // entity catch. Fishing events have no event-item.
+    // ------------------------------------------------------------------
+
+    @EventHandler
+    public void onFish(PlayerFishEvent event) {
+        String kind = switch (event.getState()) {
+            case FISHING -> "fishCast";
+            case LURED -> "fishApproach";
+            case BITE -> "fishBite";
+            case CAUGHT_FISH -> "fishCaught";
+            case CAUGHT_ENTITY -> "entityHooked";
+            case IN_GROUND -> "hookInGround";
+            case FAILED_ATTEMPT -> "fishEscape";
+            case REEL_IN -> "fishReelIn";
+        };
+        String stateName = switch (event.getState()) {
+            case FISHING -> "fishing line cast";
+            case LURED -> "lured";
+            case BITE -> "bite";
+            case CAUGHT_FISH -> "fish caught";
+            case CAUGHT_ENTITY -> "entity caught";
+            case IN_GROUND -> "bobber in ground";
+            case FAILED_ATTEMPT -> "fish escape";
+            case REEL_IN -> "reel in";
+        };
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.fishingState = stateName;
+        ctx.fishingHook = event.getHook();
+        ctx.cancellable = event;
+        if (event.getCaught() != null) {
+            ctx.eventEntity = event.getCaught();
+            if (event.getCaught() instanceof org.bukkit.entity.Item item) {
+                ctx.droppedItem = item;
+            }
+        }
+        engine.fireEvent(kind, ctx, false);
+        engine.fireEvent("fishingStateChange", ctx, false);
     }
 
     @EventHandler

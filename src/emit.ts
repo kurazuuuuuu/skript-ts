@@ -56,6 +56,24 @@ function emitValue(e: Expr): string {
             return "event-item";
         case "clickedEntity":
             return "clicked entity";
+        case "eventEntity":
+            return "event-entity";
+        case "hookedEntity":
+            return "hooked entity";
+        case "fishingHook":
+            return "fishing hook";
+        case "eventFishingState":
+            return "event-fishing state";
+        case "fishingState":
+            // A state literal is written BARE, like a weather
+            // or game mode literal (phase 22).
+            return e.name;
+        case "droppedItemEntity":
+            return "event-dropped item";
+        case "itemOfEntity":
+            return e.target.kind === "arith"
+                ? `item of (${emitValue(e.target)})`
+                : `item of ${emitValue(e.target)}`;
         case "attacker":
             return "attacker";
         case "damageAmount":
@@ -281,6 +299,12 @@ function emitString(e: Expr): string {
         case "eventBlock":
         case "eventItem":
         case "clickedEntity":
+        case "eventEntity":
+        case "hookedEntity":
+        case "fishingHook":
+        case "eventFishingState":
+        case "droppedItemEntity":
+        case "itemOfEntity":
         case "attacker":
         case "damageAmount":
         case "damageCause":
@@ -323,6 +347,7 @@ function emitString(e: Expr): string {
         case "clockTime":
         case "worldWeather":
         case "weatherType":
+        case "fishingState":
         case "healthOf":
         case "maxHealthOf":
         case "foodLevelOf":
@@ -791,7 +816,7 @@ function eventHeader(t: Extract<TopLevel, { kind: "event" }>): string {
         case "chat":
             return "on chat:";
         case "death":
-            return "on death:";
+            return `on death${f?.victimTypes ? ` of ${typeList(f.victimTypes)}` : ""}:`;
         case "blockBreak":
             return `on block break${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
         case "blockPlace":
@@ -816,6 +841,28 @@ function eventHeader(t: Extract<TopLevel, { kind: "event" }>): string {
             return `on pick up${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
         case "drop":
             return `on drop${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+        case "entityPickup":
+            return `on entity pick up${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+        case "entityDrop":
+            return `on entity drop${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+        case "fishCast":
+            return "on fishing line cast:";
+        case "fishApproach":
+            return "on fish approaching:";
+        case "fishBite":
+            return "on fish bite:";
+        case "fishCaught":
+            return "on fish caught:";
+        case "entityHooked":
+            return "on entity hooked:";
+        case "hookInGround":
+            return "on bobber in ground:";
+        case "fishEscape":
+            return "on fish escape:";
+        case "fishReelIn":
+            return "on fishing rod reel in:";
+        case "fishingStateChange":
+            return "on fishing state change:";
         case "respawn":
             return "on respawn:";
         case "bedEnter":

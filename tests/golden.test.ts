@@ -195,6 +195,7 @@ import { functionsScript } from "../examples/functions.js";
 import { gameplayScript } from "../examples/gameplay.js";
 import { textScript } from "../examples/text.js";
 import { events2Script } from "../examples/events2.js";
+import { events3Script } from "../examples/events3.js";
 import { guiScript } from "../examples/gui.js";
 import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
@@ -241,6 +242,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("events2", () => {
     expect(emit(events2Script)).toBe(fixture("events2.sk"));
+  });
+  it("events3", () => {
+    expect(emit(events3Script)).toBe(fixture("events3.sk"));
   });
   it("gui", () => {
     expect(emit(guiScript)).toBe(fixture("gui.sk"));

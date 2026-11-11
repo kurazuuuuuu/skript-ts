@@ -164,10 +164,24 @@ export default defineBehavior(async (t) => {
     await t.sleep(500);
 
     // -- Drop: a diamond lands at the bot's feet and is picked
-    // up. --
+    // up. The drop scatters: Skript's drop effect is Bukkit's
+    // dropItem (the engine uses dropItemNaturally), which
+    // gives the item a random velocity — probed in phase 22
+    // after repeated flakes here, it can come to rest ~3
+    // blocks from the drop point, out of a stationary bot's
+    // pickup reach. So the bot sweeps a small grid over the
+    // platform to vacuum it up, like a player walking over to
+    // their drop. --
     mark = bot.messages.length;
     await chat("/stdrop");
     await waitMsg(mark, /dropped/);
+    for (const dx of [-2, 0, 2]) {
+      for (const dz of [-2, 0, 2]) {
+        await t.console(`tp StateBot ${400.5 + dx} -60 ${400.5 + dz}`);
+        await t.sleep(300);
+      }
+    }
+    await t.console("tp StateBot 400.5 -60 400.5");
     await bot.expectInventoryItem("diamond");
 
     // -- Sound: a registry-sound packet arrives at the bot's

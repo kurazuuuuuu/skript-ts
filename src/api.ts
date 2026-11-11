@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName, GameModeName, TitleTiming, BossBarColorName } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName, GameModeName, TitleTiming, BossBarColorName, FishingStateName } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -541,9 +541,31 @@ export function onChat(body: readonly Stmt[]): TopLevel {
   return withLoc({ kind: "event", event: "chat", body });
 }
 
-/** Construct an on-death event. */
-export function onDeath(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "death", body });
+/** Filter options for onDeath: the victim types of the "of" slot — the death header's only slot (phase 22). */
+export interface DeathEventFilter {
+  victim?: TypeNameFilter;
+}
+
+/**
+ * Construct an on-death event: a living entity — ANY living
+ * entity, not just a player — dies (phase 22 generalized the
+ * v0 player-only form to the original's semantics, probed
+ * against the real Skript 2.17.1). Inside, victim() is the
+ * entity that died and attacker() is the entity whose damage
+ * killed it (the damager of its last damage cause — any
+ * entity, not just a killer player; no value for environmental
+ * or command deaths). The original has NO player / event-entity
+ * value in death events (parse errors there), and its header
+ * takes no attacker filter — to react to a kind of killer,
+ * filter the victim here and compare typeOf(attacker()) in the
+ * body. The optional filter restricts the handler to the named
+ * victim types ("on death of zombie").
+ */
+export function onDeath(body: readonly Stmt[], filter?: DeathEventFilter): TopLevel {
+  requireFilterKeys(filter, ["victim"], "onDeath");
+  const f: EventFilter = {};
+  if (filter?.victim !== undefined) f.victimTypes = requireTypeNames(filter.victim, "victim");
+  return withLoc(eventWithFilter("death", body, f));
 }
 
 // ---------------------------------------------------------------------------
@@ -638,16 +660,13 @@ export function onDamage(body: readonly Stmt[], filter?: DamageEventFilter): Top
 // The new events are the player forms, like Skript's bare
 // headers: the bare "on pick up" / "on drop" do NOT fire for
 // mobs (verified live — a zombie picking up wheat fired only
-// Skript's explicit "entity pick up" variant, which is not in
-// this subset). Inside pickup/drop, eventItem() is the item
-// stack involved and player() the picker/dropper. Respawn is
-// NOT cancellable (Skript rejects "cancel event" inside it at
-// parse time); bed enter is, bed leave is not. Inside the bed
-// events eventBlock() is the bed. Fishing is deliberately not
-// here: Skript 2.17 splits it into state sub-events (cast /
-// caught / hooked / bite / escape / ...) — a design surface of
-// its own — and its bite timing is random, which makes for
-// flaky behavior tests.
+// Skript's explicit "entity pick up" variant). Phase 22 added
+// those entity forms (onEntityPickup / onEntityDrop, below)
+// and the fishing sub-events. Inside pickup/drop, eventItem()
+// is the item stack involved and player() the picker/dropper.
+// Respawn is NOT cancellable (Skript rejects "cancel event"
+// inside it at parse time); bed enter is, bed leave is not.
+// Inside the bed events eventBlock() is the bed.
 // ---------------------------------------------------------------------------
 
 /** A Skript type name ("stone", "zombie") or a list of names, for one event filter slot. */
@@ -703,7 +722,7 @@ function requireFilterKeys(
 }
 
 function eventWithFilter(
-  event: "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage" | "pickup" | "drop",
+  event: "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage" | "death" | "pickup" | "drop" | "entityPickup" | "entityDrop",
   body: readonly Stmt[],
   filter: EventFilter,
 ): TopLevel {
@@ -745,6 +764,158 @@ export function onDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLeve
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
   return withLoc(eventWithFilter("drop", body, f));
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 22): event generalization — the entity
+// pickup / drop forms and the fishing sub-events.
+//
+// Entity pickup / drop (probed live against the real Skript
+// 2.17.1): the explicit entity forms fire for EVERY entity —
+// mobs AND players (a player picking up wheat fires both the
+// bare and the entity form). Inside, eventEntity() is the
+// picker / dropper, eventItem() the stack involved, player()
+// is the picker when it is a player and has no value for a
+// mob, and droppedItemEntity() (drop only) is the dropped
+// Item entity itself, whose stack itemOfEntity() reads. The
+// entity drop form does NOT fire for player drops (a player's
+// toss is the bare form's event; Bukkit keeps the two in
+// separate events, and Skript mirrors that) — a chicken
+// laying an egg is the canonical entity drop. A NoAI mob
+// never lays / picks up in the original's world either (its
+// EggLayTime freezes), which the behavior tests respect.
+//
+// Fishing: the original (2.10+) has no generic fishing event;
+// PlayerFishEvent states map one-to-one onto sub-event
+// headers, all probed live (state names are what
+// eventFishingState() prints):
+//   cast (FISHING)         -> onFishCast          "fishing line cast"
+//   approach (LURED)       -> onFishApproach      "lured"
+//   bite (BITE)            -> onFishBite          "bite"
+//   caught fish (CAUGHT_FISH)   -> onFishCaught   "fish caught"
+//   caught entity (CAUGHT_ENTITY) -> onEntityHooked "entity caught"
+//   in ground (IN_GROUND)  -> onHookInGround      "bobber in ground"
+//   escape (FAILED_ATTEMPT) -> onFishEscape       "fish escape"
+//   reel in (REEL_IN)      -> onFishReelIn        "reel in"
+// and onFishingStateChange fires for every state. The escape
+// state fires when the bite window lapses unreeled (~1s after
+// the bite — probed), which is what makes it testable: wait
+// for the bite broadcast, then simply do not reel. Inside
+// fishing events player() is the fisher, fishingHook() the
+// hook entity (type name "fish hook"); in fish-caught events
+// eventEntity() / droppedItemEntity() are the caught Item
+// entity and itemOfEntity(eventEntity()) is the caught stack
+// — fishing events have NO event-item (a parse error in the
+// original). In entity-hooked events eventEntity() and
+// hookedEntity() are both the caught entity. The fishing
+// wait-time / bite-time / approach-angle expressions are NOT
+// offered: they read and write timespans, and this subset has
+// no timespan value type (the same prerequisite recorded for
+// title timings in phase 21).
+// ---------------------------------------------------------------------------
+
+/** Construct an entity-pickup event: ANY entity (a mob, or a player too) picks up an item. The optional filter restricts it to the named item types ("on entity pick up of wheat"). */
+export function onEntityPickup(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+  requireFilterKeys(filter, ["item"], "onEntityPickup");
+  const f: EventFilter = {};
+  if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
+  return withLoc(eventWithFilter("entityPickup", body, f));
+}
+
+/** Construct an entity-drop event: a NON-player entity drops an item (a chicken laying an egg). Player drops are the bare onDrop form. The optional filter restricts it to the named item types ("on entity drop of egg"). */
+export function onEntityDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+  requireFilterKeys(filter, ["item"], "onEntityDrop");
+  const f: EventFilter = {};
+  if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
+  return withLoc(eventWithFilter("entityDrop", body, f));
+}
+
+/** Construct a fish-cast event: a player casts a fishing line (state "fishing line cast"). */
+export function onFishCast(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "fishCast", body });
+}
+
+/** Construct a fish-approach event: a fish is approaching the bobber (state "lured"). */
+export function onFishApproach(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "fishApproach", body });
+}
+
+/** Construct a fish-bite event: a fish bites the hook (state "bite"). Reel in promptly or the fish escapes. */
+export function onFishBite(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "fishBite", body });
+}
+
+/** Construct a fish-caught event: the player reels in a fish (state "fish caught"). The caught stack is itemOfEntity(eventEntity()). */
+export function onFishCaught(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "fishCaught", body });
+}
+
+/** Construct an entity-hooked event: the hook catches an entity (state "entity caught"). hookedEntity() / eventEntity() are the caught entity. */
+export function onEntityHooked(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "entityHooked", body });
+}
+
+/** Construct a hook-in-ground event: the bobber hits the ground (state "bobber in ground"). */
+export function onHookInGround(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "hookInGround", body });
+}
+
+/** Construct a fish-escape event: the bite window lapsed without a reel-in and the fish got away (state "fish escape"). */
+export function onFishEscape(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "fishEscape", body });
+}
+
+/** Construct a fish-reel-in event: the player reels the line in without a catch (state "reel in"). */
+export function onFishReelIn(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "fishReelIn", body });
+}
+
+/** Construct a fishing-state-change event: fires for EVERY fishing state; read the state with eventFishingState(). */
+export function onFishingStateChange(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "fishingStateChange", body });
+}
+
+/** Construct an event-entity expression: the entity an entity pickup / drop is about; in fishing events, the caught entity (or the caught Item entity for a fish). */
+export function eventEntity(): Expr {
+  return { kind: "eventEntity" };
+}
+
+/** Construct a hooked-entity expression: the entity a fishing hook caught (entity-hooked events). */
+export function hookedEntity(): Expr {
+  return { kind: "hookedEntity" };
+}
+
+/** Construct a fishing-hook expression: the hook (bobber) entity of a fishing event; its type name is "fish hook". */
+export function fishingHook(): Expr {
+  return { kind: "fishingHook" };
+}
+
+/** Construct an event-fishing-state expression: the state of a fishing event as its name text ("bite", "fish caught", ...). */
+export function eventFishingState(): Expr {
+  return { kind: "eventFishingState" };
+}
+
+const FISHING_STATE_NAMES: readonly FishingStateName[] = [
+  "fishing line cast", "lured", "bite", "fish caught",
+  "entity caught", "bobber in ground", "fish escape", "reel in",
+];
+
+/** Construct a fishing-state literal: the value eventFishingState() compares against, written bare in the .sk text like a weather or game mode literal. */
+export function fishingState(name: FishingStateName): Expr {
+  if (!FISHING_STATE_NAMES.includes(name)) {
+    throw new RangeError(`unknown fishing state "${name}"`);
+  }
+  return { kind: "fishingState", name };
+}
+
+/** Construct an event-dropped-item expression: the dropped Item entity of an entity drop or a fish catch. */
+export function droppedItemEntity(): Expr {
+  return { kind: "droppedItemEntity" };
+}
+
+/** Construct an item-of expression: the item stack an Item entity carries (the caught fish, the dropped item); no value for other entities. */
+export function itemOfEntity(target: Expr): Expr {
+  return { kind: "itemOfEntity", target };
 }
 
 /** Construct an on-respawn event: a player respawns after death. Not cancellable. */

@@ -117,6 +117,20 @@ export interface BehaviorBot {
   waitForActionBarText(text: string, timeoutMs?: number, fromIndex?: number): Promise<void>;
   /** Poll until a boss_bar packet with this action arrives, considering only packets from index `fromIndex` of bossBarPackets() on; resolves with the packet. Throws on timeout. */
   waitForBossBarAction(action: number, timeoutMs?: number, fromIndex?: number): Promise<BossBarPacket>;
+  // Phase 22 controls: fishing and generic entity combat —
+  // enough to exercise the fishing sub-events (cast / bite /
+  // catch / escape / reel by hand) and a mob kill for the
+  // generalized death event.
+  /** Look at the given world point (the fishing casts aim this way). */
+  lookAtPoint(x: number, y: number, z: number): Promise<void>;
+  /** Start using the held item (casts a fishing rod). */
+  activateItem(): void;
+  /** Stop using the held item. */
+  deactivateItem(): void;
+  /** Cast and fish until a catch is reeled in (mineflayer's full cast → bite → reel cycle). Throws on timeout; on timeout the line is reeled in to reset. */
+  fishOnce(timeoutMs?: number): Promise<void>;
+  /** Attack the nearest visible entity with this Minecraft name (e.g. "zombie") once. */
+  attackEntityByName(entityName: string, timeoutMs?: number): Promise<void>;
 }
 
 /**
@@ -638,6 +652,69 @@ class MineflayerBehaviorBot implements BehaviorBot {
       if (entity !== undefined) {
         await this.bot.lookAt(entity.position.offset(0, 1, 0));
         this.bot.activateEntity(entity);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`timed out after ${timeoutMs}ms waiting for a visible "${entityName}" entity`);
+      }
+      await sleep(250);
+    }
+  }
+
+  // Phase 22 controls (see the interface for the rationale).
+
+  async lookAtPoint(x: number, y: number, z: number): Promise<void> {
+    const point = this.bot.entity.position.clone();
+    point.x = x;
+    point.y = y;
+    point.z = z;
+    await this.bot.lookAt(point);
+  }
+
+  activateItem(): void {
+    this.bot.activateItem();
+  }
+
+  deactivateItem(): void {
+    this.bot.deactivateItem();
+  }
+
+  async fishOnce(timeoutMs = 90_000): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.bot.fish(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`fishOnce timed out after ${timeoutMs}ms`)), timeoutMs);
+        }),
+      ]);
+    } catch (e) {
+      // Reel the line back in so the next cast starts clean.
+      try {
+        this.bot.activateItem();
+        await sleep(400);
+        this.bot.deactivateItem();
+      } catch {
+        // the rod may already be in; nothing to reset
+      }
+      throw e;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
+  async attackEntityByName(entityName: string, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const entities = Object.values(this.bot.entities).filter((e) => e.name === entityName);
+      entities.sort(
+        (a, b) =>
+          a.position.distanceTo(this.bot.entity.position) - b.position.distanceTo(this.bot.entity.position),
+      );
+      const entity = entities[0];
+      if (entity !== undefined) {
+        await this.bot.lookAt(entity.position.offset(0, 1, 0));
+        this.bot.attack(entity);
         return;
       }
       if (Date.now() >= deadline) {

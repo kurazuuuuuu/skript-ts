@@ -1,0 +1,40 @@
+on death of zombie or skeleton:
+    broadcast "mob death %type of victim% by %type of attacker%"
+
+on death of player:
+    broadcast "player died (attacker: %type of attacker%)"
+
+on entity pick up of wheat:
+    broadcast "entity picked %type of event-item% by %type of event-entity%"
+
+on entity drop:
+    broadcast "entity dropped %type of item of event-dropped item% by %type of event-entity%"
+
+on fishing line cast:
+    broadcast "fish cast (hook: %type of fishing hook%)"
+
+on fish approaching:
+    broadcast "fish approaching"
+
+on fish bite:
+    broadcast "fish bite"
+
+on fish caught:
+    broadcast "fish caught: %type of item of event-entity%"
+
+on entity hooked:
+    broadcast "hooked %type of hooked entity%"
+
+on bobber in ground:
+    broadcast "hook in ground"
+
+on fish escape:
+    broadcast "fish escaped"
+
+on fishing rod reel in:
+    broadcast "reel in"
+
+on fishing state change:
+    broadcast "fish state %event-fishing state%"
+    if event-fishing state is bite:
+        broadcast "bite confirmed via state"

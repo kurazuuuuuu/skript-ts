@@ -61,6 +61,8 @@ the extended loops, `while` and `wait`, `functions.ts` for custom
 functions, `gameplay.ts` for the gameplay events (block
 break/place, clicks, damage), `events2.ts` for the event
 filters and the pickup / drop / respawn / bed events,
+`events3.ts` for the generalized events (all-entity death,
+entity pickup / drop, fishing),
 `text.ts` for the text operations, `gui.ts` for items,
 inventories and GUIs, and `world.ts` for world operations
 (blocks, locations, the world clock and weather) and the
@@ -506,7 +508,11 @@ random, which makes for flaky behavior tests. Death filters
 (`on death of zombie:`) are also not included: the subset's
 death event is player-only while Skript's covers any entity,
 so a victim filter would promise semantics the engine half
-cannot have.
+cannot have. **Update (generalized events, below):** both
+gaps are closed — death is generalized to every entity with
+its victim filter, the entity pickup/drop forms exist, and
+the fishing family is in, with the random bite timing tamed
+by the test design described there.
 
 `examples/events2.ts` exercises all of it — filtered breaks,
 places, clicks and damage reports, wheat pickups singled
@@ -1038,6 +1044,107 @@ this subset has no timespan value type, so timings are
 literals like the periodical amount), and plural audiences
 as title targets (the original's `%audiences%`; this
 subset's sends target one player, as elsewhere).
+
+### Generalized events: death, entity pickup/drop and fishing
+
+The v0 event set started player-shaped; this section
+generalizes it to the shapes the original has, all as core
+language (TS API, `.sk` emitter and jar engine with identical
+semantics), with every rule below probed against the real
+Skript 2.17.1 — header parsing by probe scripts, runtime
+matching by driving mobs, a fishing bot and console damage
+on the sandbox server.
+
+**Death covers every living entity now.** `onDeath(body)`
+fires for any entity's death, and takes the victim filter
+from the *Event filters* section's family:
+`onDeath(body, { victim })` — `on death of zombie or
+skeleton:`. Inside, `victim()` is the dead entity and
+`attacker()` is the damager of its **last damage cause**
+when that cause was an entity attack — *any* entity, probed:
+a zombie killed by an iron golem reads attacker
+`iron golem`, a command kill reads no attacker, a player's
+sword kill reads `player`. Three honest limits, all probed:
+the header has **no attacker filter** (`on death … by
+player:` does not parse in the original, so none is
+offered); `player` does not exist in a death event in the
+original (a parse error there — write `victim()`; for a
+player victim the engine still fills the player values, so
+v0 handlers keep working); and the event is not cancellable
+in either runtime (a `cancelEvent()` inside is the
+established no-op).
+
+**Entity pickup and drop.** `onEntityPickup(body, { item })`
+and `onEntityDrop(body, { item })` are the explicit entity
+forms (`on entity pick up of wheat:`, `on entity drop of
+egg:`), with the phase-16 `{ item }` filter. The new value
+`eventEntity()` is the entity the event is about. The forms
+differ in who they cover, exactly as probed: entity pickup
+fires for **every** picker, players included (a player
+pickup fires the bare form *and* this one, with
+`eventEntity()` = the player), while entity drop never
+fires for a player (a player's toss is only the bare form —
+the two are different Bukkit events underneath). In an
+entity drop, `droppedItemEntity()` is the dropped item as
+an entity and `itemOfEntity(entity)` reads the stack it
+carries (`item of event-dropped item`); the stack is also
+`eventItem()`. Cancelling works in both forms.
+
+**Fishing** is a family of state sub-events, not one event —
+the original has no generic `on fishing:` at all (a parse
+error). Each Bukkit fishing state has its sub-event, plus
+one state-change event that fires for all of them:
+
+| builder | header | state name |
+|---|---|---|
+| `onFishCast` | `on fishing line cast:` | `fishing line cast` |
+| `onFishApproach` | `on fish approaching:` | `lured` |
+| `onFishBite` | `on fish bite:` | `bite` |
+| `onFishCaught` | `on fish caught:` | `fish caught` |
+| `onEntityHooked` | `on entity hooked:` | `entity caught` |
+| `onHookInGround` | `on bobber in ground:` | `bobber in ground` |
+| `onFishEscape` | `on fish escape:` | `fish escape` |
+| `onFishReelIn` | `on fishing rod reel in:` | `reel in` |
+| `onFishingStateChange` | `on fishing state change:` | (any) |
+
+The state names are what `eventFishingState()` prints;
+`fishingState("bite")` builds the matching literal (unknown
+names are rejected at build time), so a state-change handler
+can branch: `if equals(eventFishingState(), fishingState("bite"))`.
+`fishingHook()` is the bobber (its type name prints as
+`fish hook`). In the two catch states `eventEntity()` is
+the caught thing: for a fish it is the item entity, and
+`itemOfEntity(eventEntity())` is the caught stack; for an
+entity catch it is the hooked entity (also `hookedEntity()`).
+Fishing events have **no event-item** — the original rejects
+it at parse time. The fishing wait-time / bite-time
+expressions are not offered: they are timespan-valued, and
+this subset has no timespan value type yet (the same
+prerequisite as the title timings).
+
+The bite timing is the original's random draw, so the
+behavior tests tame it instead of fighting it: a deep,
+wide pond (a shallow pool stalls the approach and the bite
+never comes — found by probing), a Lure III rod, and the
+escape tested through its deterministic route (a bite that
+is not reeled in becomes an escape about a second later).
+
+`examples/events3.ts` exercises all of it — filtered mob and
+player deaths, mob and player pickups, a chicken's egg drop,
+and the full fishing family with a state-change logger —
+and `examples/behavior/events3.behavior.ts`,
+`fishing.behavior.ts` and `fishing2.behavior.ts` drive bots
+through it under both runtimes. One honest exception:
+`onHookInGround` is implemented and golden-tested, but the
+behavior tests do not assert it — extended probing (dry
+rests, shallow water, a raised reef, wall impacts, reeling
+a resting bobber, even a slime bouncing on it) never made
+Bukkit produce the IN_GROUND state on demand in the test
+sandbox, so there is no deterministic trigger to assert
+against. Both runtimes dispatch it from the same Bukkit
+event the original wraps, so it fires exactly when the
+platform produces it — the original has the same platform
+dependency.
 
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal

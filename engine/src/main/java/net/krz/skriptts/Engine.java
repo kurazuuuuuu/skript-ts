@@ -22,6 +22,8 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.FishHook;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
@@ -214,6 +216,15 @@ final class Engine {
         ItemStack eventItem; // "event-item" in block break/place/click events
         Entity clickedEntity; // "clicked entity" in right clicks on an entity; null otherwise
         Entity attacker;    // "attacker" in damage events caused by an entity; null otherwise
+        // Generalized event values (phase 22): the entity an
+        // entity pickup / drop is about; in fishing events the
+        // caught entity (or the caught Item entity). The same
+        // slot backs "hooked entity" in entity-hooked events,
+        // where the original gives both names to the one value.
+        Entity eventEntity; // "event-entity" / "hooked entity"
+        Item droppedItem;   // "event-dropped item": the Item entity of an entity drop / fish catch
+        FishHook fishingHook; // "fishing hook" in fishing events
+        String fishingState; // "event-fishing state" in fishing events (the Skript state name)
         Inventory eventInventory; // "event-inventory" in inventory click/close events (the view's top inventory)
         Double clickedSlot; // "index of event-slot" in inventory click events; null elsewhere
         Double clickedRawSlot; // "raw index of event-slot" in inventory click events; null elsewhere
@@ -241,6 +252,10 @@ final class Engine {
             c.eventItem = eventItem;
             c.clickedEntity = clickedEntity;
             c.attacker = attacker;
+            c.eventEntity = eventEntity;
+            c.droppedItem = droppedItem;
+            c.fishingHook = fishingHook;
+            c.fishingState = fishingState;
             c.eventInventory = eventInventory;
             c.clickedSlot = clickedSlot;
             c.clickedRawSlot = clickedRawSlot;
@@ -495,7 +510,9 @@ final class Engine {
         if (!(top.get("filter") instanceof Map<?, ?> filter)) return true;
         String ev = str(top.get("event"));
         if (filter.get("ofTypes") instanceof List<?> names) {
-            Object value = ("pickup".equals(ev) || "drop".equals(ev)) ? ctx.eventItem : ctx.eventBlock;
+            Object value = ("pickup".equals(ev) || "drop".equals(ev)
+                    || "entityPickup".equals(ev) || "entityDrop".equals(ev))
+                    ? ctx.eventItem : ctx.eventBlock;
             if (!typeListMatches(names, value)) return false;
         }
         if (filter.get("victimTypes") instanceof List<?> names && !typeListMatches(names, ctx.victim)) return false;
@@ -2168,6 +2185,13 @@ final class Engine {
         if (value instanceof Player) return "player";
         if (value instanceof OfflinePlayer) return "offline player";
         if (value instanceof BossBar) return "boss bar";
+        // Two entity kinds have Skript names that are not their
+        // Bukkit type names (both probed live in phase 22): a
+        // dropped item entity reads "dropped item" (not "item"),
+        // and a fishing bobber reads "fish hook" (not "fishing
+        // bobber").
+        if (value instanceof Item) return "dropped item";
+        if (value instanceof FishHook) return "fish hook";
         if (value instanceof Entity entity) {
             return entity.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
         }
@@ -2382,6 +2406,20 @@ final class Engine {
             case "eventBlock" -> ctx.eventBlock;
             case "eventItem" -> ctx.eventItem;
             case "clickedEntity" -> ctx.clickedEntity;
+            // Generalized event values (phase 22). The hooked
+            // entity shares the event-entity slot: in the
+            // original both names denote the caught entity of
+            // an entity-hooked event (verified live).
+            case "eventEntity" -> ctx.eventEntity;
+            case "hookedEntity" -> ctx.eventEntity;
+            case "fishingHook" -> ctx.fishingHook;
+            case "eventFishingState" -> ctx.fishingState;
+            case "fishingState" -> str(expr.get("name"));
+            case "droppedItemEntity" -> ctx.droppedItem;
+            case "itemOfEntity" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof Item itemEntity ? itemEntity.getItemStack() : null;
+            }
             case "attacker" -> ctx.attacker;
             case "damageAmount" -> ctx.damageEvent == null ? null : ctx.damageEvent.getDamage();
             case "damageCause" -> ctx.damageEvent == null

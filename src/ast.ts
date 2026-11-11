@@ -91,6 +91,40 @@ export type Expr =
   // Core-language event value (phase 16): the entity a right
   // click interacted with. No value for block or air clicks.
   | { kind: "clickedEntity" }
+  // Core-language generalized event values (phase 22). All
+  // semantics were probed against the real Skript 2.17.1 in the
+  // sandbox (see the development log for the probe rounds):
+  //
+  // - eventEntity is Skript's generic event-entity: the entity
+  //   an entity pickup / entity drop is about (the picker /
+  //   dropper), the caught entity of an entity-hooked fishing
+  //   event, and the caught Item entity of a fish-caught event
+  //   (whose type name is "dropped item"). Death has NO
+  //   event-entity in the original (a parse error there) — use
+  //   victim() — and neither does damage.
+  // - hookedEntity is the entity a fishing hook caught, inside
+  //   entity-hooked events; the engine reads it from the same
+  //   slot as eventEntity.
+  // - fishingHook is the hook (bobber) entity of a fishing
+  //   event; its type name is "fish hook".
+  // - eventFishingState is the fishing event's state value,
+  //   printed as its Skript name ("fishing line cast", "lured",
+  //   "bite", "fish caught", "entity caught", "bobber in
+  //   ground", "fish escape", "reel in"). fishingState is a
+  //   state literal (emitted BARE, like weatherType / gameModeType):
+  //   the value eventFishingState compares against.
+  // - droppedItemEntity is the Item entity of an entity drop
+  //   or a fish catch (`event-dropped item`); itemOfEntity
+  //   reads the item stack an Item entity carries (`item of
+  //   %entity%` — how a script learns WHAT was caught or
+  //   dropped; there is no event-item in fishing events).
+  | { kind: "eventEntity" }
+  | { kind: "hookedEntity" }
+  | { kind: "fishingHook" }
+  | { kind: "eventFishingState" }
+  | { kind: "fishingState"; name: FishingStateName }
+  | { kind: "droppedItemEntity" }
+  | { kind: "itemOfEntity"; target: Expr }
   // Core-language text operations (phase 15). All semantics were
   // probed against the real Skript 2.17.1 in the sandbox (see the
   // development log for the probe rounds):
@@ -441,6 +475,17 @@ export type WeatherName = "clear" | "rain" | "thunder";
 export type GameModeName = "survival" | "creative" | "adventure" | "spectator";
 
 /**
+ * A fishing state name (phase 22): the eight states of Skript's
+ * fishing-state type, in their printed form — what
+ * eventFishingState() reads and what the fishingState() literal
+ * compares against. Each is also the state a fishing sub-event
+ * fires on (see the fishing builders in api.ts).
+ */
+export type FishingStateName =
+  | "fishing line cast" | "lured" | "bite" | "fish caught"
+  | "entity caught" | "bobber in ground" | "fish escape" | "reel in";
+
+/**
  * A title timing (phase 21): a literal timespan for one part of
  * a title send (fade-in, stay, fade-out). Like the periodical
  * amount (phase 18) the amount is a plain number — fractional
@@ -706,12 +751,16 @@ export type Stmt =
   // handler never sets a result resolves to no value.
   | { kind: "setPlaceholderResult"; text: TextExpr; loc?: SourceLoc };
 
-/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. */
+/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. Phase 22 generalized death (any entity, victim filter), added the entity pickup / drop forms, and split fishing into its state sub-events. */
 export type EventKind =
   | "join" | "firstJoin" | "quit" | "chat" | "death"
   | "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage"
   | "pickup" | "drop" | "respawn" | "bedEnter" | "bedLeave"
   | "inventoryClick" | "inventoryClose"
+  | "entityPickup" | "entityDrop"
+  | "fishCast" | "fishApproach" | "fishBite" | "fishCaught"
+  | "entityHooked" | "hookInGround" | "fishEscape" | "fishReelIn"
+  | "fishingStateChange"
   | "wsOpen" | "wsMessage" | "wsClose"
   | "timerTick" | "timerComplete"
   | "papiRequest";
@@ -726,9 +775,12 @@ export type EventKind =
  * typeOf would print). A slot whose value the event does not
  * have (an attacker filter on environmental damage, a block
  * filter on an air click) never matches. Slots by event:
- * - ofTypes: block break / place (the block), pickup / drop
- *   (the item)
- * - victimTypes / attackerTypes: damage
+ * - ofTypes: block break / place (the block), pickup / drop /
+ *   entity pickup / entity drop (the item)
+ * - victimTypes: damage and death (phase 22 — the death
+ *   header carries ONLY this slot; the original rejects an
+ *   attacker slot on death at parse time)
+ * - attackerTypes: damage
  * - onTypes / onEntityTypes / withTypes: clicks (the clicked
  *   block / the clicked entity / the item in hand)
  */
