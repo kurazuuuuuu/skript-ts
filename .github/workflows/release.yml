@@ -65,3 +65,4 @@ jobs:
             engine/build/skript-ts.jar
             dist/skript-ts-cli-${{ github.ref_name }}.zip
           generate_release_notes: true
+          prerelease: true
