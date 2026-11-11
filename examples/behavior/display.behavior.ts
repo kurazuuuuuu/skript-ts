@@ -152,15 +152,21 @@ export default defineBehavior(async (t) => {
     await waitMsg(mark, /^Colored News$/);
 
     // -- A number-valued stay is not a title timing (phase
-    // 27, R-9): the title text arrives and NO new times
-    // packet is sent. --
+    // 27, R-9): a specified timing part that is not a
+    // timespan makes the whole send a no-op — NEITHER a
+    // times packet NOR the title text arrives. --
     timeCount = bot.titleTimes().length;
+    const titleCount = bot.titleTexts().length;
     await chat("/dtnum");
-    await bot.waitForTitleText("Num Title");
-    await t.sleep(600);
+    await t.sleep(1200);
     if (bot.titleTimes().length !== timeCount) {
       throw new Error(
         `number-timed title send produced a times packet: ${JSON.stringify(bot.titleTimes().slice(timeCount))}`,
+      );
+    }
+    if (bot.titleTexts().length !== titleCount) {
+      throw new Error(
+        `number-timed title send produced a title text: ${JSON.stringify(bot.titleTexts().slice(titleCount))}`,
       );
     }
 

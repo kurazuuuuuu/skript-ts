@@ -1024,18 +1024,20 @@ final class Engine {
 
     /**
      * One title timing part as a tick count (phase 27), or
-     * null when the part does not count as given. Probed
+     * null when the part is absent or does not count. Probed
      * against the original: a part counts only when it
      * evaluates to an actual Timespan — a number does NOT
      * count as ticks here (unlike waitFor, where that rule
      * was probed separately), and a valueless part does not
-     * count either; the sendTitle case sends a times packet
-     * only when at least one part counts, filling the rest
-     * with the 10 / 70 / 20 defaults. The conversion rounds
-     * half DOWN (25 ms → 0 ticks, 75 ms → 1 tick, measured on
-     * the wire), unlike {@link Timespan#toTicks()} — which
-     * rounds half up and serves wait / fishing — so it is
-     * computed here from the timespan's fields.
+     * count either; the sendTitle case distinguishes the two
+     * nulls (an absent part is default-filled, a specified
+     * part that does not count aborts the whole statement)
+     * and sends a times packet only when at least one part
+     * counts. The conversion rounds half DOWN (25 ms → 0
+     * ticks, 75 ms → 1 tick, measured on the wire), unlike
+     * {@link Timespan#toTicks()} — which rounds half up and
+     * serves wait / fishing — so it is computed here from
+     * the timespan's fields.
      */
     private Long titleTimingTicks(Object timingNode, Ctx ctx) {
         if (timingNode == null) return null;
@@ -1202,21 +1204,26 @@ final class Engine {
             case "sendTitle" -> {
                 // Display effects (phase 21): the parts go out
                 // in the original's packet order — times,
-                // subtitle, title (all probed raw). A times part
-                // is sent only when at least one timing part
-                // counts as given AND a title or subtitle part
-                // is present (phase 27, probed: a part counts
-                // only as an actual Timespan — see
-                // titleTimingTicks — and a timing-only
-                // statement, which the original cannot express,
-                // sends nothing at all); uncounted parts take
-                // the defaults 10 / 70 / 20 ticks the original
-                // fills in.
+                // subtitle, title (all probed raw). Timing
+                // parts (phase 27, probed on the wire): a part
+                // counts only when it evaluates to an actual
+                // Timespan (see titleTimingTicks), and if ANY
+                // specified part does not, the whole statement
+                // sends nothing at all — no times packet and
+                // no text parts. When every specified part
+                // counts, unspecified parts take the defaults
+                // 10 / 70 / 20 ticks the original fills in. A
+                // timing-only statement (no title or subtitle
+                // part — the original cannot express one) also
+                // sends nothing.
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
                     Long fadeIn = titleTimingTicks(stmt.get("fadeIn"), ctx);
                     Long stay = titleTimingTicks(stmt.get("stay"), ctx);
                     Long fadeOut = titleTimingTicks(stmt.get("fadeOut"), ctx);
-                    if ((fadeIn != null || stay != null || fadeOut != null)
+                    boolean abort = (stmt.get("fadeIn") != null && fadeIn == null)
+                            || (stmt.get("stay") != null && stay == null)
+                            || (stmt.get("fadeOut") != null && fadeOut == null);
+                    if (!abort && (fadeIn != null || stay != null || fadeOut != null)
                             && (stmt.get("title") != null || stmt.get("subtitle") != null)) {
                         long fi = fadeIn != null ? fadeIn : 10;
                         long st = stay != null ? stay : 70;
@@ -1226,11 +1233,11 @@ final class Engine {
                                 Duration.ofMillis(st * 50),
                                 Duration.ofMillis(fo * 50)));
                     }
-                    if (stmt.get("subtitle") != null) {
+                    if (!abort && stmt.get("subtitle") != null) {
                         target.sendTitlePart(TitlePart.SUBTITLE,
                                 LEGACY.deserialize(renderText(node(stmt.get("subtitle")), ctx)));
                     }
-                    if (stmt.get("title") != null) {
+                    if (!abort && stmt.get("title") != null) {
                         target.sendTitlePart(TitlePart.TITLE,
                                 LEGACY.deserialize(renderText(node(stmt.get("title")), ctx)));
                     }

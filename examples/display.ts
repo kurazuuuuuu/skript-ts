@@ -124,9 +124,11 @@ const dbcast = command("dbcast", null, [
 
 // /dtnum: a title whose stay is a NUMBER variable (phase 27,
 // review item R-9 re-derived). A number does not count as a
-// title timing in the original — no times packet is sent,
-// exactly as if no timing had been given (the "a number
-// counts as ticks" rule belongs to waitFor only).
+// title timing in the original, and a specified timing part
+// that does not evaluate to a timespan makes the WHOLE send
+// a no-op — neither a times packet nor the title text is
+// sent (the "a number counts as ticks" rule belongs to
+// waitFor only).
 const dtnum = command("dtnum", null, [
   set(variable("dtn27"), num(100)),
   sendTitle(player(), str("Num Title"), { stay: variable("dtn27") }),
