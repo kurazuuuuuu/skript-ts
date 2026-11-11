@@ -92,6 +92,31 @@ export interface BehaviorBot {
   windowSlotItem(slot: number): WindowSlotItem | null;
   /** Left-click a window slot (raw window index: top inventory first, then the player's own inventory). */
   clickWindowSlot(slot: number): Promise<void>;
+  // Phase 21 controls: display packets — enough to exercise
+  // the title / action bar / boss bar effects by what the
+  // client actually received, not by script readbacks alone.
+  /** Plain texts of the set_title_text packets received, oldest first. */
+  titleTexts(): readonly string[];
+  /** Plain texts of the set_title_subtitle packets received, oldest first. */
+  titleSubtitles(): readonly string[];
+  /** The set_title_time packets received, oldest first (ticks). */
+  titleTimes(): readonly TitleTimePacket[];
+  /** The reset flags of the clear_titles packets received, oldest first (false = clear, true = reset). */
+  titleClears(): readonly boolean[];
+  /** Plain texts of the action_bar packets received, oldest first. */
+  actionBarTexts(): readonly string[];
+  /** The boss_bar packets received, oldest first. */
+  bossBarPackets(): readonly BossBarPacket[];
+  /** Poll until a title text packet with exactly this plain text arrives, considering only packets from index `fromIndex` of titleTexts() on. Throws on timeout. */
+  waitForTitleText(text: string, timeoutMs?: number, fromIndex?: number): Promise<void>;
+  /** Poll until a title times packet with exactly these tick values arrives, considering only packets from index `fromIndex` of titleTimes() on. Throws on timeout. */
+  waitForTitleTimes(fadeIn: number, stay: number, fadeOut: number, timeoutMs?: number, fromIndex?: number): Promise<void>;
+  /** Poll until a clear_titles packet with this reset flag arrives, considering only packets from index `fromIndex` of titleClears() on. Throws on timeout. */
+  waitForTitleClear(reset: boolean, timeoutMs?: number, fromIndex?: number): Promise<void>;
+  /** Poll until an action bar packet with exactly this plain text arrives, considering only packets from index `fromIndex` of actionBarTexts() on. Throws on timeout. */
+  waitForActionBarText(text: string, timeoutMs?: number, fromIndex?: number): Promise<void>;
+  /** Poll until a boss_bar packet with this action arrives, considering only packets from index `fromIndex` of bossBarPackets() on; resolves with the packet. Throws on timeout. */
+  waitForBossBarAction(action: number, timeoutMs?: number, fromIndex?: number): Promise<BossBarPacket>;
 }
 
 /**
@@ -121,6 +146,31 @@ export interface WindowSlotItem {
   customName: string | null;
   /** The lore lines, when the item carries lore. */
   lore: string[];
+}
+
+/** A set_title_time packet the bot received (phase 21), in ticks. */
+export interface TitleTimePacket {
+  fadeIn: number;
+  stay: number;
+  fadeOut: number;
+}
+
+/**
+ * A boss_bar packet the bot received (phase 21). `action` is
+ * the protocol action: 0 add, 1 remove, 2 update health, 3
+ * update title, 4 update style, 5 update flags. Fields a
+ * packet does not carry are null. `title` is the plain text of
+ * the title component; `color` is the protocol color enum
+ * (pink 0, blue 1, red 2, green 3, yellow 4, purple 5,
+ * white 6); `dividers` is the protocol style enum (solid 0,
+ * 6 notches 1, 10 notches 2, 12 notches 3, 20 notches 4).
+ */
+export interface BossBarPacket {
+  action: number;
+  title: string | null;
+  health: number | null;
+  color: number | null;
+  dividers: number | null;
 }
 
 export interface BehaviorContext {
@@ -161,9 +211,72 @@ interface RawSoundPacket {
   pitch?: number;
 }
 
+/** The raw display packet shapes on the wire (phase 21): text fields are chat components in NBT form. */
+interface RawTextPacket {
+  text?: unknown;
+}
+interface RawTitleTimePacket {
+  fadeIn?: number;
+  stay?: number;
+  fadeOut?: number;
+}
+interface RawClearTitlesPacket {
+  reset?: boolean;
+}
+interface RawBossBarPacket {
+  action?: number;
+  title?: unknown;
+  health?: number;
+  color?: number;
+  dividers?: number;
+}
+
+/**
+ * Flatten a chat component (phase 21) to its plain text.
+ * Components arrive as prismarine-nbt nodes ({type:'string'},
+ * {type:'compound'}, {type:'list'}), as plain JSON components
+ * ({text, extra}), or occasionally as a JSON string; color and
+ * style fields are dropped — display tests assert on text and
+ * on the packet fields, not on styling.
+ */
+function componentPlainText(v: unknown): string {
+  if (typeof v === "string") {
+    if (v.startsWith("{") || v.startsWith("[")) {
+      try {
+        return componentPlainText(JSON.parse(v) as unknown);
+      } catch {
+        return v;
+      }
+    }
+    return v;
+  }
+  if (v === null || typeof v !== "object") return "";
+  const rec = v as Record<string, unknown>;
+  if (rec.type === "string" && typeof rec.value === "string") return rec.value;
+  if (rec.type === "list") {
+    const val = rec.value as { value?: unknown[] } | undefined;
+    return (val?.value ?? []).map(componentPlainText).join("");
+  }
+  if (rec.type === "compound" && rec.value !== null && typeof rec.value === "object") {
+    return componentPlainText(rec.value);
+  }
+  let out = "";
+  if (typeof rec.text === "string") out += rec.text;
+  else if (rec.text !== undefined) out += componentPlainText(rec.text);
+  if (Array.isArray(rec.extra)) out += rec.extra.map(componentPlainText).join("");
+  else if (rec.extra !== undefined) out += componentPlainText(rec.extra);
+  return out;
+}
+
 class MineflayerBehaviorBot implements BehaviorBot {
   readonly messages: string[] = [];
   private readonly sounds: SoundPacket[] = [];
+  private readonly titleTextLog: string[] = [];
+  private readonly titleSubtitleLog: string[] = [];
+  private readonly titleTimeLog: TitleTimePacket[] = [];
+  private readonly titleClearLog: boolean[] = [];
+  private readonly actionBarLog: string[] = [];
+  private readonly bossBarLog: BossBarPacket[] = [];
   private readonly waiters: {
     pattern: RegExp | string;
     resolve: (msg: string) => void;
@@ -189,6 +302,36 @@ class MineflayerBehaviorBot implements BehaviorBot {
         x: (p.x ?? 0) / 8,
         y: (p.y ?? 0) / 8,
         z: (p.z ?? 0) / 8,
+      });
+    });
+    // Raw display packets (phase 21): titles, the action bar
+    // and boss bars have no high-level mineflayer events, so
+    // capture the wire forms directly, like the sound packets.
+    const displayClient = (this.bot as unknown as {
+      _client: { on<T>(ev: string, fn: (p: T) => void): void };
+    })._client;
+    displayClient.on<RawTextPacket>("set_title_text", (p) => {
+      this.titleTextLog.push(componentPlainText(p.text));
+    });
+    displayClient.on<RawTextPacket>("set_title_subtitle", (p) => {
+      this.titleSubtitleLog.push(componentPlainText(p.text));
+    });
+    displayClient.on<RawTitleTimePacket>("set_title_time", (p) => {
+      this.titleTimeLog.push({ fadeIn: p.fadeIn ?? -1, stay: p.stay ?? -1, fadeOut: p.fadeOut ?? -1 });
+    });
+    displayClient.on<RawClearTitlesPacket>("clear_titles", (p) => {
+      this.titleClearLog.push(p.reset === true);
+    });
+    displayClient.on<RawTextPacket>("action_bar", (p) => {
+      this.actionBarLog.push(componentPlainText(p.text));
+    });
+    displayClient.on<RawBossBarPacket>("boss_bar", (p) => {
+      this.bossBarLog.push({
+        action: p.action ?? -1,
+        title: p.title !== undefined ? componentPlainText(p.title) : null,
+        health: typeof p.health === "number" ? p.health : null,
+        color: typeof p.color === "number" ? p.color : null,
+        dividers: typeof p.dividers === "number" ? p.dividers : null,
       });
     });
     this.bot.on("messagestr", (raw) => {
@@ -389,6 +532,99 @@ class MineflayerBehaviorBot implements BehaviorBot {
       if (Date.now() >= deadline) {
         throw new Error(
           `timed out after ${timeoutMs}ms waiting for a sound near ${x}, ${y}, ${z}; heard ${this.sounds.length} packets`,
+        );
+      }
+      await sleep(150);
+    }
+  }
+
+  titleTexts(): readonly string[] {
+    return this.titleTextLog;
+  }
+
+  titleSubtitles(): readonly string[] {
+    return this.titleSubtitleLog;
+  }
+
+  titleTimes(): readonly TitleTimePacket[] {
+    return this.titleTimeLog;
+  }
+
+  titleClears(): readonly boolean[] {
+    return this.titleClearLog;
+  }
+
+  actionBarTexts(): readonly string[] {
+    return this.actionBarLog;
+  }
+
+  bossBarPackets(): readonly BossBarPacket[] {
+    return this.bossBarLog;
+  }
+
+  async waitForTitleText(text: string, timeoutMs = 10_000, fromIndex = 0): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (this.titleTextLog.slice(fromIndex).includes(text)) return;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for title text "${text}"; saw ${JSON.stringify(this.titleTextLog)}`,
+        );
+      }
+      await sleep(150);
+    }
+  }
+
+  async waitForTitleTimes(fadeIn: number, stay: number, fadeOut: number, timeoutMs = 10_000, fromIndex = 0): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const hit = this.titleTimeLog
+        .slice(fromIndex)
+        .find((t) => t.fadeIn === fadeIn && t.stay === stay && t.fadeOut === fadeOut);
+      if (hit !== undefined) return;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for title times ${fadeIn}/${stay}/${fadeOut}; saw ${JSON.stringify(this.titleTimeLog)}`,
+        );
+      }
+      await sleep(150);
+    }
+  }
+
+  async waitForTitleClear(reset: boolean, timeoutMs = 10_000, fromIndex = 0): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (this.titleClearLog.slice(fromIndex).includes(reset)) return;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for a title clear (reset=${reset}); saw ${JSON.stringify(this.titleClearLog)}`,
+        );
+      }
+      await sleep(150);
+    }
+  }
+
+  async waitForActionBarText(text: string, timeoutMs = 10_000, fromIndex = 0): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (this.actionBarLog.slice(fromIndex).includes(text)) return;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for action bar text "${text}"; saw ${JSON.stringify(this.actionBarLog)}`,
+        );
+      }
+      await sleep(150);
+    }
+  }
+
+  async waitForBossBarAction(action: number, timeoutMs = 10_000, fromIndex = 0): Promise<BossBarPacket> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const hit = this.bossBarLog.slice(fromIndex).find((p) => p.action === action);
+      if (hit !== undefined) return hit;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for a boss bar packet with action ${action}; saw ${JSON.stringify(this.bossBarLog)}`,
         );
       }
       await sleep(150);

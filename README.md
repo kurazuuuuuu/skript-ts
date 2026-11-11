@@ -967,6 +967,78 @@ versus Brigadier's suggestions; `executable by` /
 `prefix` / cooldown sections and expression-typed custom
 arguments are out of scope for this slice.
 
+### Display effects and boss bars
+
+Titles, the action bar, and boss bars — core language,
+identical under Skript and under the engine jar. Every
+behavior below was probed against the real Skript 2.17.1
+with the client's packets captured raw (see the
+development log).
+
+- **Titles**: `sendTitle(target, text, options?)` with
+  `options.subtitle` and literal timing options `fadeIn` /
+  `stay` / `fadeOut` (each `{ amount, unit }`, fractional
+  amounts allowed). The emitted tail comes **after** the
+  target — `... to player for 5 seconds with fadein 1
+  second and fade out 1 second` (putting `for` before `to`
+  is a parse error in the original). Wire behavior: with
+  **no** timing given, no times packet is sent at all (the
+  client keeps its previous timings); with **any** timing
+  given, one times packet precedes the text packets and the
+  unspecified parts are filled with the defaults **fade-in
+  10 / stay 70 / fade-out 20 ticks**. Packets go out in the
+  order times → subtitle → title. A title-only send sends
+  no subtitle packet and vice versa. `sendSubtitle(target,
+  text, timingOptions?)` is the subtitle-only form.
+  `clearTitle(target)` hides the title; `resetTitle(target)`
+  also resets the timings (one packet, carrying the reset
+  flag). Title texts are any expression, stringified like a
+  chat message.
+- **Action bar**: `sendActionBar(target, message)` — one
+  packet, no timing concept.
+- **Boss bars** (core since Skript 2.16): the create
+  expression `bossBar({ title?, color? })` makes a bar
+  value — fresh bars have an empty title, progress 1, a
+  white color and a solid style (all read off the add
+  packet). `setBossBarTitle` / `setBossBarColor` (a literal
+  name: pink, blue, red, green, yellow, purple, white) /
+  `setBossBarProgress` write the properties — progress is
+  a **fraction** 0..1 that the original clamps (writing 50
+  reads back 1; percent literals in hand-written Skript are
+  the same fraction divided by 100). `addBossBarViewer` /
+  `removeBossBarViewer` manage the viewer set, and
+  `bossBarTitleOf` / `bossBarProgressOf` read the
+  properties back. **A bar cannot be saved**: storing one
+  in a persistent variable is a load error in the original
+  ("a boss bar cannot be saved"), so bars live in locals;
+  the engine keeps the value in memory and drops it on
+  variable save instead of erroring (recorded divergence).
+
+`examples/display.ts` exercises all of it — a timed title
+with subtitle and an action bar on join, the `/dtplain`,
+`/dtstay`, `/dtsub`, `/dtclear`, `/dtreset` and `/dbar`
+commands, and the `/dbshow` / `/dbfresh` boss bar
+lifecycles — and `examples/behavior/display.behavior.ts`
+asserts on the client's actual title / action bar /
+boss bar packets under both runtimes.
+
+Deliberate deferrals (recorded): **keyed** boss bars (the
+keyed + color + title create form does not even parse in
+the original, and keyed bars are persistent server storage
+addressed by key — a lifecycle of their own), the section
+creation form (`set {_b} to a boss bar:` with an
+event-bossbar body — this subset has no section
+expressions; the one-line create plus the property
+statements cover the same ground), bar **styles** (notches)
+and the darken-sky / fog / boss-music **flags** (both parse
+and run in the original; outside this slice's
+create / show / progress scope), expression timespans for
+title timings (the original accepts a timespan variable;
+this subset has no timespan value type, so timings are
+literals like the periodical amount), and plural audiences
+as title targets (the original's `%audiences%`; this
+subset's sends target one player, as elsewhere).
+
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal
 `%` is doubled (`%%`). This applies to `str()` values, the literal parts of

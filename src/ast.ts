@@ -290,7 +290,41 @@ export type Expr =
   | { kind: "gameModeType"; name: GameModeName }
   | { kind: "experienceOf"; target: Expr }
   | { kind: "levelOf"; target: Expr }
-  | { kind: "lastSpawnedEntity" };
+  | { kind: "lastSpawnedEntity" }
+  // Core-language boss bars (phase 21). Boss bars are core
+  // Skript since 2.16; all semantics were probed against the
+  // real Skript 2.17.1 in the sandbox (raw boss_bar packets;
+  // see the development log):
+  //
+  // - bossBar creates a bar value (`a boss bar`, `a red boss
+  //   bar`, `a bossbar with title %text%`, and the color+title
+  //   combination `a <color> bossbar with title %text%` all
+  //   parse and run). A fresh bar has an empty title, progress
+  //   1, color white and a solid style (the add-viewer packet
+  //   showed health 1, color 6 = white, dividers 0). Keyed
+  //   bars are NOT offered: the keyed+color+title create form
+  //   does not even parse in the original, and keyed bars live
+  //   in persistent server storage addressed by key — a
+  //   lifecycle of their own. The section creation form
+  //   (`set {_b} to a boss bar:` with an event-bossbar body)
+  //   parses too but is not offered: this subset has no section
+  //   expressions, and the one-line create plus the property
+  //   statements cover the same ground imperatively.
+  // - bossBarTitleOf / bossBarProgressOf read the properties
+  //   (`title of %bossbar%`, `progress of %bossbar%`); a fresh
+  //   bar reads back its title text and progress 1.
+  // - A bar is a runtime-only value: storing one in a
+  //   PERSISTENT variable is a load error in the original
+  //   ("a boss bar cannot be saved. That is, the contents of
+  //   the variable will be lost when the server stops"), so
+  //   bars belong in locals / function frames. The engine
+  //   keeps the value in memory and drops it on save (the
+  //   Variables encoder), which reproduces the "lost when
+  //   the server stops" half but not the load error itself —
+  //   a documented divergence.
+  | { kind: "bossBar"; title?: Expr; color?: BossBarColorName }
+  | { kind: "bossBarTitleOf"; bar: Expr }
+  | { kind: "bossBarProgressOf"; bar: Expr };
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
@@ -405,6 +439,25 @@ export type WeatherName = "clear" | "rain" | "thunder";
 
 /** A game mode name (phase 19): the four states of Skript's gamemode type. */
 export type GameModeName = "survival" | "creative" | "adventure" | "spectator";
+
+/**
+ * A title timing (phase 21): a literal timespan for one part of
+ * a title send (fade-in, stay, fade-out). Like the periodical
+ * amount (phase 18) the amount is a plain number — fractional
+ * amounts are fine (2.5 seconds is 50 ticks on the wire, probed).
+ * The original also accepts expression timespans in these slots
+ * (a timespan variable parses), but this subset has no timespan
+ * value type, so the builders take literals only.
+ */
+export interface TitleTiming { amount: number; unit: TimeUnit }
+
+/**
+ * A boss bar color name (phase 21): the seven colors of the
+ * original's boss bar create / set forms. The name is a literal
+ * in the .sk text, like a weather or game mode name.
+ */
+export type BossBarColorName =
+  | "pink" | "blue" | "red" | "green" | "yellow" | "purple" | "white";
 
 /** Source position in the TypeScript file where a builder call was made. */
 export interface SourceLoc { file: string; line: number; column: number }
@@ -557,6 +610,53 @@ export type Stmt =
   | { kind: "spawnEntity"; entityType: string; at: Expr; count?: number; loc?: SourceLoc }
   | { kind: "dropItem"; item: Expr; at: Expr; loc?: SourceLoc }
   | { kind: "playSound"; name: string; at: Expr; loc?: SourceLoc }
+  // Core-language display effects and boss bar changes
+  // (phase 21), mirroring the forms probed against the real
+  // Skript 2.17.1 (raw client packets; see the development
+  // log):
+  // - sendTitle sends a title and/or subtitle to a player
+  //   (`send title %object% [with subtitle %object%] to
+  //   %player%`, or `send subtitle %object% to %player%` for
+  //   the subtitle-only form). Exactly one of title / subtitle
+  //   may be absent (the builder enforces that at least one is
+  //   present). The optional timing tail — `for <stay>`,
+  //   `with fadein <t>`, `and fade out <t>` — comes AFTER the
+  //   target (putting `for` before `to` is a parse error in
+  //   the original). Wire behavior (probed): when at least one
+  //   timing is given, one times packet precedes the text
+  //   packets and every unspecified part is filled with the
+  //   defaults fade-in 10 / stay 70 / fade-out 20 ticks; when
+  //   no timing is given, no times packet is sent at all (the
+  //   client keeps its previous timings). A title-only send
+  //   sends no subtitle packet and vice versa. The text slots
+  //   are %object% — any expression, stringified like a chat
+  //   message.
+  // - sendActionBar shows a message in the action bar
+  //   (`send action bar %object% to %player%`); no timings
+  //   exist for it in the original.
+  // - clearTitle clears the shown title (`clear title of
+  //   %player%`); with reset set it additionally resets the
+  //   title timings (`reset title of %player%`) — one packet,
+  //   carrying the reset flag.
+  // - The boss bar changes write the bar's properties and
+  //   viewer set: `set title of %bossbar% to %text%`, `set
+  //   color of %bossbar% to <color>` (a literal name), `set
+  //   progress of %bossbar% to <fraction>` (a fraction 0..1,
+  //   clamped by the original — writing 50 reads back 1;
+  //   percent literals in hand-written Skript are the same
+  //   fraction divided by 100), `add %player% to viewers of
+  //   %bossbar%` and `remove %player% from viewers of
+  //   %bossbar%`. Style (notches) and the sky/fog/music flags
+  //   parse in the original but are not offered: the slice is
+  //   create / show / progress (see the bossBar expression).
+  | { kind: "sendTitle"; target: Expr; title?: Expr; subtitle?: Expr; fadeIn?: TitleTiming; stay?: TitleTiming; fadeOut?: TitleTiming; loc?: SourceLoc }
+  | { kind: "sendActionBar"; target: Expr; message: Expr; loc?: SourceLoc }
+  | { kind: "clearTitle"; target: Expr; reset: boolean; loc?: SourceLoc }
+  | { kind: "setBossBarTitle"; bar: Expr; title: Expr; loc?: SourceLoc }
+  | { kind: "setBossBarColor"; bar: Expr; name: BossBarColorName; loc?: SourceLoc }
+  | { kind: "setBossBarProgress"; bar: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "addBossBarViewer"; bar: Expr; viewer: Expr; loc?: SourceLoc }
+  | { kind: "removeBossBarViewer"; bar: Expr; viewer: Expr; loc?: SourceLoc }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration

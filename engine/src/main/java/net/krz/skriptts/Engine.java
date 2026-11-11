@@ -2,6 +2,8 @@ package net.krz.skriptts;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.title.Title;
+import net.kyori.adventure.title.TitlePart;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -14,6 +16,9 @@ import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -27,6 +32,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
+import java.time.Duration;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -165,6 +171,18 @@ import java.util.logging.Logger;
  * calls (defaults probed: level 1, 600 ticks), entity spawning
  * with a server-wide last-spawned value, item drops, and sounds
  * resolved through the registry like the original.
+ * Phase 21 adds core-language display effects and boss bars
+ * (no addon scope): title / subtitle sends through Adventure's
+ * per-part title API in the original's packet order (times,
+ * then subtitle, then title — probed raw), where a times part
+ * is sent only when at least one timing is given and the rest
+ * are filled with the defaults 10 / 70 / 20 ticks, action bar
+ * sends, title clear / reset, and Bukkit boss bars as values
+ * (create with title / color, title / color / progress writes
+ * with the progress clamped to a 0..1 fraction, viewer
+ * add / remove, title / progress reads). Boss bars are
+ * runtime-only values, dropped on variable save like
+ * inventories.
  */
 final class Engine {
 
@@ -937,6 +955,31 @@ final class Engine {
         return Math.max(0, Math.round(n.doubleValue() * perUnit));
     }
 
+    /** A literal title timing ({amount, unit} from the IR) in ticks (phase 21). */
+    private static long timingTicks(Object timing) {
+        if (!(timing instanceof Map<?, ?> map)) return 0;
+        double perUnit = switch (String.valueOf(map.get("unit"))) {
+            case "seconds" -> 20.0;
+            case "minutes" -> 1200.0;
+            default -> 1.0; // ticks
+        };
+        return Math.max(0, Math.round(num(map.get("amount")) * perUnit));
+    }
+
+    /** A boss bar color name to Bukkit's enum (phase 21); anything else — including no color — is the probed default, white. */
+    private static BarColor bossBarColor(String name) {
+        if (name == null) return BarColor.WHITE;
+        return switch (name) {
+            case "pink" -> BarColor.PINK;
+            case "blue" -> BarColor.BLUE;
+            case "red" -> BarColor.RED;
+            case "green" -> BarColor.GREEN;
+            case "yellow" -> BarColor.YELLOW;
+            case "purple" -> BarColor.PURPLE;
+            default -> BarColor.WHITE;
+        };
+    }
+
     private void execStmt(Map<String, Object> stmt, Ctx ctx, Runnable cont) {
         switch (kind(stmt)) {
             case "send" -> {
@@ -947,6 +990,89 @@ final class Engine {
             }
             case "broadcast" -> {
                 Bukkit.getServer().broadcast(Component.text(renderText(node(stmt.get("message")), ctx)));
+                cont.run();
+            }
+            case "sendTitle" -> {
+                // Display effects (phase 21): the parts go out
+                // in the original's packet order — times,
+                // subtitle, title (all probed raw). A times part
+                // is sent only when at least one timing is
+                // given; unspecified parts take the defaults
+                // 10 / 70 / 20 ticks the original fills in.
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    Object fadeIn = stmt.get("fadeIn");
+                    Object stay = stmt.get("stay");
+                    Object fadeOut = stmt.get("fadeOut");
+                    if (fadeIn != null || stay != null || fadeOut != null) {
+                        long fi = fadeIn != null ? timingTicks(fadeIn) : 10;
+                        long st = stay != null ? timingTicks(stay) : 70;
+                        long fo = fadeOut != null ? timingTicks(fadeOut) : 20;
+                        target.sendTitlePart(TitlePart.TIMES, Title.Times.times(
+                                Duration.ofMillis(fi * 50),
+                                Duration.ofMillis(st * 50),
+                                Duration.ofMillis(fo * 50)));
+                    }
+                    if (stmt.get("subtitle") != null) {
+                        target.sendTitlePart(TitlePart.SUBTITLE,
+                                LEGACY.deserialize(renderText(node(stmt.get("subtitle")), ctx)));
+                    }
+                    if (stmt.get("title") != null) {
+                        target.sendTitlePart(TitlePart.TITLE,
+                                LEGACY.deserialize(renderText(node(stmt.get("title")), ctx)));
+                    }
+                }
+                cont.run();
+            }
+            case "sendActionBar" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    target.sendActionBar(LEGACY.deserialize(renderText(node(stmt.get("message")), ctx)));
+                }
+                cont.run();
+            }
+            case "clearTitle" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    if (Boolean.TRUE.equals(stmt.get("reset"))) target.resetTitle();
+                    else target.clearTitle();
+                }
+                cont.run();
+            }
+            case "setBossBarTitle" -> {
+                if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar) {
+                    bar.setTitle(renderText(node(stmt.get("title")), ctx));
+                }
+                cont.run();
+            }
+            case "setBossBarColor" -> {
+                if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar) {
+                    bar.setColor(bossBarColor(str(stmt.get("name"))));
+                }
+                cont.run();
+            }
+            case "setBossBarProgress" -> {
+                // Progress is a fraction the original clamps
+                // to 0..1 (probed: writing 50 reads back 1).
+                Object value = evalExpr(node(stmt.get("value")), ctx);
+                if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar
+                        && value instanceof Number n) {
+                    double d = n.doubleValue();
+                    bar.setProgress(Double.isNaN(d) ? 0.0 : Math.max(0.0, Math.min(1.0, d)));
+                }
+                cont.run();
+            }
+            case "addBossBarViewer" -> {
+                Object viewer = evalExpr(node(stmt.get("viewer")), ctx);
+                if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar
+                        && viewer instanceof Player p) {
+                    bar.addPlayer(p);
+                }
+                cont.run();
+            }
+            case "removeBossBarViewer" -> {
+                Object viewer = evalExpr(node(stmt.get("viewer")), ctx);
+                if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar
+                        && viewer instanceof Player p) {
+                    bar.removePlayer(p);
+                }
                 cont.run();
             }
             case "give" -> {
@@ -2041,6 +2167,7 @@ final class Engine {
         }
         if (value instanceof Player) return "player";
         if (value instanceof OfflinePlayer) return "offline player";
+        if (value instanceof BossBar) return "boss bar";
         if (value instanceof Entity entity) {
             return entity.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
         }
@@ -2233,6 +2360,25 @@ final class Engine {
                 yield t instanceof Player p ? (double) p.getLevel() : null;
             }
             case "lastSpawnedEntity" -> lastSpawned;
+            // Boss bars (phase 21): a bar is a live Bukkit
+            // BossBar value. Creation defaults were probed on
+            // the wire (empty title, progress 1, white, solid);
+            // Bukkit's createBossBar starts at progress 1 with
+            // the given title read as legacy text, matching the
+            // engine's section-string text model.
+            case "bossBar" -> {
+                String title = expr.get("title") != null
+                        ? renderText(node(expr.get("title")), ctx) : "";
+                yield Bukkit.createBossBar(title, bossBarColor(str(expr.get("color"))), BarStyle.SOLID);
+            }
+            case "bossBarTitleOf" -> {
+                Object b = evalExpr(node(expr.get("bar")), ctx);
+                yield b instanceof BossBar bar ? bar.getTitle() : null;
+            }
+            case "bossBarProgressOf" -> {
+                Object b = evalExpr(node(expr.get("bar")), ctx);
+                yield b instanceof BossBar bar ? bar.getProgress() : null;
+            }
             case "eventBlock" -> ctx.eventBlock;
             case "eventItem" -> ctx.eventItem;
             case "clickedEntity" -> ctx.clickedEntity;
@@ -2927,6 +3073,12 @@ final class Engine {
             // Skript's own text form of an inventory value was
             // not probed and no sample prints one).
             return typeNameOf(inv);
+        }
+        if (value instanceof BossBar) {
+            // A boss bar value prints as its type name in this
+            // subset, like an inventory (its title and progress
+            // are read through bossBarTitleOf / bossBarProgressOf).
+            return typeNameOf(value);
         }
         if (value instanceof Entity entity) return typeNameOf(entity);
         if (value instanceof World w) return w.getName();

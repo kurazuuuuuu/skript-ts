@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   add,
   addTo,
+  addBossBarViewer,
   amountOf,
   and,
   argument,
@@ -11,6 +12,9 @@ import {
   attacker,
   blockAt,
   bool,
+  bossBar,
+  bossBarProgressOf,
+  bossBarTitleOf,
   broadcast,
   call,
   callStmt,
@@ -23,6 +27,7 @@ import {
   clickedSlotIndex,
   clockTime,
   closeInventory,
+  clearTitle,
   colored,
   cmdArg,
   command,
@@ -117,14 +122,22 @@ import {
   relativeBlock,
   remainder,
   removeFrom,
+  removeBossBarViewer,
   removePotion,
   replaceAllIn,
   replaceFirstIn,
+  resetTitle,
   returnValue,
   script,
   saturationOf,
   send,
+  sendActionBar,
+  sendSubtitle,
+  sendTitle,
   set,
+  setBossBarColor,
+  setBossBarProgress,
+  setBossBarTitle,
   setBlockAt,
   setDamage,
   setExperience,
@@ -186,6 +199,7 @@ import { guiScript } from "../examples/gui.js";
 import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
 import { commandsScript } from "../examples/commands.js";
+import { displayScript } from "../examples/display.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -239,6 +253,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("commands", () => {
     expect(emit(commandsScript)).toBe(fixture("commands.sk"));
+  });
+  it("display", () => {
+    expect(emit(displayScript)).toBe(fixture("display.sk"));
   });
 });
 
@@ -1639,5 +1656,139 @@ describe("player state and effects (phase 19)", () => {
   });
   it("the state sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(stateScript)).toBe(false);
+  });
+});
+
+describe("display effects and boss bars (phase 21)", () => {
+  it("title sends: full, untimed, stay-only and fade forms", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            sendTitle(player(), str("Hello"), {
+              subtitle: str("World"),
+              fadeIn: { amount: 1, unit: "seconds" },
+              stay: { amount: 5, unit: "seconds" },
+              fadeOut: { amount: 1, unit: "seconds" },
+            }),
+            sendTitle(player(), str("Plain")),
+            sendTitle(player(), str("Stay"), { stay: { amount: 5, unit: "seconds" } }),
+            sendTitle(player(), str("Fades"), {
+              fadeIn: { amount: 10, unit: "ticks" },
+              fadeOut: { amount: 2, unit: "seconds" },
+            }),
+            sendTitle(player(), str("Out"), { fadeOut: { amount: 2, unit: "seconds" } }),
+            sendTitle(player(), str("Long"), { stay: { amount: 2, unit: "minutes" } }),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        '    send title "Hello" with subtitle "World" to player for 5 seconds with fadein 1 seconds and fade out 1 seconds\n' +
+        '    send title "Plain" to player\n' +
+        '    send title "Stay" to player for 5 seconds\n' +
+        '    send title "Fades" to player with fadein 10 ticks and fade out 2 seconds\n' +
+        '    send title "Out" to player with fade out 2 seconds\n' +
+        '    send title "Long" to player for 2 minutes\n',
+    );
+  });
+  it("subtitle-only sends, action bar, clear and reset", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            sendSubtitle(player(), str("Sub")),
+            sendSubtitle(player(), str("Timed Sub"), { stay: { amount: 5, unit: "seconds" } }),
+            sendActionBar(player(), str("Bar")),
+            sendActionBar(player(), fmt("hp=", healthOf(player()))),
+            clearTitle(player()),
+            resetTitle(player()),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        '    send subtitle "Sub" to player\n' +
+        '    send subtitle "Timed Sub" to player for 5 seconds\n' +
+        '    send action bar "Bar" to player\n' +
+        '    send action bar "hp=%health of player%" to player\n' +
+        "    clear title of player\n" +
+        "    reset title of player\n",
+    );
+  });
+  it("title texts are any expression", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            sendTitle(player(), localVar("t")),
+            sendTitle(player(), fmt("Hi ", player())),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    send title {_t} to player\n" +
+        '    send title "Hi %player%" to player\n',
+    );
+  });
+  it("boss bar create forms", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("a"), bossBar()),
+            set(localVar("b"), bossBar({ color: "red" })),
+            set(localVar("c"), bossBar({ title: str("T") })),
+            set(localVar("d"), bossBar({ title: str("T"), color: "blue" })),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_a} to a boss bar\n" +
+        "    set {_b} to a red boss bar\n" +
+        '    set {_c} to a bossbar with title "T"\n' +
+        '    set {_d} to a blue bossbar with title "T"\n',
+    );
+  });
+  it("boss bar property writes, viewers and reads", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            setBossBarTitle(variable("bar"), str("New")),
+            setBossBarColor(variable("bar"), "blue"),
+            setBossBarProgress(variable("bar"), num(0.5)),
+            addBossBarViewer(variable("bar"), player()),
+            removeBossBarViewer(variable("bar"), player()),
+            broadcast(fmt("t=", bossBarTitleOf(variable("bar")), " p=", bossBarProgressOf(variable("bar")))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        '    set title of {bar} to "New"\n' +
+        "    set color of {bar} to blue\n" +
+        "    set progress of {bar} to 0.5\n" +
+        "    add player to viewers of {bar}\n" +
+        "    remove player from viewers of {bar}\n" +
+        '    broadcast "t=%title of {bar}% p=%progress of {bar}%"\n',
+    );
+  });
+  it("api guards: title timings and boss bar colors", () => {
+    expect(() => sendTitle(player(), str("x"), { stay: { amount: -1, unit: "seconds" } })).toThrow(RangeError);
+    expect(() => sendTitle(player(), str("x"), { fadeIn: { amount: Number.NaN, unit: "seconds" } })).toThrow(RangeError);
+    expect(() => sendTitle(player(), str("x"), { fadeOut: { amount: 1, unit: "hours" as never } })).toThrow(RangeError);
+    expect(() => sendSubtitle(player(), str("x"), { stay: { amount: -2, unit: "ticks" } })).toThrow(RangeError);
+    expect(() => bossBar({ color: "orange" as never })).toThrow(RangeError);
+    expect(() => setBossBarColor(variable("bar"), "black" as never)).toThrow(RangeError);
+    // Zero-length timings are valid (an instant fade).
+    expect(emit(script(onJoin([sendTitle(player(), str("x"), { fadeIn: { amount: 0, unit: "ticks" } })])))).toBe(
+      'on join:\n    send title "x" to player with fadein 0 ticks\n',
+    );
+  });
+  it("the display sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(displayScript)).toBe(false);
   });
 });

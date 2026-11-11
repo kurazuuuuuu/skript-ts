@@ -5,6 +5,11 @@ function escapeText(s: string): string {
     return s.replace(/"/g, '""').replace(/%/g, "%%");
 }
 
+/** A literal timespan in the original's text form (`5 seconds`, `100 ticks`); fractional amounts print plainly (probed: `2.5 seconds` parses and lands on 50 ticks). */
+function emitTimespan(t: { amount: number; unit: string }): string {
+    return `${String(t.amount)} ${t.unit}`;
+}
+
 function emitValue(e: Expr): string {
     switch (e.kind) {
         case "player":
@@ -185,6 +190,23 @@ function emitValue(e: Expr): string {
             return `level of ${emitValue(e.target)}`;
         case "lastSpawnedEntity":
             return "last spawned entity";
+        case "bossBar":
+            // The create forms (all probed): plain and color-only
+            // use `a boss bar`; a title uses the one-word
+            // `bossbar ... with title %text%` shape, with or
+            // without a color word in front.
+            if (e.title !== undefined) {
+                return `a ${e.color !== undefined ? `${e.color} ` : ""}bossbar with title ${emitText(e.title)}`;
+            }
+            return `a ${e.color !== undefined ? `${e.color} ` : ""}boss bar`;
+        case "bossBarTitleOf":
+            return e.bar.kind === "arith"
+                ? `title of (${emitValue(e.bar)})`
+                : `title of ${emitValue(e.bar)}`;
+        case "bossBarProgressOf":
+            return e.bar.kind === "arith"
+                ? `progress of (${emitValue(e.bar)})`
+                : `progress of ${emitValue(e.bar)}`;
         case "arith":
             // Arithmetic is always parenthesized so the emitted tree
             // means the same thing regardless of Skript's own
@@ -310,6 +332,9 @@ function emitString(e: Expr): string {
         case "experienceOf":
         case "levelOf":
         case "lastSpawnedEntity":
+        case "bossBar":
+        case "bossBarTitleOf":
+        case "bossBarProgressOf":
             return `%${emitValue(e)}%`;
         case "arith":
             return `%${emitValue(e)}%`;
@@ -543,6 +568,38 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             return [own(`${prefix}send ${emitText(s.message)} to ${emitValue(s.target)}`, path, s.loc)];
         case "broadcast":
             return [own(`${prefix}broadcast ${emitText(s.message)}`, path, s.loc)];
+        case "sendTitle": {
+            // The timing tail comes after the target (probed:
+            // `for` before `to` is a parse error), in stay /
+            // fade-in / fade-out order; the fade-out is joined
+            // with "and" only when a fade-in precedes it.
+            let tail = "";
+            if (s.stay !== undefined) tail += ` for ${emitTimespan(s.stay)}`;
+            if (s.fadeIn !== undefined) tail += ` with fadein ${emitTimespan(s.fadeIn)}`;
+            if (s.fadeOut !== undefined) {
+                tail += s.fadeIn !== undefined
+                    ? ` and fade out ${emitTimespan(s.fadeOut)}`
+                    : ` with fade out ${emitTimespan(s.fadeOut)}`;
+            }
+            const head = s.title !== undefined
+                ? `send title ${emitText(s.title)}${s.subtitle !== undefined ? ` with subtitle ${emitText(s.subtitle)}` : ""} to ${emitValue(s.target)}`
+                : `send subtitle ${emitText(s.subtitle as Expr)} to ${emitValue(s.target)}`;
+            return [own(`${prefix}${head}${tail}`, path, s.loc)];
+        }
+        case "sendActionBar":
+            return [own(`${prefix}send action bar ${emitText(s.message)} to ${emitValue(s.target)}`, path, s.loc)];
+        case "clearTitle":
+            return [own(`${prefix}${s.reset ? "reset" : "clear"} title of ${emitValue(s.target)}`, path, s.loc)];
+        case "setBossBarTitle":
+            return [own(`${prefix}set title of ${emitValue(s.bar)} to ${emitText(s.title)}`, path, s.loc)];
+        case "setBossBarColor":
+            return [own(`${prefix}set color of ${emitValue(s.bar)} to ${s.name}`, path, s.loc)];
+        case "setBossBarProgress":
+            return [own(`${prefix}set progress of ${emitValue(s.bar)} to ${emitValue(s.value)}`, path, s.loc)];
+        case "addBossBarViewer":
+            return [own(`${prefix}add ${emitValue(s.viewer)} to viewers of ${emitValue(s.bar)}`, path, s.loc)];
+        case "removeBossBarViewer":
+            return [own(`${prefix}remove ${emitValue(s.viewer)} from viewers of ${emitValue(s.bar)}`, path, s.loc)];
         case "give":
             return [own(`${prefix}give ${String(s.amount)} ${s.itemName} to ${emitValue(s.target)}`, path, s.loc)];
         case "teleport":

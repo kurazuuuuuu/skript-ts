@@ -1,0 +1,50 @@
+on join:
+    send title "Welcome Title" with subtitle "Welcome Subtitle" to player for 5 seconds with fadein 1 seconds and fade out 1 seconds
+    send action bar "Welcome Action Bar" to player
+
+command /dtplain:
+    trigger:
+        send title "Plain Title" to player
+
+command /dtstay:
+    trigger:
+        send title "Stay Title" to player for 5 seconds
+
+command /dtsub:
+    trigger:
+        send subtitle "Only Subtitle" to player for 5 seconds
+
+command /dtclear:
+    trigger:
+        send title "Clear Me" to player
+        clear title of player
+
+command /dtreset:
+    trigger:
+        send title "Reset Me" to player
+        reset title of player
+
+command /dbar:
+    trigger:
+        send action bar "Action Two" to player
+
+command /dbshow:
+    trigger:
+        set {_bar} to a red bossbar with title "Display Boss"
+        add player to viewers of {_bar}
+        broadcast "boss=%title of {_bar}% p=%progress of {_bar}%"
+        set title of {_bar} to "Boss Renamed"
+        broadcast "boss=%title of {_bar}%"
+        set progress of {_bar} to 0.5
+        broadcast "p=%progress of {_bar}%"
+        set color of {_bar} to blue
+        send "color set" to player
+        remove player from viewers of {_bar}
+        send "hidden" to player
+
+command /dbfresh:
+    trigger:
+        set {_bar} to a boss bar
+        add player to viewers of {_bar}
+        broadcast "fresh p=%progress of {_bar}%"
+        remove player from viewers of {_bar}

@@ -6,6 +6,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.boss.BossBar;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -140,6 +141,12 @@ final class Variables {
             // Runtime-only value (phase 17): an inventory is a live
             // view/container, not data; it is dropped on save like
             // a data source.
+            return null;
+        }
+        if (value instanceof BossBar) {
+            // Runtime-only value (phase 21): a boss bar is a live
+            // server-registered display, not data; it is dropped
+            // on save like an inventory.
             return null;
         }
         if (value instanceof ItemStack stack) {

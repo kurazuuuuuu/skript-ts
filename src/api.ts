@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName, GameModeName } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName, GameModeName, TitleTiming, BossBarColorName } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -2001,4 +2001,192 @@ export function playSound(name: string, at: Expr): Stmt {
     throw new RangeError(`invalid sound name: ${String(name)}`);
   }
   return withLoc({ kind: "playSound", name: name.trim(), at });
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 21): display effects and boss bars
+//
+// Semantics mirror the real Skript 2.17.1, verified against the
+// sandbox server with hand-written probe scripts whose client
+// packets were captured raw (see the development log):
+//
+// - Titles: `send title %object% [with subtitle %object%] to
+//   %player%` plus a timing tail AFTER the target — `for
+//   <timespan>` (the stay), `with fadein <timespan>`, `and fade
+//   out <timespan>`, in any combination. When at least one
+//   timing is given the client receives one times packet with
+//   the unspecified parts filled by the defaults (fade-in 10,
+//   stay 70, fade-out 20 ticks); with no timing at all no times
+//   packet is sent and the client keeps its previous timings.
+//   A subtitle-only send (`send subtitle ...`) shows the
+//   subtitle under whatever title is up (or the next one). The
+//   text slots accept any expression, stringified like a chat
+//   message. `clear title of %player%` hides the title;
+//   `reset title of %player%` also resets the timings.
+// - Action bar: `send action bar %object% to %player%` — one
+//   packet, no timing concept.
+// - Boss bars (core since Skript 2.16): the create expression
+//   `a boss bar` / `a <color> bossbar [with title %text%]`
+//   makes a bar value (fresh: empty title, progress 1, white,
+//   solid). Properties are written with the change forms
+//   (title / color / progress — progress is a fraction 0..1
+//   that the original clamps) and the viewer set with
+//   add/remove; title and progress read back as expressions.
+//   Not offered: keyed bars (the keyed+color+title create form
+//   does not parse even in the original, and keyed bars are
+//   persistent server storage addressed by key), the section
+//   creation form (no section expressions in this subset),
+//   bar styles and the darken-sky / fog / boss-music flags.
+// ---------------------------------------------------------------------------
+
+/** The optional timing parts of a title send (phase 21): literal timespans for the fade-in, the stay (`for ...`) and the fade-out. Unspecified parts are filled with the original's defaults (10 / 70 / 20 ticks) whenever any timing is given. */
+export interface TitleTimingOptions {
+  fadeIn?: TitleTiming;
+  stay?: TitleTiming;
+  fadeOut?: TitleTiming;
+}
+
+/** The options of a title send: an optional subtitle plus the optional timing parts. */
+export interface SendTitleOptions extends TitleTimingOptions {
+  subtitle?: Expr;
+}
+
+function requireTitleTiming(label: string, timing: TitleTiming | undefined): void {
+  if (timing === undefined) return;
+  if (
+    typeof timing.amount !== "number" ||
+    !Number.isFinite(timing.amount) ||
+    timing.amount < 0 ||
+    (timing.unit !== "ticks" && timing.unit !== "seconds" && timing.unit !== "minutes")
+  ) {
+    throw new RangeError(`invalid title ${label} timing: ${JSON.stringify(timing)}`);
+  }
+}
+
+function titleTimingFields(options: TitleTimingOptions): {
+  fadeIn?: TitleTiming;
+  stay?: TitleTiming;
+  fadeOut?: TitleTiming;
+} {
+  requireTitleTiming("fade-in", options.fadeIn);
+  requireTitleTiming("stay", options.stay);
+  requireTitleTiming("fade-out", options.fadeOut);
+  return {
+    ...(options.fadeIn !== undefined ? { fadeIn: options.fadeIn } : {}),
+    ...(options.stay !== undefined ? { stay: options.stay } : {}),
+    ...(options.fadeOut !== undefined ? { fadeOut: options.fadeOut } : {}),
+  };
+}
+
+/**
+ * Construct a send-title statement (`send title <title> [with
+ * subtitle <subtitle>] to <target> [for <stay>] [with fadein
+ * <fadeIn>] [and fade out <fadeOut>]`): show a title (and an
+ * optional subtitle) to a player. With no timing options the
+ * client keeps its previous title timings; with any timing
+ * given, the rest are filled with the defaults (fade-in 10,
+ * stay 70, fade-out 20 ticks) — all probed on the wire.
+ */
+export function sendTitle(target: Expr, title: Expr, options: SendTitleOptions = {}): Stmt {
+  return withLoc({
+    kind: "sendTitle",
+    target,
+    title,
+    ...(options.subtitle !== undefined ? { subtitle: options.subtitle } : {}),
+    ...titleTimingFields(options),
+  });
+}
+
+/**
+ * Construct a subtitle-only send (`send subtitle <subtitle> to
+ * <target> [...]`): set the subtitle under the currently shown
+ * title (or the next one), with the same optional timing tail
+ * as sendTitle. No title packet is sent.
+ */
+export function sendSubtitle(target: Expr, subtitle: Expr, options: TitleTimingOptions = {}): Stmt {
+  return withLoc({
+    kind: "sendTitle",
+    target,
+    subtitle,
+    ...titleTimingFields(options),
+  });
+}
+
+/** Construct a send-action-bar statement (`send action bar <message> to <target>`): show a message in the player's action bar. The message is any expression, stringified like a chat message. */
+export function sendActionBar(target: Expr, message: Expr): Stmt {
+  return withLoc({ kind: "sendActionBar", target, message });
+}
+
+/** Construct a clear-title statement (`clear title of <target>`): hide the title currently shown to the player. The title timings are kept. */
+export function clearTitle(target: Expr): Stmt {
+  return withLoc({ kind: "clearTitle", target, reset: false });
+}
+
+/** Construct a reset-title statement (`reset title of <target>`): hide the title currently shown to the player AND reset its timings to the client's defaults. */
+export function resetTitle(target: Expr): Stmt {
+  return withLoc({ kind: "clearTitle", target, reset: true });
+}
+
+const BOSS_BAR_COLOR_NAMES: ReadonlySet<string> = new Set([
+  "pink", "blue", "red", "green", "yellow", "purple", "white",
+]);
+
+/**
+ * Construct a boss bar creation expression (`a boss bar`, `a
+ * <color> boss bar`, `a bossbar with title <title>`, or `a
+ * <color> bossbar with title <title>`): a new bar value with
+ * an empty title, progress 1, white color and a solid style
+ * unless the options say otherwise. Store it in a LOCAL
+ * variable and add viewers to show it: a bar cannot be saved,
+ * and the original rejects storing one in a persistent
+ * variable at load time. Keyed bars are not offered (see the
+ * section comment).
+ */
+export function bossBar(options: { title?: Expr; color?: BossBarColorName } = {}): Expr {
+  if (options.color !== undefined && !BOSS_BAR_COLOR_NAMES.has(options.color)) {
+    throw new RangeError(`invalid boss bar color name: ${String(options.color)}`);
+  }
+  return {
+    kind: "bossBar",
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(options.color !== undefined ? { color: options.color } : {}),
+  };
+}
+
+/** Construct a set-boss-bar-title statement (`set title of <bar> to <title>`). */
+export function setBossBarTitle(bar: Expr, title: Expr): Stmt {
+  return withLoc({ kind: "setBossBarTitle", bar, title });
+}
+
+/** Construct a set-boss-bar-color statement (`set color of <bar> to <name>`): the color is a literal name. */
+export function setBossBarColor(bar: Expr, name: BossBarColorName): Stmt {
+  if (!BOSS_BAR_COLOR_NAMES.has(name)) {
+    throw new RangeError(`invalid boss bar color name: ${String(name)}`);
+  }
+  return withLoc({ kind: "setBossBarColor", bar, name });
+}
+
+/** Construct a set-boss-bar-progress statement (`set progress of <bar> to <value>`): the value is a fraction (1 is full); the original clamps it to 0..1. */
+export function setBossBarProgress(bar: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "setBossBarProgress", bar, value });
+}
+
+/** Construct an add-boss-bar-viewer statement (`add <viewer> to viewers of <bar>`): show the bar to a player. */
+export function addBossBarViewer(bar: Expr, viewer: Expr): Stmt {
+  return withLoc({ kind: "addBossBarViewer", bar, viewer });
+}
+
+/** Construct a remove-boss-bar-viewer statement (`remove <viewer> from viewers of <bar>`): stop showing the bar to a player. */
+export function removeBossBarViewer(bar: Expr, viewer: Expr): Stmt {
+  return withLoc({ kind: "removeBossBarViewer", bar, viewer });
+}
+
+/** Construct a boss bar title expression: the bar's current title text (`title of %bossbar%`). */
+export function bossBarTitleOf(bar: Expr): Expr {
+  return { kind: "bossBarTitleOf", bar };
+}
+
+/** Construct a boss bar progress expression: the bar's current progress as a fraction (`progress of %bossbar%`; 1 is full). */
+export function bossBarProgressOf(bar: Expr): Expr {
+  return { kind: "bossBarProgressOf", bar };
 }
