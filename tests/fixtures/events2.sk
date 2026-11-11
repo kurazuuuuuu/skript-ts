@@ -1,0 +1,45 @@
+on block break of stone or cobblestone:
+    broadcast "filtered break %type of event-block% by %player%"
+
+on block place of cobblestone:
+    broadcast "filtered place %type of event-block% by %player%"
+
+on damage of player:
+    broadcast "player victim (%damage cause%)"
+
+on damage of player by zombie:
+    broadcast "zombie attack on %victim%"
+
+on damage of zombie:
+    broadcast "zombie victim (%damage cause%)"
+
+on right click on villager:
+    broadcast "entity click %type of clicked entity% / %clicked entity% by %player%"
+
+on right click on stone:
+    broadcast "block click %type of event-block% by %player%"
+
+on left click with stick:
+    broadcast "stick swing on %type of event-block%"
+
+on pick up:
+    broadcast "picked %type of event-item% by %player%"
+
+on pick up of wheat:
+    broadcast "picked filtered %type of event-item%"
+
+on drop:
+    broadcast "dropped %type of event-item% by %player%"
+
+on drop of compass:
+    cancel event
+    broadcast "drop blocked: %type of event-item%"
+
+on respawn:
+    broadcast "%player% respawned"
+
+on bed enter:
+    broadcast "%player% entered bed"
+
+on bed leave:
+    broadcast "%player% left bed"

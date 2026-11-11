@@ -139,6 +139,7 @@ final class Engine {
         Entity victim;      // "victim" in death and damage events (any entity)
         Block eventBlock;   // "event-block" in block break/place/click events; null for air clicks
         ItemStack eventItem; // "event-item" in block break/place/click events
+        Entity clickedEntity; // "clicked entity" in right clicks on an entity; null otherwise
         Entity attacker;    // "attacker" in damage events caused by an entity; null otherwise
         Cancellable cancellable; // the Bukkit event being handled, when it can be cancelled
         EntityDamageEvent damageEvent; // the live damage event (damage get/set); null elsewhere
@@ -163,6 +164,7 @@ final class Engine {
             c.victim = victim;
             c.eventBlock = eventBlock;
             c.eventItem = eventItem;
+            c.clickedEntity = clickedEntity;
             c.attacker = attacker;
             c.cancellable = cancellable;
             c.damageEvent = damageEvent;
@@ -384,8 +386,47 @@ final class Engine {
             if (!"event".equals(kind(top))) continue;
             String ev = str(top.get("event"));
             boolean match = ev.equals(event) || (firstJoin && "join".equals(event) && "firstJoin".equals(ev));
-            if (match) execBlock(list(top.get("body")), ctx);
+            if (match && filterMatches(top, ctx)) execBlock(list(top.get("body")), ctx);
         }
+    }
+
+    /**
+     * The filtered event forms (phase 16): a handler carrying an
+     * IR "filter" runs only when every filtered slot matches the
+     * event's values by Skript type name — the engine counterpart
+     * of Skript's own "on break of stone" header matching. A slot
+     * whose value the event does not have (an attacker filter on
+     * environmental damage, a block filter on an air click) never
+     * matches. The "of" slot reads the block for break/place and
+     * the item for pickup/drop, mirroring the headers.
+     */
+    private boolean filterMatches(Map<String, Object> top, Ctx ctx) {
+        if (!(top.get("filter") instanceof Map<?, ?> filter)) return true;
+        String ev = str(top.get("event"));
+        if (filter.get("ofTypes") instanceof List<?> names) {
+            Object value = ("pickup".equals(ev) || "drop".equals(ev)) ? ctx.eventItem : ctx.eventBlock;
+            if (!typeListMatches(names, value)) return false;
+        }
+        if (filter.get("victimTypes") instanceof List<?> names && !typeListMatches(names, ctx.victim)) return false;
+        if (filter.get("attackerTypes") instanceof List<?> names && !typeListMatches(names, ctx.attacker)) return false;
+        if (filter.get("onTypes") instanceof List<?> names && !typeListMatches(names, ctx.eventBlock)) return false;
+        if (filter.get("onEntityTypes") instanceof List<?> names && !typeListMatches(names, ctx.clickedEntity)) return false;
+        if (filter.get("withTypes") instanceof List<?> names && !typeListMatches(names, ctx.eventItem)) return false;
+        return true;
+    }
+
+    /** Whether the value's Skript type name is one of the filter's names (compared in the same normalized form). */
+    private static boolean typeListMatches(List<?> names, Object value) {
+        if (value == null) return false;
+        String actual = typeNameOf(value);
+        if (actual == null) return false;
+        for (Object name : names) {
+            if (name instanceof String s
+                    && s.trim().toLowerCase(Locale.ROOT).replace('_', ' ').equals(actual)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** All placeholder prefixes (expansion identifiers) the loaded program serves, in declaration order. */
@@ -1411,6 +1452,7 @@ final class Engine {
             }
             case "eventBlock" -> ctx.eventBlock;
             case "eventItem" -> ctx.eventItem;
+            case "clickedEntity" -> ctx.clickedEntity;
             case "attacker" -> ctx.attacker;
             case "damageAmount" -> ctx.damageEvent == null ? null : ctx.damageEvent.getDamage();
             case "damageCause" -> ctx.damageEvent == null

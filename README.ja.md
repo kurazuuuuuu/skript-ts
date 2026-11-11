@@ -54,9 +54,10 @@ on join:
 スポーンコマンド）、エンジン内蔵機能ごとのサンプル、コア言語
 （比較・論理・算術）の `logic.ts`、リスト変数・拡張ループ・
 `while`・`wait` の `lists.ts`、カスタム関数の `functions.ts`、
-そしてゲームプレイイベント（ブロック破壊／設置、クリック、
-ダメージ）の `gameplay.ts` です。ゴールデンテストのフィクスチャ
-も兼ねています。
+ゲームプレイイベント（ブロック破壊／設置、クリック、
+ダメージ）の `gameplay.ts`、イベントフィルタと取得／
+ドロップ／リスポーン／就寝イベントの `events2.ts` です。
+ゴールデンテストのフィクスチャも兼ねています。
 
 ## 対応サブセット（SPEC、v0）
 
@@ -75,6 +76,11 @@ on join:
 | `onRightClick` | `on right click:` |
 | `onLeftClick` | `on left click:` |
 | `onDamage` | `on damage:` |
+| `onPickup` | `on pick up:` |
+| `onDrop` | `on drop:` |
+| `onRespawn` | `on respawn:` |
+| `onBedEnter` | `on bed enter:` |
+| `onBedLeave` | `on bed leave:` |
 
 ### コマンド
 `command(name, argType, body, argOptional?)` — 引数は最大 **1つ**。
@@ -335,12 +341,12 @@ wait）、`examples/behavior/functions.behavior.ts` が両ランタイムで
 
 ゲームプレイイベントはコア言語です。同じスクリプトが Skript
 （出力された `.sk`）でもエンジン jar（独自の Bukkit リスナー
-から発火）でも動きます。いずれも**フィルタなしの形**であり、
-Skript のフィルタ付き形（`on break of stone:`、`on damage of
-player by zombie:`）はこのスライスの範囲外です。汎用の
-`on click:`（右／左のペアでカバーします）とブロックダメージ
-イベント（Skript 自身のドキュメントが左クリックイベントを
-案内しています）も同様です。
+から発火）でも動きます。このスライスは**フィルタなしの形**
+であり、Skript のフィルタ付き形（`on break of stone:`、
+`on damage of player by zombie:`）と次のイベント群は次の節
+です。汎用の `on click:`（右／左のペアでカバーします）と
+ブロックダメージイベント（Skript 自身のドキュメントが
+左クリックイベントを案内しています）は含みません。
 
 イベント値（本家 Skript 2.17.1 へのプローブと振る舞いテストで
 裏取り済み）：
@@ -398,6 +404,90 @@ player by zombie:`）はこのスライスの範囲外です。汎用の
 置く・クリックする・戦わせ、メッセージと結果のワールド状態
 （ブロックが消えたか残ったか、体力が減ったか否か）の両方を
 両ランタイムで検証します。
+
+### イベントフィルタと追加イベント
+
+フィルタ付きイベント形もコア言語です。クリック対象
+エンティティの値と、取得・ドロップ・リスポーン・就寝／
+起床の5イベントが加わります。以下はいずれも本家
+Skript 2.17.1 で裏取り済みです。ヘッダの形はプローブ
+スクリプトで読み込み時に、一致の仕方はサンドボックスの
+モブ同士の戦闘を観察して、全セットは mineflayer 振る舞い
+テストで両ランタイムとも確認しました。
+
+**フィルタ。** イベントビルダーの末尾に付けるオプション
+オブジェクトです。Skript のフィルタ付きヘッダは実行時の
+式ではなくスクリプト本文中の**リテラルな型リスト**なので、
+フィルタの値は型の**名前**を文字列（1つ、または配列）で
+渡します。式にはしません（式にすると「ヘッダに変数が
+書ける」という嘘の約束になります）。スロット名はヘッダ
+の位置に対応します：
+
+- `onBlockBreak(body, { block })` / `onBlockPlace` —
+  `of` スロット： `on block break of stone or cobblestone:`
+- `onDamage(body, { victim, attacker })` — `of` と `by`：
+  `on damage of player by zombie:`。片側だけのフィルタも
+  可能で、`by` のみ（`on damage by zombie:`）がパース
+  できて動くことは API を許可する前にプローブで確定済み
+  です。
+- `onRightClick` / `onLeftClick(body, { block, entity, item })`
+  — `on`（クリックしたブロック、またはクリックした
+  エンティティ。両方の同時指定は拒否）と `with`（手の
+  アイテム）： `on right click on villager:`、
+  `on left click with stick:`
+- `onPickup` / `onDrop(body, { item })` —
+  `on pick up of wheat:`、`on drop of egg or compass:`
+
+一致は Skript の型名で行います。`typeOf()` が印字し、
+`item("...")` リテラルが使う名前（`stone`、`grass block`、
+`zombie`、`player`）と同じです。リストはヘッダ内で
+`a or b`、`a, b or c` と接続します。指定したスロットは
+全て一致する必要があり、イベントに値が無いスロットは
+決して一致しません（落下ダメージに攻撃者フィルタは
+沈黙し、空へのクリックにブロックフィルタは沈黙します）。
+エンジンも発火時に Bukkit の値へ同じ規則を適用します。
+
+**クリック対象エンティティ。** `clickedEntity()` は右
+クリックが相互作用したエンティティ（Skript の
+`clicked entity`）で、ブロックや空へのクリックでは値を
+持ちません。エンティティへの右クリックにはクリックした
+ブロックはなく、手のアイテムは従来通り `eventItem()` です。
+
+**追加イベント** はいずれも Skript の裸のヘッダと同じ
+**プレイヤーの形**です。裸の `on pick up` / `on drop` が
+モブでは発火しないことは実地で確認済みです（小麦を拾った
+ゾンビでは明示形の `entity pick up` だけが発火しました。
+この明示形はサブセット外です）。エンジンもプレイヤー
+以外の取得をディスパッチしません：
+
+- `onPickup` — プレイヤーがアイテムを拾う。
+  `eventItem()` がそのスタックで、`cancelEvent()` で
+  取得を拒否できます。
+- `onDrop` — プレイヤーがアイテムを落とす。
+  `cancelEvent()` でアイテムはインベントリに残ります
+  （振る舞いテストは同じコンパスを2回投げて、一度も
+  手を離れなかったことを証明します）。
+- `onRespawn` — プレイヤーのリスポーン。**キャンセル
+  不可**です（Skript は内部の `cancel event` をパース
+  時点で拒否します）。
+- `onBedEnter` / `onBedLeave` — `eventBlock()` がベッド
+  です。就寝はキャンセル可、起床は不可です。
+
+釣りは意図的に入れていません。Skript 2.17 は状態別の
+サブイベント（cast / caught / hooked / bite / escape /
+...）に分かれており、それ自体が設計面であることと、
+bite のタイミングがランダムで振る舞いテストが不安定に
+なるためです。死亡のフィルタ（`on death of zombie:`）も
+入れていません。このサブセットの死亡イベントは
+プレイヤー専用ですが Skript 側は全エンティティ対象で、
+被害者フィルタを付けるとエンジン側が持ち得ない意味論を
+約束してしまうためです。
+
+`examples/events2.ts` がこれら全てを使います（フィルタ
+付きの破壊・設置・クリック・ダメージ報告、小麦だけを
+拾い分ける取得、落とせないコンパス、リスポーンと就寝）
+— `examples/behavior/events2.behavior.ts` が両ランタイムで
+ボットを駆動して検証します。
 
 ### テキスト操作
 

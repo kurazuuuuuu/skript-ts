@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit, EventFilter } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -554,9 +554,10 @@ export function onDeath(body: readonly Stmt[]): TopLevel {
 // sandbox server with hand-written probe scripts and mineflayer
 // behavior tests (see the development log):
 //
-// - Each event is the unfiltered form ("on block break", "on
-//   damage"); Skript's filtered forms ("on break of stone",
-//   "on damage of player by zombie") are not part of this slice.
+// - Each event starts as the unfiltered form ("on block break",
+//   "on damage"); Skript's filtered forms ("on break of stone",
+//   "on damage of player by zombie") arrived in phase 16 — see
+//   the filter options on the builders below.
 // - eventBlock() is the block the event is about; a click into
 //   air has no block. eventItem() is the item in the player's
 //   hand for click events and the item being placed for place
@@ -581,29 +582,184 @@ export function onDeath(body: readonly Stmt[]): TopLevel {
 //   what a block or item is. A missing value has no type.
 // ---------------------------------------------------------------------------
 
-/** Construct an on-block-break event: a player breaks a block. */
-export function onBlockBreak(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "blockBreak", body });
+/** Construct an on-block-break event: a player breaks a block. The optional filter restricts it to the named block types ("on break of stone"). */
+export function onBlockBreak(body: readonly Stmt[], filter?: BlockEventFilter): TopLevel {
+  return withLoc(eventWithFilter("blockBreak", body, blockFilter(filter, "onBlockBreak")));
 }
 
-/** Construct an on-block-place event: a player places a block. */
-export function onBlockPlace(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "blockPlace", body });
+/** Construct an on-block-place event: a player places a block. The optional filter restricts it to the named block types ("on place of stone"). */
+export function onBlockPlace(body: readonly Stmt[], filter?: BlockEventFilter): TopLevel {
+  return withLoc(eventWithFilter("blockPlace", body, blockFilter(filter, "onBlockPlace")));
 }
 
-/** Construct an on-right-click event: a player right-clicks a block, an entity, or air. */
-export function onRightClick(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "rightClick", body });
+/** Construct an on-right-click event: a player right-clicks a block, an entity, or air. The optional filter restricts it by clicked block, clicked entity and/or held item ("on right click on a villager with a stick"). */
+export function onRightClick(body: readonly Stmt[], filter?: ClickEventFilter): TopLevel {
+  return withLoc(eventWithFilter("rightClick", body, clickFilter(filter, "onRightClick")));
 }
 
-/** Construct an on-left-click event: a player left-clicks a block or air (attacking an entity is the damage event, not a click). */
-export function onLeftClick(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "leftClick", body });
+/** Construct an on-left-click event: a player left-clicks a block or air (attacking an entity is the damage event, not a click). The optional filter restricts it like onRightClick's. */
+export function onLeftClick(body: readonly Stmt[], filter?: ClickEventFilter): TopLevel {
+  return withLoc(eventWithFilter("leftClick", body, clickFilter(filter, "onLeftClick")));
 }
 
-/** Construct an on-damage event: an entity takes damage from any cause. */
-export function onDamage(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "damage", body });
+/** Construct an on-damage event: an entity takes damage from any cause. The optional filter restricts it by victim and/or attacker type ("on damage of player by zombie"; either side may be filtered alone). */
+export function onDamage(body: readonly Stmt[], filter?: DamageEventFilter): TopLevel {
+  requireFilterKeys(filter, ["victim", "attacker"], "onDamage");
+  const f: EventFilter = {};
+  if (filter?.victim !== undefined) f.victimTypes = requireTypeNames(filter.victim, "victim");
+  if (filter?.attacker !== undefined) f.attackerTypes = requireTypeNames(filter.attacker, "attacker");
+  return withLoc(eventWithFilter("damage", body, f));
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 16): filtered event forms, the clicked
+// entity, and more events — pickup, drop, respawn, bed enter /
+// leave.
+//
+// Filter design: Skript's filtered headers are literal type
+// lists in the script text, not runtime expressions, so the TS
+// API takes the type NAMES as plain strings (one name or an
+// array) in a trailing options object whose keys name the
+// header slots — { block } for "of <blocks>" on break/place,
+// { victim, attacker } for "of <victims> by <attackers>" on
+// damage, { block, entity, item } for "on <blocks/entities>
+// with <items>" on clicks, { item } for "of <items>" on
+// pickup/drop. An Expr-based filter would falsely promise that
+// variables work in a header. Matching is by Skript type name —
+// the same names typeOf() prints and item("...") literals use
+// ("stone", "grass block", "zombie", "player"). Every slot
+// present must match; a slot whose value the event lacks (an
+// attacker filter on fall damage) never matches. Probed against
+// the real Skript 2.17.1 (development log, phase 16): all of
+// these header shapes parse — including a by-only damage filter
+// and both orders of the click on/with combination — and the
+// filters match by Bukkit entity/material type at runtime.
+//
+// The new events are the player forms, like Skript's bare
+// headers: the bare "on pick up" / "on drop" do NOT fire for
+// mobs (verified live — a zombie picking up wheat fired only
+// Skript's explicit "entity pick up" variant, which is not in
+// this subset). Inside pickup/drop, eventItem() is the item
+// stack involved and player() the picker/dropper. Respawn is
+// NOT cancellable (Skript rejects "cancel event" inside it at
+// parse time); bed enter is, bed leave is not. Inside the bed
+// events eventBlock() is the bed. Fishing is deliberately not
+// here: Skript 2.17 splits it into state sub-events (cast /
+// caught / hooked / bite / escape / ...) — a design surface of
+// its own — and its bite timing is random, which makes for
+// flaky behavior tests.
+// ---------------------------------------------------------------------------
+
+/** A Skript type name ("stone", "zombie") or a list of names, for one event filter slot. */
+export type TypeNameFilter = string | readonly string[];
+
+/** Filter options for onBlockBreak / onBlockPlace: the block types of the "of" slot. */
+export interface BlockEventFilter {
+  block?: TypeNameFilter;
+}
+
+/** Filter options for onDamage: the victim types of the "of" slot and the attacker types of the "by" slot. */
+export interface DamageEventFilter {
+  victim?: TypeNameFilter;
+  attacker?: TypeNameFilter;
+}
+
+/** Filter options for onRightClick / onLeftClick: the clicked block types ("on"), the clicked entity types ("on") and the held item types ("with"). Block and entity are mutually exclusive — a click has either a block or an entity target. */
+export interface ClickEventFilter {
+  block?: TypeNameFilter;
+  entity?: TypeNameFilter;
+  item?: TypeNameFilter;
+}
+
+/** Filter options for onPickup / onDrop: the item types of the "of" slot. */
+export interface ItemEventFilter {
+  item?: TypeNameFilter;
+}
+
+function requireTypeNames(value: TypeNameFilter, slot: string): readonly string[] {
+  const names = typeof value === "string" ? [value] : [...value];
+  if (names.length === 0) {
+    throw new RangeError(`event filter "${slot}" must name at least one type`);
+  }
+  for (const name of names) {
+    if (typeof name !== "string" || name.trim() === "") {
+      throw new RangeError(`event filter "${slot}" contains an empty type name`);
+    }
+  }
+  return names;
+}
+
+function requireFilterKeys(
+  opts: object | undefined,
+  allowed: readonly string[],
+  what: string,
+): void {
+  if (opts === undefined) return;
+  for (const key of Object.keys(opts)) {
+    if (!allowed.includes(key)) {
+      throw new RangeError(`${what} has no "${key}" filter slot`);
+    }
+  }
+}
+
+function eventWithFilter(
+  event: "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage" | "pickup" | "drop",
+  body: readonly Stmt[],
+  filter: EventFilter,
+): TopLevel {
+  return Object.keys(filter).length === 0
+    ? { kind: "event", event, body }
+    : { kind: "event", event, body, filter };
+}
+
+function blockFilter(filter: BlockEventFilter | undefined, what: string): EventFilter {
+  requireFilterKeys(filter, ["block"], what);
+  const f: EventFilter = {};
+  if (filter?.block !== undefined) f.ofTypes = requireTypeNames(filter.block, "block");
+  return f;
+}
+
+function clickFilter(filter: ClickEventFilter | undefined, what: string): EventFilter {
+  requireFilterKeys(filter, ["block", "entity", "item"], what);
+  if (filter?.block !== undefined && filter?.entity !== undefined) {
+    throw new RangeError(`${what}: a click filter cannot name both a block and an entity target`);
+  }
+  const f: EventFilter = {};
+  if (filter?.block !== undefined) f.onTypes = requireTypeNames(filter.block, "block");
+  if (filter?.entity !== undefined) f.onEntityTypes = requireTypeNames(filter.entity, "entity");
+  if (filter?.item !== undefined) f.withTypes = requireTypeNames(filter.item, "item");
+  return f;
+}
+
+/** Construct an on-pickup event: a player picks up an item from the ground. The optional filter restricts it to the named item types ("on pick up of wheat"). */
+export function onPickup(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+  requireFilterKeys(filter, ["item"], "onPickup");
+  const f: EventFilter = {};
+  if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
+  return withLoc(eventWithFilter("pickup", body, f));
+}
+
+/** Construct an on-drop event: a player drops an item from their inventory. The optional filter restricts it to the named item types ("on drop of an egg"); cancelling it keeps the item. */
+export function onDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+  requireFilterKeys(filter, ["item"], "onDrop");
+  const f: EventFilter = {};
+  if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
+  return withLoc(eventWithFilter("drop", body, f));
+}
+
+/** Construct an on-respawn event: a player respawns after death. Not cancellable. */
+export function onRespawn(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "respawn", body });
+}
+
+/** Construct an on-bed-enter event: a player gets into a bed. eventBlock() is the bed; the event is cancellable. */
+export function onBedEnter(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "bedEnter", body });
+}
+
+/** Construct an on-bed-leave event: a player gets out of a bed. eventBlock() is the bed; the event is not cancellable. */
+export function onBedLeave(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "bedLeave", body });
 }
 
 /** Construct an event-block expression: the block of a block break / place / click event (no value for air clicks). */
@@ -619,6 +775,11 @@ export function eventItem(): Expr {
 /** Construct an attacker expression: the entity that caused a damage event (no value for environmental damage). */
 export function attacker(): Expr {
   return { kind: "attacker" };
+}
+
+/** Construct a clicked-entity expression: the entity a right click interacted with (no value for block or air clicks). */
+export function clickedEntity(): Expr {
+  return { kind: "clickedEntity" };
 }
 
 /** Construct a damage-amount expression: the current damage of the damage event being handled. */

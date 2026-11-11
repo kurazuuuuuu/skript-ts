@@ -88,6 +88,9 @@ export type Expr =
   | { kind: "damageAmount" }
   | { kind: "damageCause" }
   | { kind: "typeOf"; target: Expr }
+  // Core-language event value (phase 16): the entity a right
+  // click interacted with. No value for block or air clicks.
+  | { kind: "clickedEntity" }
   // Core-language text operations (phase 15). All semantics were
   // probed against the real Skript 2.17.1 in the sandbox (see the
   // development log for the probe rounds):
@@ -337,13 +340,39 @@ export type Stmt =
   // handler never sets a result resolves to no value.
   | { kind: "setPlaceholderResult"; text: TextExpr; loc?: SourceLoc };
 
-/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14). */
+/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16. */
 export type EventKind =
   | "join" | "firstJoin" | "quit" | "chat" | "death"
   | "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage"
+  | "pickup" | "drop" | "respawn" | "bedEnter" | "bedLeave"
   | "wsOpen" | "wsMessage" | "wsClose"
   | "timerTick" | "timerComplete"
   | "papiRequest";
+
+/**
+ * A Skript event filter (phase 16): the type-name lists of the
+ * filtered event forms — "on break of stone", "on damage of
+ * player by zombie", "on right click on a villager with a
+ * stick". A field is present only when that slot is filtered;
+ * the handler runs only when every present slot matches the
+ * event's actual value, compared by Skript type name (the name
+ * typeOf would print). A slot whose value the event does not
+ * have (an attacker filter on environmental damage, a block
+ * filter on an air click) never matches. Slots by event:
+ * - ofTypes: block break / place (the block), pickup / drop
+ *   (the item)
+ * - victimTypes / attackerTypes: damage
+ * - onTypes / onEntityTypes / withTypes: clicks (the clicked
+ *   block / the clicked entity / the item in hand)
+ */
+export interface EventFilter {
+  ofTypes?: readonly string[];
+  victimTypes?: readonly string[];
+  attackerTypes?: readonly string[];
+  onTypes?: readonly string[];
+  onEntityTypes?: readonly string[];
+  withTypes?: readonly string[];
+}
 
 /** Represents a Skript command argument type. */
 export type CommandArgType = "text" | "player" | "integer";
@@ -352,7 +381,8 @@ export type CommandArgType = "text" | "player" | "integer";
 export type TopLevel =
   // `prefixes` is set only for the papiRequest event (phase 10): the
   // PlaceholderAPI expansion identifiers this handler serves.
-  | { kind: "event"; event: EventKind; body: readonly Stmt[]; prefixes?: readonly string[]; loc?: SourceLoc }
+  // `filter` is set only for filtered gameplay events (phase 16).
+  | { kind: "event"; event: EventKind; body: readonly Stmt[]; prefixes?: readonly string[]; filter?: EventFilter; loc?: SourceLoc }
   | { kind: "command"; name: string; argType: CommandArgType | null; argOptional: boolean; body: readonly Stmt[]; loc?: SourceLoc }
   // A custom function (phase 13). `returnType` is null for a void
   // function (no `:: type` in the .sk form). Functions are global:

@@ -14,10 +14,16 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerBedEnterEvent;
+import org.bukkit.event.player.PlayerBedLeaveEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -407,6 +413,76 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         ctx.eventItem = normalizeItem(event.getItem());
         ctx.cancellable = event;
         engine.fireEvent(kind, ctx, false);
+    }
+
+    @EventHandler
+    public void onInteractEntity(PlayerInteractEntityEvent event) {
+        // Right-clicking an entity has no clicked block; the
+        // target travels as the clicked-entity value instead. The
+        // event fires once per hand like the block interact
+        // event, and only the main hand counts. (The "at entity"
+        // variant for armor stands is a subclass and lands here
+        // too.)
+        if (event.getHand() != EquipmentSlot.HAND) return;
+        Player player = event.getPlayer();
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventItem = normalizeItem(player.getInventory().getItemInMainHand());
+        ctx.clickedEntity = event.getRightClicked();
+        ctx.cancellable = event;
+        engine.fireEvent("rightClick", ctx, false);
+    }
+
+    // ------------------------------------------------------------------
+    // More events (phase 16): pickup, drop, respawn, bed enter /
+    // leave — the player forms, matching Skript's bare headers.
+    // ------------------------------------------------------------------
+
+    @EventHandler
+    public void onPickup(EntityPickupItemEvent event) {
+        // Only player pickups are dispatched: Skript's bare
+        // "on pick up" does not fire for mobs (verified live — a
+        // zombie taking wheat fired only the explicit "entity
+        // pick up" variant, which is outside this subset).
+        if (!(event.getEntity() instanceof Player player)) return;
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventItem = event.getItem().getItemStack();
+        ctx.cancellable = event;
+        engine.fireEvent("pickup", ctx, false);
+    }
+
+    @EventHandler
+    public void onDrop(PlayerDropItemEvent event) {
+        Player player = event.getPlayer();
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventItem = event.getItemDrop().getItemStack();
+        ctx.cancellable = event;
+        engine.fireEvent("drop", ctx, false);
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        // No cancellable is packed: Skript rejects "cancel event"
+        // inside an on-respawn handler at parse time ("An on
+        // respawn event cannot be cancelled"), and Bukkit's
+        // respawn event is not cancellable either — a cancel in
+        // an engine handler is the established no-op.
+        engine.fireEvent("respawn", baseCtx(event.getPlayer()), false);
+    }
+
+    @EventHandler
+    public void onBedEnter(PlayerBedEnterEvent event) {
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.eventBlock = event.getBed();
+        ctx.cancellable = event;
+        engine.fireEvent("bedEnter", ctx, false);
+    }
+
+    @EventHandler
+    public void onBedLeave(PlayerBedLeaveEvent event) {
+        // PlayerBedLeaveEvent is not cancellable in Bukkit.
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.eventBlock = event.getBed();
+        engine.fireEvent("bedLeave", ctx, false);
     }
 
     @EventHandler

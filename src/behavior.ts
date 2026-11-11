@@ -51,6 +51,20 @@ export interface BehaviorBot {
   attackPlayer(username: string): Promise<void>;
   /** Current health (20 is full). */
   health(): number;
+  // Phase 16 controls: entity interaction, item tossing and
+  // sleeping — enough to exercise the pickup / drop / bed events.
+  /** Right-click the nearest visible entity with this Minecraft name (e.g. "villager"). */
+  activateEntityByName(entityName: string, timeoutMs?: number): Promise<void>;
+  /** Toss one stack of the named inventory item onto the ground (a player drop). */
+  tossItem(itemName: string): Promise<void>;
+  /** Poll until no inventory item with this name remains. Throws on timeout. */
+  expectNoInventoryItem(itemName: string, timeoutMs?: number): Promise<void>;
+  /** Sleep in the bed block at the coordinates. */
+  sleepAt(x: number, y: number, z: number): Promise<void>;
+  /** Get out of bed. */
+  wake(): Promise<void>;
+  /** Close an open container window (e.g. a villager's trade screen after a right click), if any. */
+  closeWindow(): void;
 }
 
 export interface BehaviorContext {
@@ -95,7 +109,15 @@ class MineflayerBehaviorBot implements BehaviorBot {
     this.bot.on("messagestr", (raw) => {
       const msg = stripColor(raw);
       this.messages.push(msg);
-      if (this.messages.length > 200) this.messages.shift();
+      // Retention must far exceed any test's message volume:
+      // behavior tests delimit expectations by INDEX into this
+      // array ("marks"), and dropping entries from the front
+      // silently invalidates every outstanding mark — with the
+      // old 200 cap, ambient broadcast spam (the sandbox's mobs
+      // hurting each other, reported by the damage sample) filled
+      // the buffer mid-test and later waits timed out on messages
+      // that had in fact arrived (phase 16, events2 pickup).
+      if (this.messages.length > 100_000) this.messages.shift();
       for (const w of this.waiters.slice()) {
         const hit = typeof w.pattern === "string" ? msg.includes(w.pattern) : w.pattern.test(msg);
         if (hit) {
@@ -246,6 +268,66 @@ class MineflayerBehaviorBot implements BehaviorBot {
 
   health(): number {
     return this.bot.health;
+  }
+
+  async activateEntityByName(entityName: string, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const entity = Object.values(this.bot.entities).find((e) => e.name === entityName);
+      if (entity !== undefined) {
+        await this.bot.lookAt(entity.position.offset(0, 1, 0));
+        this.bot.activateEntity(entity);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`timed out after ${timeoutMs}ms waiting for a visible "${entityName}" entity`);
+      }
+      await sleep(250);
+    }
+  }
+
+  async tossItem(itemName: string): Promise<void> {
+    const found = (this.bot.inventory?.items() ?? []).find((it) => it.name === itemName);
+    if (found === undefined) {
+      const names = (this.bot.inventory?.items() ?? []).map((it) => it.name).join(", ") || "(empty)";
+      throw new Error(`cannot toss "${itemName}": not in inventory (${names})`);
+    }
+    await this.bot.tossStack(found);
+  }
+
+  async expectNoInventoryItem(itemName: string, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const items = this.bot.inventory?.items() ?? [];
+      if (!items.some((it) => it.name === itemName)) return;
+      if (Date.now() >= deadline) {
+        const names = items.map((it) => `${it.name} x${it.count}`).join(", ") || "(empty)";
+        throw new Error(`timed out after ${timeoutMs}ms waiting for "${itemName}" to leave the inventory; inventory: ${names}`);
+      }
+      await sleep(250);
+    }
+  }
+
+  async sleepAt(x: number, y: number, z: number): Promise<void> {
+    const block = this.blockAt(x, y, z);
+    if (block === null) {
+      throw new Error(`no bed block at ${x}, ${y}, ${z}`);
+    }
+    await this.bot.sleep(block);
+  }
+
+  async wake(): Promise<void> {
+    await this.bot.wake();
+  }
+
+  closeWindow(): void {
+    if (this.bot.currentWindow) {
+      try {
+        this.bot.closeWindow(this.bot.currentWindow);
+      } catch {
+        // the window may already be gone server-side
+      }
+    }
   }
 }
 

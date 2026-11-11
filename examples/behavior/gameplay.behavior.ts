@@ -98,6 +98,12 @@ export default defineBehavior(async (t) => {
     await t.console("fill 198 -60 198 202 -56 202 air");
     await t.console("tp GameBot 200.5 -60 200.5");
     await t.sleep(600);
+    // Sweep leftover item entities off the platform: earlier
+    // tests leave death scatter behind (and the air fill above
+    // can pop a leftover bed into an item). Picking one up
+    // would change what the hand "holds" in the expectations
+    // below — this once made the first dig report a white bed.
+    await t.console("kill @e[type=minecraft:item,x=198,y=-61,z=198,dx=4,dy=4,dz=4]");
     const pos = bot.position();
     const bx = Math.floor(pos.x);
     const by = Math.floor(pos.y);

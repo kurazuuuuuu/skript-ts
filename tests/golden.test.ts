@@ -13,6 +13,7 @@ import {
   cancelEvent,
   charAt,
   chatMessage,
+  clickedEntity,
   colored,
   command,
   contains,
@@ -61,15 +62,20 @@ import {
   not,
   notEquals,
   num,
+  onBedEnter,
+  onBedLeave,
   onBlockBreak,
   onBlockPlace,
   onChat,
   onDamage,
   onDeath,
+  onDrop,
   onFirstJoin,
   onJoin,
   onLeftClick,
+  onPickup,
   onQuit,
+  onRespawn,
   onRightClick,
   or,
   param,
@@ -111,6 +117,7 @@ import { listsScript } from "../examples/lists.js";
 import { functionsScript } from "../examples/functions.js";
 import { gameplayScript } from "../examples/gameplay.js";
 import { textScript } from "../examples/text.js";
+import { events2Script } from "../examples/events2.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -149,6 +156,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("text", () => {
     expect(emit(textScript)).toBe(fixture("text.sk"));
+  });
+  it("events2", () => {
+    expect(emit(events2Script)).toBe(fixture("events2.sk"));
   });
 });
 
@@ -238,6 +248,105 @@ describe("gameplay events (phase 14)", () => {
         script(
           onDamage([cancelEvent(), setDamage(damageAmount())]),
           onBlockBreak([broadcast(fmt(typeOf(eventBlock()), " ", damageCause()))]),
+        ),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("event filters and more events (phase 16)", () => {
+  const body = [broadcast(str("x"))];
+  it("filtered block headers", () => {
+    expect(emit(script(onBlockBreak(body, { block: "stone" })))).toBe(
+      'on block break of stone:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onBlockBreak(body, { block: ["stone", "dirt"] })))).toBe(
+      'on block break of stone or dirt:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onBlockPlace(body, { block: ["stone", "dirt", "gravel"] })))).toBe(
+      'on block place of stone, dirt or gravel:\n    broadcast "x"\n',
+    );
+  });
+  it("filtered damage headers: victim, attacker, or both", () => {
+    expect(emit(script(onDamage(body, { victim: "player" })))).toBe(
+      'on damage of player:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onDamage(body, { attacker: "zombie" })))).toBe(
+      'on damage by zombie:\n    broadcast "x"\n',
+    );
+    expect(
+      emit(script(onDamage(body, { victim: "player", attacker: ["zombie", "skeleton"] }))),
+    ).toBe('on damage of player by zombie or skeleton:\n    broadcast "x"\n');
+  });
+  it("filtered click headers: block, entity and held item slots", () => {
+    expect(emit(script(onRightClick(body, { block: "stone" })))).toBe(
+      'on right click on stone:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onRightClick(body, { entity: "villager" })))).toBe(
+      'on right click on villager:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onRightClick(body, { block: "stone", item: "stick" })))).toBe(
+      'on right click on stone with stick:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onLeftClick(body, { item: "stick" })))).toBe(
+      'on left click with stick:\n    broadcast "x"\n',
+    );
+  });
+  it("pickup, drop, respawn and bed headers", () => {
+    expect(emit(script(onPickup(body)))).toBe('on pick up:\n    broadcast "x"\n');
+    expect(emit(script(onPickup(body, { item: "wheat" })))).toBe(
+      'on pick up of wheat:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onDrop(body)))).toBe('on drop:\n    broadcast "x"\n');
+    expect(emit(script(onDrop(body, { item: ["egg", "compass"] })))).toBe(
+      'on drop of egg or compass:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onRespawn(body)))).toBe('on respawn:\n    broadcast "x"\n');
+    expect(emit(script(onBedEnter(body)))).toBe('on bed enter:\n    broadcast "x"\n');
+    expect(emit(script(onBedLeave(body)))).toBe('on bed leave:\n    broadcast "x"\n');
+  });
+  it("clicked entity in value and string positions", () => {
+    expect(
+      emit(
+        script(
+          onRightClick([
+            set(variable("c"), clickedEntity()),
+            broadcast(fmt("clicked ", clickedEntity(), " / ", typeOf(clickedEntity()))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on right click:\n" +
+        "    set {c} to clicked entity\n" +
+        '    broadcast "clicked %clicked entity% / %type of clicked entity%"\n',
+    );
+  });
+  it("filter validation", () => {
+    expect(() => onBlockBreak(body, { block: [] })).toThrow(RangeError);
+    expect(() => onBlockBreak(body, { block: "  " })).toThrow(RangeError);
+    expect(() => onDamage(body, { victim: ["player", ""] })).toThrow(RangeError);
+    expect(() => onRightClick(body, { block: "stone", entity: "zombie" })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      onPickup(body, { block: "stone" } as unknown as { item: string }),
+    ).toThrow(RangeError);
+    // An empty options object is the unfiltered event.
+    expect(emit(script(onBlockBreak(body, {})))).toBe(
+      'on block break:\n    broadcast "x"\n',
+    );
+  });
+  it("the new constructs are core language, not engine-only", () => {
+    expect(isEngineOnlyScript(events2Script)).toBe(false);
+    expect(
+      isEngineOnlyScript(
+        script(
+          onDamage([broadcast(fmt(clickedEntity()))], {
+            victim: "player",
+            attacker: "zombie",
+          }),
+          onPickup([cancelEvent()], { item: "wheat" }),
+          onBedEnter([broadcast(str("z"))]),
         ),
       ),
     ).toBe(false);

@@ -49,6 +49,8 @@ function emitValue(e: Expr): string {
             return "event-block";
         case "eventItem":
             return "event-item";
+        case "clickedEntity":
+            return "clicked entity";
         case "attacker":
             return "attacker";
         case "damageAmount":
@@ -163,6 +165,7 @@ function emitString(e: Expr): string {
             return `%location of ${emitValue(e.target)}%`;
         case "eventBlock":
         case "eventItem":
+        case "clickedEntity":
         case "attacker":
         case "damageAmount":
         case "damageCause":
@@ -500,6 +503,68 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     }
 }
 
+/**
+ * A Skript type-name list as it appears in a filtered event
+ * header: one name bare, two joined with "or", three or more as
+ * "a, b or c" (all shapes verified to parse on Skript 2.17.1).
+ */
+function typeList(names: readonly string[]): string {
+    if (names.length === 1) return names[0]!;
+    if (names.length === 2) return `${names[0]} or ${names[1]}`;
+    return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
+/** The .sk header line of an event top-level, filter slots included (phase 16). */
+function eventHeader(t: Extract<TopLevel, { kind: "event" }>): string {
+    const f = t.filter;
+    switch (t.event) {
+        case "join":
+            return "on join:";
+        case "firstJoin":
+            return "on first join:";
+        case "quit":
+            return "on quit:";
+        case "chat":
+            return "on chat:";
+        case "death":
+            return "on death:";
+        case "blockBreak":
+            return `on block break${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+        case "blockPlace":
+            return `on block place${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+        case "rightClick":
+        case "leftClick": {
+            const base = t.event === "rightClick" ? "on right click" : "on left click";
+            const on = f?.onTypes
+                ? ` on ${typeList(f.onTypes)}`
+                : f?.onEntityTypes
+                  ? ` on ${typeList(f.onEntityTypes)}`
+                  : "";
+            const withPart = f?.withTypes ? ` with ${typeList(f.withTypes)}` : "";
+            return `${base}${on}${withPart}:`;
+        }
+        case "damage": {
+            const of = f?.victimTypes ? ` of ${typeList(f.victimTypes)}` : "";
+            const by = f?.attackerTypes ? ` by ${typeList(f.attackerTypes)}` : "";
+            return `on damage${of}${by}:`;
+        }
+        case "pickup":
+            return `on pick up${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+        case "drop":
+            return `on drop${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+        case "respawn":
+            return "on respawn:";
+        case "bedEnter":
+            return "on bed enter:";
+        case "bedLeave":
+            return "on bed leave:";
+        default:
+            // Engine-only events (ws / timer / papiRequest) are
+            // rejected by emitTop before the header is computed.
+            throw new Error(`Unhandled Event in eventHeader: '${t.event}'`);
+    }
+}
+
 function emitTop(t: TopLevel, path: string): OwnedLine[] {
     switch (t.kind) {
         case "event": {
@@ -509,26 +574,7 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
             ) {
                 throw new Error(`Unhandled Event in emitTop: '${t.event}' is an engine-only builtin with no .sk form`);
             }
-            const header =
-                t.event === "join"
-                    ? "on join:"
-                    : t.event === "firstJoin"
-                      ? "on first join:"
-                      : t.event === "quit"
-                        ? "on quit:"
-                        : t.event === "chat"
-                          ? "on chat:"
-                          : t.event === "blockBreak"
-                            ? "on block break:"
-                            : t.event === "blockPlace"
-                              ? "on block place:"
-                              : t.event === "rightClick"
-                                ? "on right click:"
-                                : t.event === "leftClick"
-                                  ? "on left click:"
-                                  : t.event === "damage"
-                                    ? "on damage:"
-                                    : "on death:";
+            const header = eventHeader(t);
             return [own(header, path, t.loc), ...emitBlock(t.body, 1, path, "body")];
         }
         case "command": {

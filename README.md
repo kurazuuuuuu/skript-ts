@@ -58,8 +58,10 @@ programs (welcome, kit command, chat log relay, death counter, spawn
 commands), one per engine builtin, `logic.ts` for the core language
 (comparisons, logic, arithmetic), `lists.ts` for list variables,
 the extended loops, `while` and `wait`, `functions.ts` for custom
-functions, and `gameplay.ts` for the gameplay events (block
-break/place, clicks, damage). They double as golden-test fixtures.
+functions, `gameplay.ts` for the gameplay events (block
+break/place, clicks, damage), and `events2.ts` for the event
+filters and the pickup / drop / respawn / bed events. They
+double as golden-test fixtures.
 
 ## Supported subset (SPEC, v0)
 
@@ -78,6 +80,11 @@ Anything not listed here is out of scope for v0.
 | `onRightClick` | `on right click:` |
 | `onLeftClick` | `on left click:` |
 | `onDamage` | `on damage:` |
+| `onPickup` | `on pick up:` |
+| `onDrop` | `on drop:` |
+| `onRespawn` | `on respawn:` |
+| `onBedEnter` | `on bed enter:` |
+| `onBedLeave` | `on bed leave:` |
 
 ### Commands
 `command(name, argType, body, argOptional?)` — at most **one** argument.
@@ -356,12 +363,13 @@ asserts the identical expectations under both runtimes.
 
 The gameplay events are core language: the same script runs
 under Skript (as emitted `.sk`) and under the engine jar (which
-fires them from its own Bukkit listeners). All of them are the
-*unfiltered* forms — Skript's filtered variants (`on break of
-stone:`, `on damage of player by zombie:`) are not in this
-slice, and neither is the generic `on click:` (the right/left
-pair covers it) or the block-damage event (Skript's own docs
-point at the left-click event for that).
+fires them from its own Bukkit listeners). This slice is the
+*unfiltered* forms; the filtered variants (`on break of
+stone:`, `on damage of player by zombie:`) and the next batch
+of events are the following section. The generic `on click:`
+(the right/left pair covers it) and the block-damage event
+(Skript's own docs point at the left-click event for that) are
+not included.
 
 Event values (verified against the real Skript 2.17.1 with probe
 scripts and the behavior test):
@@ -419,6 +427,84 @@ and `examples/behavior/gameplay.behavior.ts` drives real bots
 through it (digging, placing, clicking, fighting) and asserts
 both the messages and the resulting world state (block gone or
 still there, health lost or not) under both runtimes.
+
+### Event filters and more events
+
+The filtered event forms are core language too, along with
+the clicked-entity value and five more events — pickup, drop,
+respawn, and bed enter/leave. Everything below was verified
+against the real Skript 2.17.1: the header shapes by probe
+scripts at load time, the matching by watching sandbox mobs
+hurt each other, and the full set by a mineflayer behavior
+test under both runtimes.
+
+**Filters.** A filter is a trailing options object on the
+event builders. Skript's filtered headers are *literal type
+lists* in the script text, not runtime expressions, so the
+filter values are the type **names** as plain strings — one
+name or an array — never expressions (an expression would
+falsely promise that variables work in a header). The slots
+are named after the header positions:
+
+- `onBlockBreak(body, { block })` / `onBlockPlace` — the
+  `of` slot: `on block break of stone or cobblestone:`.
+- `onDamage(body, { victim, attacker })` — `of` and `by`:
+  `on damage of player by zombie:`. Either side may be
+  filtered alone — a by-only header (`on damage by zombie:`)
+  parses and works, which the probe pinned before the API
+  allowed it.
+- `onRightClick` / `onLeftClick(body, { block, entity, item })`
+  — `on` (clicked block *or* clicked entity; both together
+  are rejected) and `with` (the item in hand):
+  `on right click on villager:`, `on left click with stick:`.
+- `onPickup` / `onDrop(body, { item })` — `on pick up of
+  wheat:`, `on drop of egg or compass:`.
+
+Matching is by Skript type name — the same names `typeOf()`
+prints and `item("...")` literals use (`stone`,
+`grass block`, `zombie`, `player`); a list joins as `a or b`
+or `a, b or c` in the header. Every slot present must match,
+and a slot whose value the event does not have never matches:
+an attacker filter stays silent for fall damage, a block
+filter for an air click. The engine evaluates the same rule
+over its Bukkit values when an event fires.
+
+**Clicked entity.** `clickedEntity()` is the entity a right
+click interacted with (`clicked entity` in Skript), with no
+value for block or air clicks. Right-clicking an entity has
+no clicked block; the hand item is still `eventItem()`.
+
+**The new events** are the *player* forms, like Skript's bare
+headers — verified live that the bare `on pick up` /
+`on drop` do **not** fire for mobs (a zombie taking wheat
+fired only Skript's explicit `entity pick up` variant, which
+is not in this subset), so the engine does not dispatch
+non-player pickups either:
+
+- `onPickup` — a player picks up an item. `eventItem()` is
+  the stack; `cancelEvent()` refuses the pickup.
+- `onDrop` — a player drops an item. `cancelEvent()` keeps
+  the item in the inventory (the behavior test tosses the
+  same compass twice to prove it never left).
+- `onRespawn` — a player respawns. **Not cancellable**:
+  Skript rejects `cancel event` inside it at parse time.
+- `onBedEnter` / `onBedLeave` — `eventBlock()` is the bed;
+  entering is cancellable, leaving is not.
+
+Fishing is deliberately not here: Skript 2.17 splits it into
+state sub-events (cast / caught / hooked / bite / escape /
+...), a design surface of its own, and its bite timing is
+random, which makes for flaky behavior tests. Death filters
+(`on death of zombie:`) are also not included: the subset's
+death event is player-only while Skript's covers any entity,
+so a victim filter would promise semantics the engine half
+cannot have.
+
+`examples/events2.ts` exercises all of it — filtered breaks,
+places, clicks and damage reports, wheat pickups singled
+out, an undroppable compass, respawns and bed use — and
+`examples/behavior/events2.behavior.ts` drives a bot through
+it under both runtimes.
 
 ### Text operations
 
