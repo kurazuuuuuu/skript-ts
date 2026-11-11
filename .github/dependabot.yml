@@ -1,0 +1,17 @@
+# Dependabot version updates.
+#
+# The npm ecosystem also covers this pnpm project (package.json +
+# pnpm-lock.yaml). The github-actions ecosystem keeps the SHA-pinned
+# actions current: Dependabot updates the commit SHA and the version
+# comment together.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

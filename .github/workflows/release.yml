@@ -4,6 +4,13 @@ name: Release
 # engine jar and publishes a GitHub Release with the jar and a CLI
 # bundle attached. The fast gates run first, so a tag whose tree does
 # not typecheck or pass tests never becomes a release.
+#
+# Supply chain: every action is pinned to a full commit SHA (the
+# version comment is informational; Dependabot keeps both current),
+# the release is created with the runner's bundled `gh` CLI rather
+# than a third-party action, and both artifacts carry a SHA-256
+# checksum file plus a signed build-provenance attestation that
+# `gh attestation verify` can check against this workflow.
 
 on:
   push:
@@ -11,18 +18,20 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: write # create the release
+  attestations: write # publish build provenance attestations
+  id-token: write # OIDC token for signing the attestations
 
 jobs:
   release:
     name: Build and publish release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -36,7 +45,7 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: 21
@@ -58,11 +67,28 @@ jobs:
           cp package.json pnpm-workspace.yaml pnpm-lock.yaml README.md README.ja.md LICENSE dist/skript-ts-cli/
           cd dist && zip -r "skript-ts-cli-${GITHUB_REF_NAME}.zip" skript-ts-cli
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Stage release artifacts and generate SHA-256 checksums
+        run: |
+          cp engine/build/skript-ts.jar dist/
+          cd dist
+          sha256sum skript-ts.jar "skript-ts-cli-${GITHUB_REF_NAME}.zip" > "sha256sums-${GITHUB_REF_NAME}.txt"
+          cat "sha256sums-${GITHUB_REF_NAME}.txt"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
-          files: |
-            engine/build/skript-ts.jar
+          subject-path: |
+            dist/skript-ts.jar
             dist/skript-ts-cli-${{ github.ref_name }}.zip
-          generate_release_notes: true
-          prerelease: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --prerelease \
+            "dist/skript-ts.jar" \
+            "dist/skript-ts-cli-${GITHUB_REF_NAME}.zip" \
+            "dist/sha256sums-${GITHUB_REF_NAME}.txt"
