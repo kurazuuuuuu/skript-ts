@@ -29,6 +29,7 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -62,6 +63,9 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     // script loading, which shadows the engine's own Files helper.
     private net.krz.skriptts.Files files;
     private final List<Command> registeredCommands = new ArrayList<>();
+    // Repeating scheduler tasks of the loaded program's periodical
+    // triggers (phase 18); replaced wholesale on every (re)load.
+    private final List<BukkitTask> periodicalTasks = new ArrayList<>();
 
     @Override
     public void onEnable() {
@@ -180,6 +184,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        cancelPeriodicals();
         unregisterScriptCommands();
         if (placeholders != null) placeholders.shutdown();
         if (timers != null) timers.shutdown();
@@ -295,11 +300,47 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
             getLogger().severe("Failed to read scripts folder " + dir + ": " + e.getMessage());
         }
         engine.setProgram(tops);
+        reschedulePeriodicals();
         // The placeholder expansions mirror the loaded program:
         // prefixes the new program no longer serves are unregistered.
         if (placeholders != null) placeholders.sync(engine.placeholderPrefixes());
         reregisterScriptCommands(tops);
         getLogger().info("Loaded " + scripts + " script(s), " + structures + " top-level structure(s)");
+    }
+
+    /**
+     * (Re)schedule the loaded program's periodical triggers
+     * (phase 18). A reload replaces the schedule wholesale — the
+     * old tasks are cancelled and each trigger's first firing
+     * comes one full period after the load — mirroring the real
+     * Skript, whose periodical re-anchors on reload (probed).
+     * Periods are literal amounts in the IR; sub-tick periods
+     * clamp to one tick.
+     */
+    private void reschedulePeriodicals() {
+        cancelPeriodicals();
+        for (Map<String, Object> top : engine.periodicals()) {
+            long ticks = periodicalTicks(top);
+            if (ticks <= 0) continue;
+            periodicalTasks.add(getServer().getScheduler().runTaskTimer(
+                    this, () -> engine.runPeriodical(top), ticks, ticks));
+        }
+    }
+
+    private void cancelPeriodicals() {
+        for (BukkitTask task : periodicalTasks) task.cancel();
+        periodicalTasks.clear();
+    }
+
+    /** A periodical IR node's period in ticks: amount times the unit's ticks-per-unit, rounded, at least 1. */
+    private static long periodicalTicks(Map<String, Object> top) {
+        if (!(top.get("amount") instanceof Number amount)) return 0;
+        double perUnit = switch (String.valueOf(top.get("unit"))) {
+            case "seconds" -> 20.0;
+            case "minutes" -> 1200.0;
+            default -> 1.0; // ticks
+        };
+        return Math.max(1, Math.round(amount.doubleValue() * perUnit));
     }
 
     private void reregisterScriptCommands(List<Map<String, Object>> tops) {

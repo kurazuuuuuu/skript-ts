@@ -7,6 +7,7 @@ import {
   and,
   argument,
   attacker,
+  blockAt,
   bool,
   broadcast,
   call,
@@ -18,6 +19,7 @@ import {
   clickedEntity,
   clickedRawSlotIndex,
   clickedSlotIndex,
+  clockTime,
   closeInventory,
   colored,
   command,
@@ -31,6 +33,7 @@ import {
   emit,
   endsWith,
   equals,
+  every,
   eventBlock,
   eventInventory,
   eventItem,
@@ -56,6 +59,7 @@ import {
   listSize,
   listVar,
   localList,
+  location,
   localVar,
   locationOf,
   loopIndex,
@@ -89,12 +93,14 @@ import {
   onQuit,
   onRespawn,
   onRightClick,
+  offsetLocation,
   openGui,
   openInventory,
   or,
   param,
   player,
   plus,
+  relativeBlock,
   remainder,
   replaceAllIn,
   replaceFirstIn,
@@ -102,11 +108,14 @@ import {
   script,
   send,
   set,
+  setBlockAt,
   setDamage,
   setItemAmount,
   setItemLore,
   setItemName,
   setSlot,
+  setWorldTime,
+  setWorldWeather,
   slotItem,
   splitText,
   startsWith,
@@ -124,6 +133,14 @@ import {
   variable,
   victim,
   wait,
+  weatherType,
+  world,
+  worldOf,
+  worldTime,
+  worldWeather,
+  xOf,
+  yOf,
+  zOf,
   whileLoop,
   withAmount,
   withLore,
@@ -141,6 +158,7 @@ import { gameplayScript } from "../examples/gameplay.js";
 import { textScript } from "../examples/text.js";
 import { events2Script } from "../examples/events2.js";
 import { guiScript } from "../examples/gui.js";
+import { worldScript } from "../examples/world.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -185,6 +203,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("gui", () => {
     expect(emit(guiScript)).toBe(fixture("gui.sk"));
+  });
+  it("world", () => {
+    expect(emit(worldScript)).toBe(fixture("world.sk"));
   });
 });
 
@@ -1220,5 +1241,139 @@ describe("items, inventories and GUIs (phase 17)", () => {
   });
   it("the GUI sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(guiScript)).toBe(false);
+  });
+});
+
+describe("world operations and periodical events (phase 18)", () => {
+  it("block, location, coordinate and offset expressions in value position", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("b"), blockAt(localVar("l"))),
+            set(localVar("l2"), location(num(10), num(64), num(-5))),
+            set(localVar("l3"), location(num(10), num(64), num(-5), world("world"))),
+            set(localVar("x"), xOf(localVar("l"))),
+            set(localVar("y"), yOf(localVar("l"))),
+            set(localVar("z"), zOf(localVar("l"))),
+            set(localVar("o"), offsetLocation(localVar("l"), num(2), num(0), num(-1))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_b} to block at {_l}\n" +
+        "    set {_l2} to location(10, 64, -5)\n" +
+        "    set {_l3} to location(10, 64, -5, world \"world\")\n" +
+        "    set {_x} to x-coordinate of {_l}\n" +
+        "    set {_y} to y-coordinate of {_l}\n" +
+        "    set {_z} to z-coordinate of {_l}\n" +
+        "    set {_o} to {_l} ~ vector(2, 0, -1)\n",
+    );
+  });
+  it("relative blocks: every direction phrase, with and without a count", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("a"), relativeBlock(eventBlock(), "above")),
+            set(localVar("b"), relativeBlock(eventBlock(), "below", 2)),
+            set(localVar("c"), relativeBlock(eventBlock(), "north")),
+            set(localVar("d"), relativeBlock(eventBlock(), "south", 3)),
+            set(localVar("e"), relativeBlock(eventBlock(), "east")),
+            set(localVar("f"), relativeBlock(eventBlock(), "west")),
+            set(localVar("g"), relativeBlock(eventBlock(), "front")),
+            set(localVar("h"), relativeBlock(eventBlock(), "behind", 2)),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_a} to block above event-block\n" +
+        "    set {_b} to block 2 below event-block\n" +
+        "    set {_c} to block north of event-block\n" +
+        "    set {_d} to block 3 south of event-block\n" +
+        "    set {_e} to block east of event-block\n" +
+        "    set {_f} to block west of event-block\n" +
+        "    set {_g} to block in front of event-block\n" +
+        "    set {_h} to block 2 behind event-block\n",
+    );
+  });
+  it("world, time and weather expressions and statements", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("w"), world("world")),
+            set(localVar("w2"), worldOf(player())),
+            set(localVar("t"), worldTime(localVar("w"))),
+            set(localVar("x"), worldWeather(localVar("w"))),
+            ifElse(equals(localVar("x"), weatherType("rain")), [broadcast(str("wet"))]),
+            ifElse(equals(localVar("t"), clockTime("13:00")), [broadcast(str("one"))]),
+            setWorldTime(localVar("w"), clockTime("6:00")),
+            setWorldTime(localVar("w"), localVar("t")),
+            setWorldWeather(localVar("w"), "thunder"),
+            setBlockAt(localVar("l"), item("gold block")),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_w} to world \"world\"\n" +
+        "    set {_w2} to world of player\n" +
+        "    set {_t} to time in {_w}\n" +
+        "    set {_x} to weather in {_w}\n" +
+        "    if {_x} is rain:\n" +
+        "        broadcast \"wet\"\n" +
+        "    if {_t} is 13:00:\n" +
+        "        broadcast \"one\"\n" +
+        "    set time in {_w} to 6:00\n" +
+        "    set time in {_w} to {_t}\n" +
+        "    set weather in {_w} to thunder\n" +
+        "    set block at {_l} to gold block\n",
+    );
+  });
+  it("periodical headers in each unit, fractional amounts included", () => {
+    const body = [broadcast(str("x"))];
+    expect(emit(script(every(3, "seconds", body)))).toBe(
+      'every 3 seconds:\n    broadcast "x"\n',
+    );
+    expect(emit(script(every(2.5, "seconds", body)))).toBe(
+      'every 2.5 seconds:\n    broadcast "x"\n',
+    );
+    expect(emit(script(every(40, "ticks", body)))).toBe(
+      'every 40 ticks:\n    broadcast "x"\n',
+    );
+    expect(emit(script(every(1, "minutes", body)))).toBe(
+      'every 1 minutes:\n    broadcast "x"\n',
+    );
+  });
+  it("api guards: period, clock, weather and direction validation", () => {
+    expect(() => every(0, "seconds", [])).toThrow(RangeError);
+    expect(() => every(-1, "seconds", [])).toThrow(RangeError);
+    expect(() => every(1, "hours" as never, [])).toThrow(RangeError);
+    expect(() => clockTime("25:00")).toThrow(RangeError);
+    expect(() => clockTime("9:60")).toThrow(RangeError);
+    expect(() => clockTime("nine")).toThrow(RangeError);
+    expect(() => weatherType("snow" as never)).toThrow(RangeError);
+    expect(() => setWorldWeather(world("world"), "snow" as never)).toThrow(RangeError);
+    expect(() => world("")).toThrow(RangeError);
+    expect(() => relativeBlock(eventBlock(), "up" as never)).toThrow(RangeError);
+    expect(() => relativeBlock(eventBlock(), "above", 0)).toThrow(RangeError);
+    // clockTime canonicalizes: a padded hour reads back unpadded.
+    expect(emit(script(onJoin([setWorldTime(world("world"), clockTime("06:05"))])))).toBe(
+      'on join:\n    set time in world "world" to 6:05\n',
+    );
+  });
+  it("the world sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(worldScript)).toBe(false);
+    expect(
+      isEngineOnlyScript(
+        script(
+          every(5, "seconds", [broadcast(fmt("t=", worldTime(world("world"))))]),
+          onJoin([setBlockAt(location(num(1), num(2), num(3)), item("stone"))]),
+        ),
+      ),
+    ).toBe(false);
   });
 });

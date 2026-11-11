@@ -195,7 +195,66 @@ export type Expr =
   | { kind: "eventInventory" }
   | { kind: "slotItem"; inventory: Expr; slot: Expr }
   | { kind: "clickedSlotIndex" }
-  | { kind: "clickedRawSlotIndex" };
+  | { kind: "clickedRawSlotIndex" }
+  // Core-language world operations (phase 18). All semantics were
+  // probed against the real Skript 2.17.1 in the sandbox (see the
+  // development log for the probe rounds):
+  //
+  // - blockAt reads the block at a location (`block at %location%`).
+  //   A block prints as '<type>' at <cx>, <cy>, <cz> in world
+  //   '<name>' with CENTER coordinates, and locationOf a block is
+  //   its center location — the engine mirrors both.
+  // - locationAt is Skript's location() function: three arguments
+  //   use the server's main world, four take a world expression.
+  //   A location prints as "x: <x>, y: <y>, z: <z>, yaw: <yaw>,
+  //   pitch: <pitch> in '<world>'".
+  // - xOf / yOf / zOf read a location's coordinates
+  //   (`x-coordinate of %location%`; the short `x of` form parses
+  //   too, the emitter uses the long form).
+  // - offsetLoc shifts a location by a vector
+  //   (`%location% ~ vector(<x>, <y>, <z>)`); the components are
+  //   expressions.
+  // - relativeBlock is the block in a direction from a block or
+  //   location (`block [n] above %block%`, `block in front of
+  //   %location%`). front / behind follow the target location's
+  //   facing direction (a block's location faces south, yaw 0 —
+  //   probed); the cardinals and above / below are absolute.
+  // - world is `world "<name>"` (no value for an unknown name);
+  //   worldOf (promoted from the phase-6 engine builtins to the
+  //   core — `world of %player/location/block%` is plain Skript)
+  //   reads a value's world.
+  // - worldTime is the world's clock (`time in %world%`): a Time
+  //   value whose text form is "H:MM" (hour unpadded, minutes
+  //   two digits; 0 ticks reads 6:00, 6000 reads 12:00). The
+  //   engine carries the value as that text, so prints and
+  //   equality against clockTime agree in both runtimes; time
+  //   ARITHMETIC is not part of the subset. clockTime is a clock
+  //   literal (`13:00` in the .sk text), stored canonicalized.
+  // - worldWeather is the world's weather (`weather in %world%`),
+  //   carried as its name text ("clear" / "rain" / "thunder");
+  //   weatherType is a weather literal, emitted BARE (`rain`) —
+  //   the quoted text form parses but never compares equal, and
+  //   setting weather from a plain text silently does nothing in
+  //   the original (all probed).
+  //
+  // One original-side quirk applies to this whole family (and to
+  // typeOf over variables): Skript 2.17.1 does not parse these
+  // composite expressions inside string interpolations — they are
+  // value-position constructs there, so samples assign them to a
+  // variable first and interpolate the variable. The engine has
+  // no such restriction.
+  | { kind: "blockAt"; location: Expr }
+  | { kind: "locationAt"; x: Expr; y: Expr; z: Expr; world?: Expr }
+  | { kind: "xOf"; target: Expr }
+  | { kind: "yOf"; target: Expr }
+  | { kind: "zOf"; target: Expr }
+  | { kind: "offsetLoc"; location: Expr; dx: Expr; dy: Expr; dz: Expr }
+  | { kind: "relativeBlock"; target: Expr; direction: RelativeDirection; amount: Expr }
+  | { kind: "world"; name: string }
+  | { kind: "worldTime"; world: Expr }
+  | { kind: "clockTime"; text: string }
+  | { kind: "worldWeather"; world: Expr }
+  | { kind: "weatherType"; name: WeatherName };
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
@@ -296,6 +355,18 @@ export interface FunctionParam {
 /** Represents a wait duration unit (phase 12). */
 export type TimeUnit = "ticks" | "seconds" | "minutes";
 
+/**
+ * A direction for relativeBlock (phase 18): the absolute
+ * directions (above / below / the four cardinals) plus the
+ * facing-relative front / behind, which follow the target
+ * location's direction.
+ */
+export type RelativeDirection =
+  | "above" | "below" | "north" | "south" | "east" | "west" | "front" | "behind";
+
+/** A weather name (phase 18): the three states of Skript's weather type. */
+export type WeatherName = "clear" | "rain" | "thunder";
+
 /** Source position in the TypeScript file where a builder call was made. */
 export interface SourceLoc { file: string; line: number; column: number }
 
@@ -373,6 +444,23 @@ export type Stmt =
   | { kind: "openInventory"; target: Expr; inventory: Expr; loc?: SourceLoc }
   | { kind: "openGui"; target: Expr; rows: Expr; title?: Expr; loc?: SourceLoc }
   | { kind: "closeInventory"; target: Expr; loc?: SourceLoc }
+  // Core-language world statements (phase 18), mirroring the
+  // change / effect forms probed against the real Skript 2.17.1:
+  // - setBlock writes an item's material at a location
+  //   (`set block at %location% to %item%`); an air item clears
+  //   the block.
+  // - setWorldTime sets a world's clock (`set time in %world%
+  //   to %time%`); the value is a clockTime literal or any
+  //   expression carrying a clock text (a variable that was set
+  //   from worldTime / clockTime works — probed). The timespan
+  //   form parses in the original but its effect could not be
+  //   verified, so it is not offered.
+  // - setWorldWeather sets a world's weather by name
+  //   (`set weather in %world% to rain`); the name is a literal
+  //   in the .sk text, like an item name.
+  | { kind: "setBlock"; location: Expr; item: Expr; loc?: SourceLoc }
+  | { kind: "setWorldTime"; world: Expr; value: Expr; loc?: SourceLoc }
+  | { kind: "setWorldWeather"; world: Expr; name: WeatherName; loc?: SourceLoc }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration
@@ -471,7 +559,20 @@ export type TopLevel =
   // function (no `:: type` in the .sk form). Functions are global:
   // they can be called from any script, before or after their
   // definition in file order (verified against the real Skript).
-  | { kind: "function"; name: string; params: readonly FunctionParam[]; returnType: FunctionTypeName | null; body: readonly Stmt[]; loc?: SourceLoc };
+  | { kind: "function"; name: string; params: readonly FunctionParam[]; returnType: FunctionTypeName | null; body: readonly Stmt[]; loc?: SourceLoc }
+  // A periodical trigger (phase 18): `every <amount> <unit>:`,
+  // Skript's periodical event. The amount is a NUMBER LITERAL —
+  // the original rejects expression periods at parse time
+  // ("Can't understand this structure: every {_n} seconds"), so
+  // the builder takes a plain number (fractional amounts are
+  // fine: `every 2.5 seconds` parses and fires on cadence).
+  // Semantics probed against the real Skript 2.17.1: the first
+  // firing happens one full period after the script loads, and
+  // a reload re-anchors the schedule (the old firing is dropped,
+  // the next comes one period after the reload). The body runs
+  // with no event context, like a function body: there is no
+  // player or event value, only globals and the body's locals.
+  | { kind: "periodical"; amount: number; unit: TimeUnit; body: readonly Stmt[]; loc?: SourceLoc };
 
 /** Represents a Skript script. */
 export interface Script { kind: "script"; body: readonly TopLevel[] }

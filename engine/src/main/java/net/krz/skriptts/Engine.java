@@ -128,6 +128,19 @@ import java.util.logging.Logger;
  * names and lore are components in Skript; here they are carried
  * as §-coded strings converted at the meta boundary, the same
  * model as phase 15's texts.
+ * Phase 18 adds core-language world operations and periodical
+ * events (no addon scope): block-at and set-block, the location
+ * constructor and coordinate reads, vector offsets and relative
+ * blocks, world references (worldOf is core since this phase —
+ * `world of ...` is plain Skript), the world clock (carried as
+ * its "H:MM" text form, the way Skript prints a Time) and
+ * weather (carried as its name text), and the periodical
+ * trigger, which the plugin schedules on the Bukkit scheduler
+ * with the probed rule: first firing one full period after
+ * (re)load. Blocks and locations print in Skript's own forms
+ * (a block as '<type>' at <center> in world '<name>', a location
+ * as "x: ..., yaw: ..., in '<world>'"), and a block's location
+ * is its center — all probed against the real Skript 2.17.1.
  */
 final class Engine {
 
@@ -518,6 +531,30 @@ final class Engine {
         execBlock(list(node.get("body")), ctx);
     }
 
+    /**
+     * The periodical top-levels of the loaded program (phase 18),
+     * in declaration order. The plugin owns their scheduling (a
+     * repeating Bukkit task per trigger, first firing one full
+     * period after load — the rule probed against the real
+     * Skript, whose reload likewise re-anchors the schedule).
+     */
+    List<Map<String, Object>> periodicals() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> top : topLevels) {
+            if ("periodical".equals(kind(top))) out.add(top);
+        }
+        return out;
+    }
+
+    /**
+     * Run one periodical firing: the body executes in a blank
+     * context — no event values, a fresh frame — like a function
+     * body (the original's periodical has no event context).
+     */
+    void runPeriodical(Map<String, Object> top) {
+        execBlock(list(top.get("body")), new Ctx());
+    }
+
     // ------------------------------------------------------------------
     // Statements
     // ------------------------------------------------------------------
@@ -790,6 +827,50 @@ final class Engine {
             case "closeInventory" -> {
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
                     target.closeInventory();
+                }
+                cont.run();
+            }
+            case "setBlock" -> {
+                // Write an item value's material at a location
+                // (phase 18). An air item clears the block; a
+                // value with no material leaves it standing.
+                Object loc = evalExpr(node(stmt.get("location")), ctx);
+                if (loc instanceof Location l && l.getWorld() != null) {
+                    Material mat = materialOf(evalExpr(node(stmt.get("item")), ctx));
+                    if (mat != null) l.getBlock().setType(mat);
+                }
+                cont.run();
+            }
+            case "setWorldTime" -> {
+                // The value is a clock text ("13:00"), from a
+                // clockTime literal or a variable carrying one;
+                // anything else leaves the clock alone.
+                Object w = evalExpr(node(stmt.get("world")), ctx);
+                Object v = evalExpr(node(stmt.get("value")), ctx);
+                if (w instanceof World world && v instanceof String s) {
+                    Long ticks = clockTicks(s);
+                    if (ticks != null) world.setTime(ticks);
+                }
+                cont.run();
+            }
+            case "setWorldWeather" -> {
+                Object w = evalExpr(node(stmt.get("world")), ctx);
+                if (w instanceof World world) {
+                    switch (str(stmt.get("name"))) {
+                        case "clear" -> {
+                            world.setThundering(false);
+                            world.setStorm(false);
+                        }
+                        case "rain" -> {
+                            world.setThundering(false);
+                            world.setStorm(true);
+                        }
+                        case "thunder" -> {
+                            world.setStorm(true);
+                            world.setThundering(true);
+                        }
+                        default -> logger.warning("skript-ts: unknown weather '" + stmt.get("name") + "'");
+                    }
                 }
                 cont.run();
             }
@@ -1585,10 +1666,77 @@ final class Engine {
             case "locationOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 if (target instanceof Player p) yield p.getLocation();
-                if (target instanceof Block b) yield b.getLocation();
+                // A block's location is its CENTER in Skript
+                // (probed phase 18: `location of` a block at
+                // (30, 70, 30) reads x-coordinate 30.5).
+                if (target instanceof Block b) yield b.getLocation().add(0.5, 0.5, 0.5);
                 if (target instanceof Entity e) yield e.getLocation();
                 yield null;
             }
+            case "blockAt" -> {
+                Object loc = evalExpr(node(expr.get("location")), ctx);
+                yield loc instanceof Location l && l.getWorld() != null ? l.getBlock() : null;
+            }
+            case "locationAt" -> {
+                Object x = evalExpr(node(expr.get("x")), ctx);
+                Object y = evalExpr(node(expr.get("y")), ctx);
+                Object z = evalExpr(node(expr.get("z")), ctx);
+                if (!(x instanceof Number nx) || !(y instanceof Number ny) || !(z instanceof Number nz)) {
+                    yield null;
+                }
+                World w;
+                if (expr.get("world") != null) {
+                    Object wv = evalExpr(node(expr.get("world")), ctx);
+                    if (!(wv instanceof World worldValue)) yield null;
+                    w = worldValue;
+                } else {
+                    // The three-argument form builds in the
+                    // server's main world (probed: it printed
+                    // 'world', the level world).
+                    List<World> worlds = Bukkit.getWorlds();
+                    if (worlds.isEmpty()) yield null;
+                    w = worlds.get(0);
+                }
+                yield new Location(w, nx.doubleValue(), ny.doubleValue(), nz.doubleValue());
+            }
+            case "xOf", "yOf", "zOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (!(target instanceof Location l)) yield null;
+                yield switch (kind(expr)) {
+                    case "xOf" -> l.getX();
+                    case "yOf" -> l.getY();
+                    default -> l.getZ();
+                };
+            }
+            case "offsetLoc" -> {
+                Object loc = evalExpr(node(expr.get("location")), ctx);
+                Object dx = evalExpr(node(expr.get("dx")), ctx);
+                Object dy = evalExpr(node(expr.get("dy")), ctx);
+                Object dz = evalExpr(node(expr.get("dz")), ctx);
+                if (!(loc instanceof Location l)
+                        || !(dx instanceof Number nx) || !(dy instanceof Number ny) || !(dz instanceof Number nz)) {
+                    yield null;
+                }
+                yield l.clone().add(nx.doubleValue(), ny.doubleValue(), nz.doubleValue());
+            }
+            case "relativeBlock" -> {
+                Object base = baseBlock(evalExpr(node(expr.get("target")), ctx));
+                if (!(base instanceof Block b)) yield null;
+                Object amount = evalExpr(node(expr.get("amount")), ctx);
+                double n = amount instanceof Number num ? num.doubleValue() : 1;
+                yield relativeBlock(b, str(expr.get("direction")), n);
+            }
+            case "world" -> Bukkit.getWorld(str(expr.get("name")));
+            case "worldTime" -> {
+                Object w = evalExpr(node(expr.get("world")), ctx);
+                yield w instanceof World world ? clockText(world.getTime()) : null;
+            }
+            case "clockTime" -> str(expr.get("text"));
+            case "worldWeather" -> {
+                Object w = evalExpr(node(expr.get("world")), ctx);
+                yield w instanceof World world ? weatherName(world) : null;
+            }
+            case "weatherType" -> str(expr.get("name"));
             case "eventBlock" -> ctx.eventBlock;
             case "eventItem" -> ctx.eventItem;
             case "clickedEntity" -> ctx.clickedEntity;
@@ -1741,9 +1889,14 @@ final class Engine {
             case "wsMessage" -> ctx.wsText;
             case "wsId" -> ctx.wsId;
             case "worldOf" -> {
+                // Core language since phase 18 (`world of ...`
+                // is plain Skript, probed for player, location
+                // and block targets).
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 if (target instanceof Player p) yield p.getWorld();
                 if (target instanceof Location l) yield l.getWorld();
+                if (target instanceof Block b) yield b.getWorld();
+                if (target instanceof Entity e) yield e.getWorld();
                 yield null;
             }
             case "borderSize" -> {
@@ -2255,7 +2408,16 @@ final class Engine {
         if (value instanceof List<?> list) return joinList(list);
         if (value instanceof Database.DataSource ds) return ds.display();
         if (value instanceof Player p) return p.getName();
-        if (value instanceof Block block) return materialName(block.getType());
+        if (value instanceof Block block) {
+            // A block prints in Skript's own form (probed phase
+            // 18): '<type>' at <center x>, <center y>, <center z>
+            // in world '<name>'.
+            return "'" + materialName(block.getType()) + "' at "
+                    + formatNumber(block.getX() + 0.5) + ", "
+                    + formatNumber(block.getY() + 0.5) + ", "
+                    + formatNumber(block.getZ() + 0.5)
+                    + " in world '" + block.getWorld().getName() + "'";
+        }
         if (value instanceof ItemStack stack) {
             // An item prints as its type name — pluralized with
             // its amount above 1 ("3 diamond swords") — plus
@@ -2280,8 +2442,16 @@ final class Engine {
         if (value instanceof Number n) return formatNumber(n.doubleValue());
         if (value instanceof Boolean b) return b.toString();
         if (value instanceof Location l) {
+            // A location prints in Skript's own form (probed
+            // phase 18): "x: <x>, y: <y>, z: <z>, yaw: <yaw>,
+            // pitch: <pitch> in '<world>'".
             String world = l.getWorld() == null ? "" : l.getWorld().getName();
-            return world + ": " + formatNumber(l.getX()) + ", " + formatNumber(l.getY()) + ", " + formatNumber(l.getZ());
+            return "x: " + formatNumber(l.getX())
+                    + ", y: " + formatNumber(l.getY())
+                    + ", z: " + formatNumber(l.getZ())
+                    + ", yaw: " + formatNumber(l.getYaw())
+                    + ", pitch: " + formatNumber(l.getPitch())
+                    + " in '" + world + "'";
         }
         return String.valueOf(value);
     }
@@ -2600,6 +2770,91 @@ final class Engine {
         } catch (IllegalArgumentException e) {
             return null;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // World operations (phase 18)
+    // ------------------------------------------------------------------
+
+    /** The block a relative-block target addresses: itself, its location's block, or an entity's block. */
+    private static Block baseBlock(Object target) {
+        if (target instanceof Block b) return b;
+        if (target instanceof Location l) return l.getWorld() == null ? null : l.getBlock();
+        if (target instanceof Entity e) return e.getLocation().getBlock();
+        return null;
+    }
+
+    /**
+     * The block `amount` blocks in `direction` from a base block.
+     * The cardinals and above / below are absolute steps; front /
+     * behind follow the base location's facing direction (a
+     * block's own location faces south — Bukkit locations default
+     * to yaw 0 — matching the original, probed: the block in
+     * front of a block at (30, 70, 30) is the one at z 31).
+     */
+    private static Block relativeBlock(Block base, String direction, double amount) {
+        if (direction == null) return null;
+        int n = (int) Math.round(amount);
+        return switch (direction) {
+            case "above" -> base.getRelative(0, n, 0);
+            case "below" -> base.getRelative(0, -n, 0);
+            case "north" -> base.getRelative(0, 0, -n);
+            case "south" -> base.getRelative(0, 0, n);
+            case "east" -> base.getRelative(n, 0, 0);
+            case "west" -> base.getRelative(-n, 0, 0);
+            case "front", "behind" -> {
+                Location loc = base.getLocation();
+                org.bukkit.util.Vector dir = loc.getDirection();
+                double sign = "front".equals(direction) ? amount : -amount;
+                yield loc.clone().add(dir.multiply(sign)).getBlock();
+            }
+            default -> null;
+        };
+    }
+
+    /** The material an item-ish value names, for setBlock: a stack's type, a type name, or a block's type. */
+    private static Material materialOf(Object value) {
+        if (value instanceof ItemStack stack) return stack.getType();
+        if (value instanceof String name) return resolveMaterial(name);
+        if (value instanceof Block block) return block.getType();
+        return null;
+    }
+
+    /**
+     * A world time (ticks, 0..23999 within the day) as a clock
+     * text, the way Skript prints a Time (probed): the clock runs
+     * 6:00 at 0 ticks, 12:00 at 6000, 18:00 at 12000, 0:00 at
+     * 18000; the hour is unpadded, the minutes two digits.
+     */
+    static String clockText(long ticks) {
+        long dayTicks = Math.floorMod(ticks, 24000L);
+        long minutes = (360 + dayTicks * 60 / 1000) % 1440;
+        long h = minutes / 60;
+        long m = minutes % 60;
+        return h + ":" + (m < 10 ? "0" : "") + m;
+    }
+
+    /** Parse a clock text ("H:MM") back to world ticks, or null when it is not a clock text. */
+    static Long clockTicks(String text) {
+        if (text == null) return null;
+        String[] parts = text.trim().split(":");
+        if (parts.length != 2) return null;
+        try {
+            int h = Integer.parseInt(parts[0]);
+            int m = Integer.parseInt(parts[1]);
+            if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+            long minutes = Math.floorMod(h * 60L + m - 360, 1440L);
+            return minutes * 1000 / 60;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** A world's weather as its Skript name (probed spellings: clear / rain / thunder). */
+    private static String weatherName(World world) {
+        if (world.isThundering()) return "thunder";
+        if (world.hasStorm()) return "rain";
+        return "clear";
     }
 
     // ------------------------------------------------------------------

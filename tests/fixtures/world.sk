@@ -1,0 +1,64 @@
+every 3 seconds:
+    add 1 to {heartbeats}
+    broadcast "[world] heartbeat %{heartbeats}%"
+
+command /wstat:
+    trigger:
+        set {_w} to world of player
+        set {_t} to time in {_w}
+        set {_x} to weather in {_w}
+        send "world=%{_w}% time=%{_t}% weather=%{_x}%" to player
+
+command /wday:
+    trigger:
+        set {_w} to world of player
+        set time in {_w} to 6:00
+        send "morning" to player
+
+command /wnight:
+    trigger:
+        set {_w} to world of player
+        set time in {_w} to 0:00
+        send "midnight" to player
+
+command /wcalm:
+    trigger:
+        set {_w} to world of player
+        set weather in {_w} to clear
+        send "calm" to player
+
+command /wstorm:
+    trigger:
+        set {_w} to world of player
+        set weather in {_w} to thunder
+        send "storm" to player
+
+command /wbuild:
+    trigger:
+        set {_base} to location of player
+        set {_spot} to {_base} ~ vector(2, 0, 0)
+        set block at {_spot} to stone
+        set {_b} to block at {_spot}
+        set {_up} to block above {_b}
+        set block at location of {_up} to gold block
+        set {_t1} to type of block at {_spot}
+        set {_t2} to type of {_up}
+        send "built %{_t1}% + %{_t2}%" to player
+
+command /wraze:
+    trigger:
+        set {_base} to location of player
+        set {_spot} to {_base} ~ vector(2, 0, 0)
+        set block at {_spot} to air
+        set {_b} to block at {_spot}
+        set {_up} to block above {_b}
+        set block at location of {_up} to air
+        send "cleared" to player
+
+command /wpos:
+    trigger:
+        set {_l} to location of player
+        set {_x} to x-coordinate of {_l}
+        set {_y} to y-coordinate of {_l}
+        set {_z} to z-coordinate of {_l}
+        send "pos=%{_x}%,%{_y}%,%{_z}%" to player

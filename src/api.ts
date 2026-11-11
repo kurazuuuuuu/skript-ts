@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit, EventFilter } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -880,10 +880,8 @@ export function wsId(): Expr {
   return { kind: "wsId" };
 }
 
-/** Construct a world-of expression (engine builtin): the world of a player/location expression. */
-export function worldOf(target: Expr): Expr {
-  return { kind: "worldOf", target };
-}
+// worldOf moved to the core language in phase 18 — see the
+// phase-18 section at the end of this file.
 
 /** Construct a border-size expression (engine builtin): the current size of a world's border. */
 export function borderSize(world: Expr): Expr {
@@ -1458,4 +1456,198 @@ export function onInventoryClick(body: readonly Stmt[]): TopLevel {
 /** Construct an inventory-close event: fires when a player closes an inventory view. */
 export function onInventoryClose(body: readonly Stmt[]): TopLevel {
   return withLoc({ kind: "event", event: "inventoryClose", body });
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 18): world operations and periodical events
+//
+// Semantics mirror the real Skript 2.17.1, verified against the
+// sandbox server with hand-written probe scripts (four rounds;
+// see the development log):
+//
+// - Blocks and locations are values with agreed print forms: a
+//   block prints as '<type>' at <cx>, <cy>, <cz> in world
+//   '<name>' using its CENTER coordinates, a location as
+//   "x: <x>, y: <y>, z: <z>, yaw: <yaw>, pitch: <pitch> in
+//   '<world>'", and locationOf a block is its center location.
+// - location() with three arguments builds in the server's main
+//   world; the four-argument form takes a world expression.
+//   Coordinates read back as the stored doubles
+//   (`x-coordinate of ...`). A location shifts by a vector
+//   (offsetLocation, the `~` operator); relativeBlock walks from
+//   a block or location in an absolute direction (above / below
+//   / the cardinals, with an optional block count) or in the
+//   facing-relative front / behind, which follow the target
+//   location's direction (a block's location faces south).
+// - worldOf — an engine builtin since phase 6 — is core
+//   language: `world of %player/location/block%` is plain
+//   Skript, so the node is no longer engine-only. world(name)
+//   is `world "<name>"` (no value for an unknown name).
+// - worldTime is the world's clock as an "H:MM" text (0 ticks
+//   reads 6:00, 6000 reads 12:00, 18000 reads 0:00);
+//   setWorldTime takes a clockTime literal or an expression
+//   carrying a clock text (a variable set from worldTime works).
+//   The original's timespan set form parses but its effect
+//   could not be verified, so it is deliberately not offered.
+// - worldWeather reads "clear" / "rain" / "thunder";
+//   setWorldWeather takes the name as a literal. Weather values
+//   round-trip through variables in the original, but a plain
+//   TEXT does not convert (a set from a text variable silently
+//   does nothing) and a quoted text never compares equal —
+//   hence the dedicated weatherType literal, emitted bare.
+// - every() is the periodical trigger. The period is a number
+//   literal (expressions are rejected by the original's parser),
+//   fractional amounts work, and the units are ticks / seconds /
+//   minutes. The first firing comes one full period after load;
+//   a reload re-anchors the schedule. The body has no event
+//   context.
+// - Original-side quirk: this family's composite expressions
+//   (and typeOf over a variable) do not parse inside string
+//   interpolations in Skript 2.17.1 — assign to a variable and
+//   interpolate the variable instead, as the world sample does.
+// ---------------------------------------------------------------------------
+
+/** Construct a block-at expression: the block at a location (`block at %location%`). */
+export function blockAt(location: Expr): Expr {
+  return { kind: "blockAt", location };
+}
+
+/**
+ * Construct a location expression: Skript's location() function.
+ * With three arguments the location is in the server's main
+ * world; pass a world expression as the fourth argument to build
+ * it in a specific world.
+ */
+export function location(x: Expr, y: Expr, z: Expr, world?: Expr): Expr {
+  return world === undefined
+    ? { kind: "locationAt", x, y, z }
+    : { kind: "locationAt", x, y, z, world };
+}
+
+/** Construct an x-coordinate expression: the x coordinate of a location. */
+export function xOf(target: Expr): Expr {
+  return { kind: "xOf", target };
+}
+
+/** Construct a y-coordinate expression: the y coordinate of a location. */
+export function yOf(target: Expr): Expr {
+  return { kind: "yOf", target };
+}
+
+/** Construct a z-coordinate expression: the z coordinate of a location. */
+export function zOf(target: Expr): Expr {
+  return { kind: "zOf", target };
+}
+
+/** Construct an offset-location expression: a location shifted by the given vector components (`<loc> ~ vector(<dx>, <dy>, <dz>)`). */
+export function offsetLocation(location: Expr, dx: Expr, dy: Expr, dz: Expr): Expr {
+  return { kind: "offsetLoc", location, dx, dy, dz };
+}
+
+const RELATIVE_DIRECTIONS: ReadonlySet<string> = new Set([
+  "above", "below", "north", "south", "east", "west", "front", "behind",
+]);
+
+/**
+ * Construct a relative-block expression: the block `amount`
+ * blocks (default 1) in `direction` from a block or location.
+ * front / behind follow the target location's facing direction;
+ * the other directions are absolute.
+ */
+export function relativeBlock(target: Expr, direction: RelativeDirection, amount = 1): Expr {
+  if (!RELATIVE_DIRECTIONS.has(direction)) {
+    throw new RangeError(`invalid relative direction: ${String(direction)}`);
+  }
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    throw new RangeError("relative block amount must be a positive number");
+  }
+  return { kind: "relativeBlock", target, direction, amount: num(amount) };
+}
+
+/** Construct a world expression by name (`world "<name>"`): the named world, or no value when it does not exist. */
+export function world(name: string): Expr {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new RangeError("world name must be a non-empty string");
+  }
+  return { kind: "world", name };
+}
+
+/** Construct a world-of expression: the world of a player / location / block expression (core language since phase 18; an engine builtin in phase 6). */
+export function worldOf(target: Expr): Expr {
+  return { kind: "worldOf", target };
+}
+
+/** Construct a world-time expression: the world's clock as an "H:MM" text (`time in %world%`; 0 ticks reads "6:00"). */
+export function worldTime(world: Expr): Expr {
+  return { kind: "worldTime", world };
+}
+
+/**
+ * Construct a clock-time literal ("13:00"): a time-of-day value
+ * for setWorldTime and for comparisons against worldTime. The
+ * text is validated and canonicalized (hour unpadded, minutes
+ * two digits), matching how the original prints time values.
+ */
+export function clockTime(text: string): Expr {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(typeof text === "string" ? text.trim() : "");
+  if (m === null) {
+    throw new RangeError(`invalid clock time: ${String(text)} (expected "H:MM")`);
+  }
+  const hour = Number(m[1]);
+  const minute = Number(m[2]);
+  if (hour > 23 || minute > 59) {
+    throw new RangeError(`invalid clock time: ${String(text)} (hour 0-23, minute 0-59)`);
+  }
+  return { kind: "clockTime", text: `${hour}:${m[2]}` };
+}
+
+/** Construct a world-weather expression: the world's weather as a name text (`weather in %world%`). */
+export function worldWeather(world: Expr): Expr {
+  return { kind: "worldWeather", world };
+}
+
+const WEATHER_NAMES: ReadonlySet<string> = new Set(["clear", "rain", "thunder"]);
+
+/** Construct a weather literal (clear / rain / thunder): the value worldWeather reads and weather comparisons use. Emitted bare, as the original's weather literals are. */
+export function weatherType(name: WeatherName): Expr {
+  if (!WEATHER_NAMES.has(name)) {
+    throw new RangeError(`invalid weather name: ${String(name)}`);
+  }
+  return { kind: "weatherType", name };
+}
+
+/** Construct a set-block statement: write an item's material at a location (`set block at <loc> to <item>`); an air item clears the block. */
+export function setBlockAt(location: Expr, itemValue: Expr): Stmt {
+  return withLoc({ kind: "setBlock", location, item: itemValue });
+}
+
+/** Construct a set-world-time statement: set a world's clock (`set time in <world> to <time>`). The value is a clockTime literal or an expression carrying a clock text. */
+export function setWorldTime(world: Expr, value: Expr): Stmt {
+  return withLoc({ kind: "setWorldTime", world, value });
+}
+
+/** Construct a set-world-weather statement: set a world's weather by name (`set weather in <world> to rain`). */
+export function setWorldWeather(world: Expr, name: WeatherName): Stmt {
+  if (!WEATHER_NAMES.has(name)) {
+    throw new RangeError(`invalid weather name: ${String(name)}`);
+  }
+  return withLoc({ kind: "setWorldWeather", world, name });
+}
+
+/**
+ * Construct a periodical trigger: run the body every `amount`
+ * `unit` (`every <amount> <unit>:`). The amount is a number
+ * literal — the original rejects expression periods at parse
+ * time — and may be fractional. The first firing comes one full
+ * period after the script loads, and a reload re-anchors the
+ * schedule. The body runs with no event context.
+ */
+export function every(amount: number, unit: TimeUnit, body: readonly Stmt[]): TopLevel {
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    throw new RangeError("periodical amount must be a positive number");
+  }
+  if (unit !== "ticks" && unit !== "seconds" && unit !== "minutes") {
+    throw new RangeError(`invalid periodical unit: ${String(unit)}`);
+  }
+  return withLoc({ kind: "periodical", amount, unit, body });
 }

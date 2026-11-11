@@ -44,7 +44,6 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "wsDisconnect",
   "wsMessage",
   "wsId",
-  "worldOf",
   "borderSize",
   "borderCenter",
   "setBorderSize",

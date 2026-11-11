@@ -122,6 +122,51 @@ function emitValue(e: Expr): string {
             return "index of event-slot";
         case "clickedRawSlotIndex":
             return "raw index of event-slot";
+        case "blockAt":
+            return `block at ${emitValue(e.location)}`;
+        case "locationAt":
+            return e.world !== undefined
+                ? `location(${emitValue(e.x)}, ${emitValue(e.y)}, ${emitValue(e.z)}, ${emitValue(e.world)})`
+                : `location(${emitValue(e.x)}, ${emitValue(e.y)}, ${emitValue(e.z)})`;
+        case "xOf":
+            return `x-coordinate of ${emitValue(e.target)}`;
+        case "yOf":
+            return `y-coordinate of ${emitValue(e.target)}`;
+        case "zOf":
+            return `z-coordinate of ${emitValue(e.target)}`;
+        case "offsetLoc":
+            return `${emitValue(e.location)} ~ vector(${emitValue(e.dx)}, ${emitValue(e.dy)}, ${emitValue(e.dz)})`;
+        case "relativeBlock": {
+            // The direction phrase shapes differ per direction
+            // (all probed): `block [n] above %target%` and
+            // `block [n] behind %target%` take no "of"; the
+            // cardinals and front do (`block [n] north of
+            // %target%`, `block [n] in front of %target%`).
+            const count =
+                e.amount.kind === "number" && e.amount.value === 1 ? "" : `${emitValue(e.amount)} `;
+            switch (e.direction) {
+                case "above":
+                case "below":
+                case "behind":
+                    return `block ${count}${e.direction} ${emitValue(e.target)}`;
+                case "front":
+                    return `block ${count}in front of ${emitValue(e.target)}`;
+                default:
+                    return `block ${count}${e.direction} of ${emitValue(e.target)}`;
+            }
+        }
+        case "world":
+            return `world "${escapeText(e.name)}"`;
+        case "worldOf":
+            return `world of ${emitValue(e.target)}`;
+        case "worldTime":
+            return `time in ${emitValue(e.world)}`;
+        case "clockTime":
+            return e.text;
+        case "worldWeather":
+            return `weather in ${emitValue(e.world)}`;
+        case "weatherType":
+            return e.name;
         case "arith":
             // Arithmetic is always parenthesized so the emitted tree
             // means the same thing regardless of Skript's own
@@ -134,7 +179,6 @@ function emitValue(e: Expr): string {
             return `"${emitStringParts(e.parts)}"`;
         case "wsMessage":
         case "wsId":
-        case "worldOf":
         case "borderSize":
         case "borderCenter":
         case "timerId":
@@ -226,6 +270,19 @@ function emitString(e: Expr): string {
         case "slotItem":
         case "clickedSlotIndex":
         case "clickedRawSlotIndex":
+        case "blockAt":
+        case "locationAt":
+        case "xOf":
+        case "yOf":
+        case "zOf":
+        case "offsetLoc":
+        case "relativeBlock":
+        case "world":
+        case "worldOf":
+        case "worldTime":
+        case "clockTime":
+        case "worldWeather":
+        case "weatherType":
             return `%${emitValue(e)}%`;
         case "arith":
             return `%${emitValue(e)}%`;
@@ -233,7 +290,6 @@ function emitString(e: Expr): string {
             return emitStringParts(e.parts);
         case "wsMessage":
         case "wsId":
-        case "worldOf":
         case "borderSize":
         case "borderCenter":
         case "timerId":
@@ -537,6 +593,12 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             )];
         case "closeInventory":
             return [own(`${prefix}close ${emitValue(s.target)}'s inventory`, path, s.loc)];
+        case "setBlock":
+            return [own(`${prefix}set block at ${emitValue(s.location)} to ${emitValue(s.item)}`, path, s.loc)];
+        case "setWorldTime":
+            return [own(`${prefix}set time in ${emitValue(s.world)} to ${emitValue(s.value)}`, path, s.loc)];
+        case "setWorldWeather":
+            return [own(`${prefix}set weather in ${emitValue(s.world)} to ${s.name}`, path, s.loc)];
         case "stop":
             return [own(`${prefix}stop`, path, s.loc)];
         case "callStmt":
@@ -677,6 +739,13 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
                 .join(", ");
             const ret = t.returnType === null ? "" : ` :: ${t.returnType}`;
             const header = `function ${t.name}(${params})${ret}:`;
+            return [own(header, path, t.loc), ...emitBlock(t.body, 1, path, "body")];
+        }
+        case "periodical": {
+            // The unit word is always the plural (the original's
+            // timespan grammar accepts "every 1 minutes" too —
+            // probed), matching how `wait` emits its units.
+            const header = `every ${String(t.amount)} ${t.unit}:`;
             return [own(header, path, t.loc), ...emitBlock(t.body, 1, path, "body")];
         }
         default: {

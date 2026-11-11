@@ -61,8 +61,10 @@ the extended loops, `while` and `wait`, `functions.ts` for custom
 functions, `gameplay.ts` for the gameplay events (block
 break/place, clicks, damage), `events2.ts` for the event
 filters and the pickup / drop / respawn / bed events,
-`text.ts` for the text operations, and `gui.ts` for items,
-inventories and GUIs. They
+`text.ts` for the text operations, `gui.ts` for items,
+inventories and GUIs, and `world.ts` for world operations
+(blocks, locations, the world clock and weather) and the
+periodical trigger. They
 double as golden-test fixtures.
 
 ## Supported subset (SPEC, v0)
@@ -684,6 +686,100 @@ a GUI whose clicks are cancelled), slot add/remove
 forms, the cursor slot, and enchantment / other meta
 beyond name, lore and amount.
 
+### World operations and periodical events
+
+Blocks, locations, world state and the periodical
+trigger are core language: the same script runs under
+Skript (as emitted `.sk`) and under the engine jar.
+Every semantic below was probed against the real
+Skript 2.17.1 (console probe rounds; see the
+development log):
+
+- **Blocks and locations as values**: `blockAt(loc)`
+  is the block at a location (`block at %location%`);
+  `setBlockAt(loc, item)` writes an item's material
+  there (`set block at ... to ...`; an air item clears
+  the block). A block prints as `'<type>' at <cx>,
+  <cy>, <cz> in world '<name>'` with its **center**
+  coordinates, and `locationOf` a block is its center
+  location — the engine reproduces both forms.
+- **Locations**: `location(x, y, z)` builds a location
+  in the server's main world; `location(x, y, z,
+  world)` takes a world expression. A location prints
+  as `x: <x>, y: <y>, z: <z>, yaw: <yaw>, pitch:
+  <pitch> in '<world>'`. `xOf` / `yOf` / `zOf` read
+  coordinates (`x-coordinate of ...`).
+  `offsetLocation(loc, dx, dy, dz)` shifts a location
+  by a vector (`%location% ~ vector(...)`); the
+  components are expressions.
+- **Relative blocks**: `relativeBlock(target,
+  direction[, amount])` is the block in a direction
+  from a block or location — `above`, `below`,
+  `north`, `south`, `east`, `west` (absolute) and
+  `front` / `behind` (facing-relative: they follow the
+  target location's direction; a block's own location
+  faces south). The emitted shapes differ per
+  direction (`block above %t%`, `block 2 north of
+  %t%`, `block in front of %t%`, `block behind %t%`),
+  all probed.
+- **Worlds**: `world("name")` is a world by name (no
+  value for an unknown name). `worldOf(target)` —
+  core since this phase; it was an engine builtin in
+  the MundoSK slice — reads the world of a player,
+  location or block.
+- **World clock**: `worldTime(world)` reads the
+  world's clock as an `H:MM` text (`time in %world%`):
+  0 ticks reads `6:00`, 6000 `12:00`, 18000 `0:00`.
+  `setWorldTime(world, value)` sets it; the value is a
+  `clockTime("13:00")` literal or any expression
+  carrying a clock text (a variable set from
+  `worldTime` round-trips — probed). The original's
+  timespan set form parses but its effect could not
+  be verified, so it is deliberately not offered;
+  time arithmetic is not part of the subset.
+- **Weather**: `worldWeather(world)` reads `clear`,
+  `rain` or `thunder` (`weather in %world%`);
+  `setWorldWeather(world, name)` sets it by literal
+  name. Weather values compare against the
+  `weatherType("rain")` literal — emitted **bare**
+  (`is rain`): the quoted text form parses but never
+  compares equal, and a plain text does not convert
+  (setting weather from a text variable silently does
+  nothing in the original — both probed).
+- **Periodical events**: `every(amount, unit, body)`
+  is the periodical trigger (`every 3 seconds:`). The
+  amount is a number **literal** — the original
+  rejects expression periods at parse time — and may
+  be fractional (`every 2.5 seconds` fires on
+  cadence); units are `ticks` / `seconds` / `minutes`.
+  The first firing comes one full period after the
+  script loads, and a reload re-anchors the schedule
+  (probed with timed logs). The body runs with no
+  event context, like a function body.
+
+One original-side quirk applies to this family (and
+to `typeOf` over a variable): Skript 2.17.1 does not
+parse these composite expressions inside string
+interpolations — they are value-position constructs
+there. Assign to a variable first and interpolate the
+variable, as the sample does; the engine has no such
+restriction.
+
+`examples/world.ts` exercises all of it — a 3-second
+heartbeat periodical, `/wstat` / `/wday` / `/wnight` /
+`/wcalm` / `/wstorm` world-state commands, `/wpos`
+coordinate read-back, and `/wbuild` + `/wraze`
+placing and clearing real blocks — and
+`examples/behavior/world.behavior.ts` drives a bot
+through the whole flow under both runtimes, including
+measuring the heartbeat's cadence.
+
+Out of scope for this slice (recorded, not
+forgotten): facing-relative offsets from *entities*
+(the location form is probed and included; an
+entity's facing needs a live-facing probe design),
+and world time arithmetic.
+
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal
 `%` is doubled (`%%`). This applies to `str()` values, the literal parts of
@@ -831,7 +927,7 @@ order; the close event fires whoever closed the connection.
 | `onWsClose(body)` | event: a connection closed |
 | `wsMessage()` | the received text (inside `onWsMessage`) |
 | `wsId()` | the connection id (inside websocket events) |
-| `worldOf(target)` | the world of a player / location |
+| `worldOf(target)` | the world of a player / location (promoted to core language in phase 18 — see *World operations and periodical events*; it stays listed here as this slice's origin) |
 | `borderSize(world)` | current size of the world's border |
 | `borderCenter(world)` | center location of the world's border |
 | `setBorderSize(world, size)` | set the border size |
