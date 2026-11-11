@@ -1251,6 +1251,22 @@ sandbox once under a background host process, each
 and `probe stop` shuts it down (verifying no process or `session.lock`
 is left behind). `probe status` reports whether it is running.
 
+For engine-mode development there is a watch loop:
+`bin/skript-ts.mjs watch --server-dir server [--src <dir>] [--yes]`
+runs against a server that is **already running** with the engine jar
+(watch never starts or stops it). Each save is typechecked, transpiled
+and deployed, and the engine reloads it without a restart: the CLI
+writes a `reload.request` marker into the plugin data folder only
+after the deploy completes, the engine polls for it, reloads, and
+answers with `reload.status`. Byte-identical IR is skipped entirely
+(no deploy, no reload), and a failed round leaves the running program
+untouched. Note that a reload resets named timers and re-anchors
+periodical triggers (first fire one full period after the reload)
+while global variables persist — the same semantics as Skript's
+`/skript reload`. Because the deploy target is a live server,
+`--server-dir` is required explicitly, and the target (server dir,
+world, MOTD, deploy folder) is confirmed before the first round.
+
 Transpiling also writes a source map next to each `.sk` file
 (`<name>.sk.map.json`) recording, for every emitted line, the AST node
 path and the TypeScript call site that produced it. When Skript reports
