@@ -409,7 +409,11 @@ final class Urls {
                 return fail(job, (double) status, "io", "Move failed: " + e.getMessage());
             }
 
-            return ok(job, (double) status, null, target.toString());
+            // Scripts see the path they asked for: relative to the files
+            // root, '/'-separated (e.g. "dl/hello.txt"), never the
+            // server's absolute filesystem layout.
+            String savedPath = filesRoot.relativize(target).toString().replace('\\', '/');
+            return ok(job, (double) status, null, savedPath);
         } catch (BodyTooLargeException e) {
             deletePart(part);
             return fail(job, (double) status, "size", "Response body exceeds 8 MiB");
