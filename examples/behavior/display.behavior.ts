@@ -142,6 +142,47 @@ export default defineBehavior(async (t) => {
     }
     await waitMsg(mark, /fresh p=1/);
     await bot.waitForBossBarAction(1, 10_000, freshMark);
+
+    // -- A colored broadcast arrives as formatting, not as
+    // a literal section-sign code in the text (phase 27,
+    // R-8: the engine's broadcast path used to ship the
+    // § code raw). --
+    mark = bot.messages.length;
+    await chat("/dbcast");
+    await waitMsg(mark, /^Colored News$/);
+
+    // -- A number-valued stay is not a title timing (phase
+    // 27, R-9): the title text arrives and NO new times
+    // packet is sent. --
+    timeCount = bot.titleTimes().length;
+    await chat("/dtnum");
+    await bot.waitForTitleText("Num Title");
+    await t.sleep(600);
+    if (bot.titleTimes().length !== timeCount) {
+      throw new Error(
+        `number-timed title send produced a times packet: ${JSON.stringify(bot.titleTimes().slice(timeCount))}`,
+      );
+    }
+
+    // -- A half-tick fade-in (25 ms by timespan division)
+    // converts rounding half DOWN (phase 27, R-9): the
+    // times packet reads fade-in 0, stay / fade-out filled
+    // with the 70 / 20 defaults. --
+    timeMark = bot.titleTimes().length;
+    await chat("/dthalf");
+    await bot.waitForTitleTimes(0, 70, 20, 10_000, timeMark);
+    await bot.waitForTitleText("Half Title");
+
+    // -- The boss bar write family (phase 27, R-4 / R-5):
+    // the value / viewer operands are evaluated even when
+    // the bar has no value, and progress writes with a
+    // missing or wrong-typed value are no-ops. --
+    mark = bot.messages.length;
+    await chat("/dbord");
+    await waitMsg(mark, /ord1=1/);
+    await waitMsg(mark, /ord2=2/);
+    await waitMsg(mark, /q1=0\.7/);
+    await waitMsg(mark, /q2=0\.7/);
   } finally {
     bot.disconnect();
   }

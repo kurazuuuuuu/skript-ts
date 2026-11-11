@@ -48,3 +48,40 @@ command /dbfresh:
         add player to viewers of {_bar}
         broadcast "fresh p=%progress of {_bar}%"
         remove player from viewers of {_bar}
+
+command /dbcast:
+    trigger:
+        broadcast "&aColored News"
+
+command /dtnum:
+    trigger:
+        set {dtn27} to 100
+        send title "Num Title" to player for {dtn27}
+
+command /dthalf:
+    trigger:
+        set {_h} to (1 ticks / 2)
+        send title "Half Title" to player with fadein {_h}
+
+function p27markt(t: text) :: text:
+    add 1 to {p27c}
+    return "marked"
+
+function p27markp(p: player) :: player:
+    add 1 to {p27c}
+    return {_p}
+
+command /dbord:
+    trigger:
+        set {p27c} to 0
+        set title of {_missing} to p27markt("x")
+        broadcast "ord1=%{p27c}%"
+        add p27markp(player) to viewers of {_missing}
+        broadcast "ord2=%{p27c}%"
+        set {_bar} to a boss bar
+        set progress of {_bar} to 0.7
+        set progress of {_bar} to {_unset}
+        broadcast "q1=%progress of {_bar}%"
+        set {_txt} to "hello"
+        set progress of {_bar} to {_txt}
+        broadcast "q2=%progress of {_bar}%"

@@ -11,6 +11,14 @@ import {
   num,
   player,
   localVar,
+  variable,
+  defineFunction,
+  param,
+  returnValue,
+  call,
+  add,
+  dividedBy,
+  timespan,
   sendTitle,
   sendSubtitle,
   sendActionBar,
@@ -107,6 +115,64 @@ const dbfresh = command("dbfresh", null, [
   removeBossBarViewer(localVar("bar"), player()),
 ]);
 
+// /dbcast: a colored broadcast (phase 27, review item R-8).
+// The text carries a color code; both runtimes must deliver
+// it as formatting, never as a literal "§a" in the chat.
+const dbcast = command("dbcast", null, [
+  broadcast(str("&aColored News")),
+]);
+
+// /dtnum: a title whose stay is a NUMBER variable (phase 27,
+// review item R-9 re-derived). A number does not count as a
+// title timing in the original — no times packet is sent,
+// exactly as if no timing had been given (the "a number
+// counts as ticks" rule belongs to waitFor only).
+const dtnum = command("dtnum", null, [
+  set(variable("dtn27"), num(100)),
+  sendTitle(player(), str("Num Title"), { stay: variable("dtn27") }),
+]);
+
+// /dthalf: a title whose fade-in is half a tick (25 ms),
+// computed by timespan division. The original converts a
+// timespan to title ticks rounding half DOWN, so the client
+// receives a fade-in of 0 ticks (phase 27 probe).
+const dthalf = command("dthalf", null, [
+  set(localVar("h"), dividedBy(timespan(1, "ticks"), num(2))),
+  sendTitle(player(), str("Half Title"), { fadeIn: localVar("h") }),
+]);
+
+// Marking functions for /dbord: each call bumps the global
+// counter {p27c}, making operand evaluation observable.
+const p27markt = defineFunction("p27markt", [param("t", "text")], "text", [
+  add(variable("p27c"), num(1)),
+  returnValue(str("marked")),
+]);
+const p27markp = defineFunction("p27markp", [param("p", "player")], "player", [
+  add(variable("p27c"), num(1)),
+  returnValue(localVar("p")),
+]);
+
+// /dbord: the boss bar write family's evaluation and
+// missing-value policy (phase 27 probes of the original):
+// the non-bar operand is evaluated even when the bar has no
+// value (ord1 / ord2 count the marking calls), and progress
+// writes with a missing or wrong-typed value are no-ops
+// (q1 / q2 keep reading 0.7).
+const dbord = command("dbord", null, [
+  set(variable("p27c"), num(0)),
+  setBossBarTitle(localVar("missing"), call("p27markt", str("x"))),
+  broadcast(fmt("ord1=", variable("p27c"))),
+  addBossBarViewer(localVar("missing"), call("p27markp", player())),
+  broadcast(fmt("ord2=", variable("p27c"))),
+  set(localVar("bar"), bossBar()),
+  setBossBarProgress(localVar("bar"), num(0.7)),
+  setBossBarProgress(localVar("bar"), localVar("unset")),
+  broadcast(fmt("q1=", bossBarProgressOf(localVar("bar")))),
+  set(localVar("txt"), str("hello")),
+  setBossBarProgress(localVar("bar"), localVar("txt")),
+  broadcast(fmt("q2=", bossBarProgressOf(localVar("bar")))),
+]);
+
 export const displayScript: Script = script(
   joinDisplay,
   dtplain,
@@ -117,4 +183,10 @@ export const displayScript: Script = script(
   dbar,
   dbshow,
   dbfresh,
+  dbcast,
+  dtnum,
+  dthalf,
+  p27markt,
+  p27markp,
+  dbord,
 );
