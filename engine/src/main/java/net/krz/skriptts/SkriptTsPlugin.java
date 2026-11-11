@@ -16,6 +16,8 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerBedLeaveEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -500,6 +502,37 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         ctx.damageEvent = event;
         ctx.cancellable = event;
         engine.fireEvent("damage", ctx, false);
+    }
+
+    // ------------------------------------------------------------------
+    // Inventory events (phase 17): clicks and closes. The click
+    // listener fires for every inventory click, in script GUIs
+    // and vanilla containers alike, mirroring Skript's event; the
+    // context carries the view's top inventory, the clicked
+    // slot's item (no value for an empty slot), and both slot
+    // indices (within the clicked inventory, and raw within the
+    // whole view). Cancellation writes through to the Bukkit
+    // event, so a cancelled click moves nothing.
+    // ------------------------------------------------------------------
+
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventInventory = event.getInventory();
+        ctx.eventItem = normalizeItem(event.getCurrentItem());
+        ctx.clickedSlot = (double) event.getSlot();
+        ctx.clickedRawSlot = (double) event.getRawSlot();
+        ctx.cancellable = event;
+        engine.fireEvent("inventoryClick", ctx, false);
+    }
+
+    @EventHandler
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) return;
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventInventory = event.getInventory();
+        engine.fireEvent("inventoryClose", ctx, false);
     }
 
     /**

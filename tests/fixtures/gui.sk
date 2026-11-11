@@ -1,0 +1,30 @@
+command /gem:
+    trigger:
+        set {_i} to diamond sword
+        set name of {_i} to "Gem Blade"
+        set lore of {_i} to "Sharp and bright" and "Handle with care"
+        set {gemitem} to {_i}
+        give {_i} to player
+
+command /geminfo:
+    trigger:
+        broadcast "gem=%{gemitem}% name=%name of {gemitem}% lore=%join lore of {gemitem} with " / "% n=%amount of {gemitem}%"
+
+command /menu:
+    trigger:
+        open chest inventory with 3 rows named "Shop Menu" to player
+        set slot 13 of player's current inventory to diamond named "Menu Gem" with lore "Click to buy"
+        set slot 11 of player's current inventory to 3 of stone
+
+on inventory click:
+    if name of event-inventory is "Shop Menu":
+        cancel event
+        broadcast "clicked %index of event-slot% raw %raw index of event-slot% item=%event-item% in %name of event-inventory%"
+        if index of event-slot is 13:
+            broadcast "bought the gem slot"
+            set slot 22 of event-inventory to emerald
+            broadcast "slot22=%slot 22 of event-inventory%"
+
+on inventory close:
+    if name of event-inventory is "Shop Menu":
+        broadcast "closed %name of event-inventory%"

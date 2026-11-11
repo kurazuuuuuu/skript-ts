@@ -1,6 +1,7 @@
 package net.krz.skriptts;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -11,7 +12,9 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -22,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.Function;
 import java.util.logging.Logger;
 
@@ -110,6 +114,20 @@ import java.util.logging.Logger;
  * and the named tags to § codes, and the strip expressions remove
  * them. All semantics were probed against the real Skript 2.17.1
  * (see the project development log).
+ * Phase 17 adds core-language items, inventories and GUIs (no
+ * addon scope): item construction with display names, lore and
+ * stack sizes; name / lore / amount reads; meta rewriting of the
+ * item a variable holds; virtual chest inventories as values;
+ * slot reads and writes; opening and closing inventory views;
+ * and the inventory click / close events with their slot indices.
+ * Item stacks are real values throughout: the meta expressions
+ * materialize ItemStacks, stack equality compares type + amount
+ * plus the meta fields both stacks carry (names case-sensitively,
+ * lore line by line — probed), and a stack prints as its type
+ * name (pluralized above amount 1) plus " named <name>". Display
+ * names and lore are components in Skript; here they are carried
+ * as §-coded strings converted at the meta boundary, the same
+ * model as phase 15's texts.
  */
 final class Engine {
 
@@ -141,6 +159,9 @@ final class Engine {
         ItemStack eventItem; // "event-item" in block break/place/click events
         Entity clickedEntity; // "clicked entity" in right clicks on an entity; null otherwise
         Entity attacker;    // "attacker" in damage events caused by an entity; null otherwise
+        Inventory eventInventory; // "event-inventory" in inventory click/close events (the view's top inventory)
+        Double clickedSlot; // "index of event-slot" in inventory click events; null elsewhere
+        Double clickedRawSlot; // "raw index of event-slot" in inventory click events; null elsewhere
         Cancellable cancellable; // the Bukkit event being handled, when it can be cancelled
         EntityDamageEvent damageEvent; // the live damage event (damage get/set); null elsewhere
         String chatMessage; // "message" in chat events
@@ -166,6 +187,9 @@ final class Engine {
             c.eventItem = eventItem;
             c.clickedEntity = clickedEntity;
             c.attacker = attacker;
+            c.eventInventory = eventInventory;
+            c.clickedSlot = clickedSlot;
+            c.clickedRawSlot = clickedRawSlot;
             c.cancellable = cancellable;
             c.damageEvent = damageEvent;
             c.chatMessage = chatMessage;
@@ -239,6 +263,18 @@ final class Engine {
     private PlaceholderHost placeholderHost;
     private Database database;
     private Files files;
+    /**
+     * Titles of script-created chest inventories (phase 17), by
+     * inventory identity. Bukkit exposes an inventory's title
+     * only through a viewer's open view, so an inventory value
+     * held in a variable (possibly never opened, or already
+     * closed) needs its title remembered here; nameOf consults
+     * this registry first and falls back to a viewer's view
+     * title. Weak keys: an inventory nobody references any more
+     * forgets its title with it.
+     */
+    private final Map<Inventory, String> guiTitles =
+            java.util.Collections.synchronizedMap(new WeakHashMap<>());
 
     Engine(Variables variables, Logger logger) {
         this.variables = variables;
@@ -567,6 +603,20 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "giveItem" -> {
+                // Give an item-valued expression (phase 17): the
+                // stack — meta included — is cloned into the
+                // player's inventory, so later rewrites of the
+                // source variable do not reach the handed-out copy
+                // (and vice versa).
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    ItemStack stack = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                    if (stack != null && !stack.getType().isAir() && stack.getAmount() > 0) {
+                        target.getInventory().addItem(stack);
+                    }
+                }
+                cont.run();
+            }
             case "teleport" -> {
                 Object target = evalExpr(node(stmt.get("target")), ctx);
                 Object loc = evalExpr(node(stmt.get("location")), ctx);
@@ -664,6 +714,82 @@ final class Engine {
                     boolean caseSensitive = Boolean.TRUE.equals(stmt.get("caseSensitive"));
                     storeFor(target, ctx).set(varKey(target, ctx),
                             replaceText(s, f, r, firstOnly, caseSensitive));
+                }
+                cont.run();
+            }
+            case "setItemName", "setItemLore", "setItemAmount" -> {
+                // Rewrite the meta of the item a scalar variable
+                // holds (phase 17). The current value is
+                // materialized (a bare type name becomes a stack)
+                // and the rewritten stack is stored back; a
+                // variable with no item value is left untouched,
+                // like the text-replace statement above.
+                Map<String, Object> target = node(stmt.get("target"));
+                ItemStack stack = toItemStack(evalExpr(target, ctx));
+                if (stack != null) {
+                    boolean changed = true;
+                    switch (kind(stmt)) {
+                        case "setItemName" -> {
+                            Object name = evalExpr(node(stmt.get("name")), ctx);
+                            if (name instanceof String s) setDisplayName(stack, s);
+                            else changed = false;
+                        }
+                        case "setItemLore" -> {
+                            List<String> lines = new ArrayList<>();
+                            for (Object lineNode : list(stmt.get("lines"))) {
+                                Object line = evalExpr(node(lineNode), ctx);
+                                if (line instanceof String s) lines.add(s);
+                            }
+                            setLoreLines(stack, lines);
+                        }
+                        default -> { // setItemAmount
+                            Object amount = evalExpr(node(stmt.get("amount")), ctx);
+                            if (amount instanceof Number n) {
+                                stack.setAmount(Math.max(0, (int) Math.round(n.doubleValue())));
+                            } else changed = false;
+                        }
+                    }
+                    if (changed) storeFor(target, ctx).set(varKey(target, ctx), stack);
+                }
+                cont.run();
+            }
+            case "setSlot" -> {
+                // Write an item into one slot of an inventory
+                // (phase 17). A valueless item (or an air item)
+                // clears the slot; the stack is cloned so the
+                // variable that produced it keeps its own copy.
+                Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
+                Object slot = evalExpr(node(stmt.get("slot")), ctx);
+                if (inv != null && slot instanceof Number n) {
+                    int index = (int) Math.round(n.doubleValue());
+                    if (index >= 0 && index < inv.getSize()) {
+                        ItemStack stack = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                        inv.setItem(index, stack == null || stack.getType().isAir() ? null : stack);
+                    }
+                }
+                cont.run();
+            }
+            case "openInventory" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
+                    if (inv != null) target.openInventory(inv);
+                }
+                cont.run();
+            }
+            case "openGui" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    Object rows = evalExpr(node(stmt.get("rows")), ctx);
+                    Object title = stmt.get("title") == null ? null : evalExpr(node(stmt.get("title")), ctx);
+                    Inventory inv = createChestInventory(
+                            rows instanceof Number n ? n.doubleValue() : 3,
+                            title instanceof String s ? s : null);
+                    target.openInventory(inv);
+                }
+                cont.run();
+            }
+            case "closeInventory" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    target.closeInventory();
                 }
                 cont.run();
             }
@@ -1342,7 +1468,11 @@ final class Engine {
                     && ba.getWorld().equals(bb.getWorld());
         }
         if (a instanceof ItemStack ia && b instanceof ItemStack ib) {
-            return ia.getType() == ib.getType() && ia.getAmount() == ib.getAmount();
+            // Type + amount, plus the meta both stacks carry
+            // (phase 17; probed: a named stack equals a plain
+            // one, two differently named stacks do not).
+            return ia.getType() == ib.getType() && ia.getAmount() == ib.getAmount()
+                    && metaCompatible(ia, ib);
         }
         if (a.getClass() != b.getClass()) return false;
         return a.equals(b);
@@ -1359,6 +1489,15 @@ final class Engine {
     static String typeNameOf(Object value) {
         if (value instanceof Block block) return materialName(block.getType());
         if (value instanceof ItemStack stack) return materialName(stack.getType());
+        if (value instanceof Inventory inv) {
+            // Skript names inventory types ("chest inventory" for
+            // a virtual chest GUI, "player inventory", ...).
+            return switch (inv.getType()) {
+                case CHEST -> "chest inventory";
+                case PLAYER -> "player inventory";
+                default -> inv.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ') + " inventory";
+            };
+        }
         if (value instanceof Player) return "player";
         if (value instanceof Entity entity) {
             return entity.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
@@ -1461,6 +1600,75 @@ final class Engine {
             case "typeOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 yield target == null ? null : typeNameOf(target);
+            }
+            case "eventInventory" -> ctx.eventInventory;
+            case "clickedSlotIndex" -> ctx.clickedSlot;
+            case "clickedRawSlotIndex" -> ctx.clickedRawSlot;
+            case "itemWithName" -> {
+                // Materialize the base item and (re)write its
+                // display name (phase 17). The text is this
+                // engine's §-coded string form of Skript's
+                // component name, converted at the meta boundary.
+                ItemStack stack = toItemStack(evalExpr(node(expr.get("base")), ctx));
+                Object name = evalExpr(node(expr.get("name")), ctx);
+                if (stack == null || !(name instanceof String s)) yield null;
+                setDisplayName(stack, s);
+                yield stack;
+            }
+            case "itemWithLore" -> {
+                ItemStack stack = toItemStack(evalExpr(node(expr.get("base")), ctx));
+                if (stack == null) yield null;
+                List<String> lines = new ArrayList<>();
+                for (Object lineNode : list(expr.get("lines"))) {
+                    Object line = evalExpr(node(lineNode), ctx);
+                    if (line instanceof String s) lines.add(s);
+                }
+                setLoreLines(stack, lines);
+                yield stack;
+            }
+            case "itemWithAmount" -> {
+                ItemStack stack = toItemStack(evalExpr(node(expr.get("base")), ctx));
+                Object amount = evalExpr(node(expr.get("amount")), ctx);
+                if (stack == null || !(amount instanceof Number n)) yield null;
+                stack.setAmount(Math.max(0, (int) Math.round(n.doubleValue())));
+                yield stack;
+            }
+            case "nameOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (target instanceof ItemStack stack) yield displayNameOf(stack);
+                if (target instanceof Inventory inv) yield inventoryTitle(inv);
+                if (target instanceof Player p) yield p.getName();
+                yield null;
+            }
+            case "loreOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof ItemStack stack ? loreOf(stack) : null;
+            }
+            case "amountOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (target instanceof ItemStack stack) yield (double) stack.getAmount();
+                if (target instanceof List<?> listValue) yield (double) listValue.size();
+                yield null;
+            }
+            case "chestInventory" -> {
+                Object rows = evalExpr(node(expr.get("rows")), ctx);
+                Object title = expr.get("title") == null ? null : evalExpr(node(expr.get("title")), ctx);
+                yield createChestInventory(
+                        rows instanceof Number n ? n.doubleValue() : 3,
+                        title instanceof String s ? s : null);
+            }
+            case "currentInventory" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof Player p ? p.getOpenInventory().getTopInventory() : null;
+            }
+            case "slotItem" -> {
+                Inventory inv = asInventory(evalExpr(node(expr.get("inventory")), ctx));
+                Object slot = evalExpr(node(expr.get("slot")), ctx);
+                if (inv == null || !(slot instanceof Number n)) yield null;
+                int index = (int) Math.round(n.doubleValue());
+                if (index < 0 || index >= inv.getSize()) yield null;
+                ItemStack stack = inv.getItem(index);
+                yield stack == null || stack.getType().isAir() ? null : stack.clone();
             }
             case "textLength" -> mapText(evalExpr(node(expr.get("target")), ctx),
                     s -> (double) s.length());
@@ -2048,7 +2256,25 @@ final class Engine {
         if (value instanceof Database.DataSource ds) return ds.display();
         if (value instanceof Player p) return p.getName();
         if (value instanceof Block block) return materialName(block.getType());
-        if (value instanceof ItemStack stack) return materialName(stack.getType());
+        if (value instanceof ItemStack stack) {
+            // An item prints as its type name — pluralized with
+            // its amount above 1 ("3 diamond swords") — plus
+            // " named <name>" when it carries a custom name
+            // (phase 17; probed against the real Skript 2.17.1).
+            // Lore never prints.
+            String base = stack.getAmount() > 1
+                    ? formatNumber(stack.getAmount()) + " " + pluralize(materialName(stack.getType()))
+                    : materialName(stack.getType());
+            String name = displayNameOf(stack);
+            return name == null ? base : base + " named " + name;
+        }
+        if (value instanceof Inventory inv) {
+            // An inventory value prints as its type name in
+            // this subset (its title is read through nameOf;
+            // Skript's own text form of an inventory value was
+            // not probed and no sample prints one).
+            return typeNameOf(inv);
+        }
         if (value instanceof Entity entity) return typeNameOf(entity);
         if (value instanceof World w) return w.getName();
         if (value instanceof Number n) return formatNumber(n.doubleValue());
@@ -2218,6 +2444,151 @@ final class Engine {
         int i = 1;
         while (used.contains((double) i)) i++;
         return i;
+    }
+
+    // ------------------------------------------------------------------
+    // Items and inventories (phase 17)
+    // ------------------------------------------------------------------
+
+    /** Legacy-section serializer bridging this engine's §-coded strings and Bukkit components. */
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+
+    /**
+     * Materialize an item value as a real stack: a type name (the
+     * `item` expression's value) becomes a fresh stack, a stack is
+     * cloned (callers may rewrite its meta freely), a block becomes
+     * its item form. Anything else — including a missing value —
+     * yields null.
+     */
+    private static ItemStack toItemStack(Object value) {
+        if (value instanceof ItemStack stack) return stack.clone();
+        if (value instanceof String name) {
+            Material mat = resolveMaterial(name);
+            return mat == null ? null : new ItemStack(mat, 1);
+        }
+        if (value instanceof Block block) return new ItemStack(block.getType(), 1);
+        return null;
+    }
+
+    /** Write a display name (a §-coded string) onto a stack's meta. */
+    private static void setDisplayName(ItemStack stack, String name) {
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) return;
+        meta.displayName(LEGACY.deserialize(name));
+        stack.setItemMeta(meta);
+    }
+
+    /** The custom display name of a stack as a §-coded string, or null when it has none. */
+    private static String displayNameOf(ItemStack stack) {
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null || !meta.hasDisplayName()) return null;
+        Component name = meta.displayName();
+        return name == null ? null : LEGACY.serialize(name);
+    }
+
+    /** Replace a stack's lore with the given §-coded lines. */
+    private static void setLoreLines(ItemStack stack, List<String> lines) {
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) return;
+        List<Component> lore = new ArrayList<>();
+        for (String line : lines) lore.add(LEGACY.deserialize(line));
+        meta.lore(lore);
+        stack.setItemMeta(meta);
+    }
+
+    /** A stack's lore lines as §-coded strings (a list value), or null when it has no lore. */
+    private static Object loreOf(ItemStack stack) {
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null || !meta.hasLore()) return null;
+        List<Component> lore = meta.lore();
+        if (lore == null || lore.isEmpty()) return null;
+        List<Object> lines = new ArrayList<>();
+        for (Component line : lore) lines.add(LEGACY.serialize(line));
+        return lines;
+    }
+
+    /**
+     * Meta compatibility of two stacks under Skript's item
+     * equality (probed against the real Skript 2.17.1): a meta
+     * field decides only when BOTH stacks carry it — a named
+     * stack equals a plain one, two differently named stacks
+     * differ (names compare case-sensitively, in their §-coded
+     * form), and lore compares line by line when both stacks
+     * have lore.
+     */
+    private static boolean metaCompatible(ItemStack a, ItemStack b) {
+        String aName = displayNameOf(a);
+        String bName = displayNameOf(b);
+        if (aName != null && bName != null && !aName.equals(bName)) return false;
+        Object aLore = loreOf(a);
+        Object bLore = loreOf(b);
+        if (aLore instanceof List<?> al && bLore instanceof List<?> bl && !al.equals(bl)) return false;
+        return true;
+    }
+
+    /**
+     * A fresh virtual chest inventory with the given row count
+     * (clamped to 1..6, as Bukkit chest sizes are multiples of 9
+     * up to 54) and title. The title is remembered in the
+     * registry so nameOf can read it while nobody is viewing.
+     */
+    private Inventory createChestInventory(double rows, String title) {
+        int clamped = (int) Math.max(1, Math.min(6, Math.round(rows)));
+        Inventory inv = title == null
+                ? Bukkit.createInventory(null, clamped * 9)
+                : Bukkit.createInventory(null, clamped * 9, LEGACY.deserialize(title));
+        if (title != null) guiTitles.put(inv, title);
+        return inv;
+    }
+
+    /**
+     * The inventory an expression value addresses: an inventory
+     * itself, or a player's own inventory (Skript's slot forms
+     * accept a player directly: "slot 0 of player").
+     */
+    private static Inventory asInventory(Object value) {
+        if (value instanceof Inventory inv) return inv;
+        if (value instanceof Player p) return p.getInventory();
+        return null;
+    }
+
+    /**
+     * The title of an inventory for nameOf: the registry's title
+     * for script-created GUIs, else a current viewer's view
+     * title (Bukkit's own title for real containers — a chest
+     * reads "Chest"), else no value.
+     */
+    private String inventoryTitle(Inventory inv) {
+        String registered = guiTitles.get(inv);
+        if (registered != null) return registered;
+        if (!inv.getViewers().isEmpty()) {
+            return inv.getViewers().get(0).getOpenInventory().getTitle();
+        }
+        return null;
+    }
+
+    /**
+     * The plural of a Skript material name for item printing
+     * ("diamond sword" -> "diamond swords" above amount 1). An
+     * approximation of Skript's alias tables with the regular
+     * English rules on the last word; verified for the forms the
+     * behavior tests print.
+     */
+    private static String pluralize(String typeName) {
+        int split = typeName.lastIndexOf(' ');
+        String head = split < 0 ? "" : typeName.substring(0, split + 1);
+        String last = split < 0 ? typeName : typeName.substring(split + 1);
+        String plural;
+        if (last.endsWith("s") || last.endsWith("x") || last.endsWith("z")
+                || last.endsWith("ch") || last.endsWith("sh")) {
+            plural = last + "es";
+        } else if (last.endsWith("y") && last.length() > 1
+                && "aeiou".indexOf(last.charAt(last.length() - 2)) < 0) {
+            plural = last.substring(0, last.length() - 1) + "ies";
+        } else {
+            plural = last + "s";
+        }
+        return head + plural;
     }
 
     private static Material resolveMaterial(String itemName) {

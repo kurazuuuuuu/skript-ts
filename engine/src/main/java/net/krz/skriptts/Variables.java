@@ -1,8 +1,14 @@
 package net.krz.skriptts;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,9 +29,14 @@ import java.util.logging.Logger;
  * The store is written to variables.json in the plugin data folder on
  * every mutation (the scale here is small; durability beats batching).
  * Locations are encoded as tagged objects so they survive restarts.
+ * Item stacks (phase 17) are encoded as tagged objects too —
+ * material, amount, and the display name / lore in §-coded legacy
+ * form — while inventories are runtime-only values and are never
+ * written (like data sources).
  */
 final class Variables {
     private static final String LOCATION_TAG = "__location";
+    private static final String ITEM_TAG = "__item";
 
     private final Map<String, Object> values = new LinkedHashMap<>();
     private final Path file;
@@ -125,6 +136,36 @@ final class Variables {
             // credentials inside a data source URL stay out of the file.
             return null;
         }
+        if (value instanceof Inventory) {
+            // Runtime-only value (phase 17): an inventory is a live
+            // view/container, not data; it is dropped on save like
+            // a data source.
+            return null;
+        }
+        if (value instanceof ItemStack stack) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put(ITEM_TAG, Boolean.TRUE);
+            m.put("material", stack.getType().name());
+            m.put("amount", (double) stack.getAmount());
+            ItemMeta meta = stack.getItemMeta();
+            if (meta != null && meta.hasDisplayName()) {
+                Component name = meta.displayName();
+                if (name != null) {
+                    m.put("name", LegacyComponentSerializer.legacySection().serialize(name));
+                }
+            }
+            if (meta != null && meta.hasLore()) {
+                List<Component> lore = meta.lore();
+                if (lore != null && !lore.isEmpty()) {
+                    List<Object> lines = new ArrayList<>();
+                    for (Component line : lore) {
+                        lines.add(LegacyComponentSerializer.legacySection().serialize(line));
+                    }
+                    m.put("lore", lines);
+                }
+            }
+            return m;
+        }
         if (value instanceof Location loc) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put(LOCATION_TAG, Boolean.TRUE);
@@ -140,6 +181,30 @@ final class Variables {
     }
 
     private static Object decode(Object value) {
+        if (value instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get(ITEM_TAG))) {
+            Material material = Material.matchMaterial(String.valueOf(map.get("material")));
+            if (material == null) return null;
+            ItemStack stack = new ItemStack(material, (int) num(map.get("amount")));
+            ItemMeta meta = stack.getItemMeta();
+            if (meta != null) {
+                boolean touched = false;
+                if (map.get("name") instanceof String name) {
+                    meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name));
+                    touched = true;
+                }
+                if (map.get("lore") instanceof List<?> lore) {
+                    List<Component> lines = new ArrayList<>();
+                    for (Object line : lore) {
+                        lines.add(LegacyComponentSerializer.legacySection()
+                                .deserialize(String.valueOf(line)));
+                    }
+                    meta.lore(lines);
+                    touched = true;
+                }
+                if (touched) stack.setItemMeta(meta);
+            }
+            return stack;
+        }
         if (value instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get(LOCATION_TAG))) {
             String worldName = String.valueOf(map.get("world"));
             World world = Bukkit.getWorld(worldName);

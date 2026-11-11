@@ -91,6 +91,37 @@ function emitValue(e: Expr): string {
             return `uncolored ${emitValue(e.target)}`;
         case "unformattedText":
             return `unformatted ${emitValue(e.target)}`;
+        case "itemWithName":
+            return `${emitValue(e.base)} named ${emitValue(e.name)}`;
+        case "itemWithLore":
+            return `${emitValue(e.base)} with lore ${andList(e.lines.map((l) => emitValue(l)))}`;
+        case "itemWithAmount":
+            return `${emitValue(e.amount)} of ${emitValue(e.base)}`;
+        case "nameOf":
+            // Parenthesize an arithmetic operand, as with typeOf.
+            return e.target.kind === "arith"
+                ? `name of (${emitValue(e.target)})`
+                : `name of ${emitValue(e.target)}`;
+        case "loreOf":
+            return e.target.kind === "arith"
+                ? `lore of (${emitValue(e.target)})`
+                : `lore of ${emitValue(e.target)}`;
+        case "amountOf":
+            return e.target.kind === "arith"
+                ? `amount of (${emitValue(e.target)})`
+                : `amount of ${emitValue(e.target)}`;
+        case "chestInventory":
+            return `chest inventory with ${emitValue(e.rows)} rows${e.title !== undefined ? ` named ${emitValue(e.title)}` : ""}`;
+        case "currentInventory":
+            return `${emitValue(e.target)}'s current inventory`;
+        case "eventInventory":
+            return "event-inventory";
+        case "slotItem":
+            return `slot ${emitValue(e.slot)} of ${emitValue(e.inventory)}`;
+        case "clickedSlotIndex":
+            return "index of event-slot";
+        case "clickedRawSlotIndex":
+            return "raw index of event-slot";
         case "arith":
             // Arithmetic is always parenthesized so the emitted tree
             // means the same thing regardless of Skript's own
@@ -183,6 +214,18 @@ function emitString(e: Expr): string {
         case "formattedText":
         case "uncoloredText":
         case "unformattedText":
+        case "itemWithName":
+        case "itemWithLore":
+        case "itemWithAmount":
+        case "nameOf":
+        case "loreOf":
+        case "amountOf":
+        case "chestInventory":
+        case "currentInventory":
+        case "eventInventory":
+        case "slotItem":
+        case "clickedSlotIndex":
+        case "clickedRawSlotIndex":
             return `%${emitValue(e)}%`;
         case "arith":
             return `%${emitValue(e)}%`;
@@ -474,6 +517,26 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
                 path,
                 s.loc,
             )];
+        case "giveItem":
+            return [own(`${prefix}give ${emitValue(s.item)} to ${emitValue(s.target)}`, path, s.loc)];
+        case "setItemName":
+            return [own(`${prefix}set name of ${emitValue(s.target)} to ${emitValue(s.name)}`, path, s.loc)];
+        case "setItemLore":
+            return [own(`${prefix}set lore of ${emitValue(s.target)} to ${andList(s.lines.map((l) => emitValue(l)))}`, path, s.loc)];
+        case "setItemAmount":
+            return [own(`${prefix}set amount of ${emitValue(s.target)} to ${emitValue(s.amount)}`, path, s.loc)];
+        case "setSlot":
+            return [own(`${prefix}set slot ${emitValue(s.slot)} of ${emitValue(s.inventory)} to ${emitValue(s.item)}`, path, s.loc)];
+        case "openInventory":
+            return [own(`${prefix}open ${emitValue(s.inventory)} to ${emitValue(s.target)}`, path, s.loc)];
+        case "openGui":
+            return [own(
+                `${prefix}open chest inventory with ${emitValue(s.rows)} rows${s.title !== undefined ? ` named ${emitValue(s.title)}` : ""} to ${emitValue(s.target)}`,
+                path,
+                s.loc,
+            )];
+        case "closeInventory":
+            return [own(`${prefix}close ${emitValue(s.target)}'s inventory`, path, s.loc)];
         case "stop":
             return [own(`${prefix}stop`, path, s.loc)];
         case "callStmt":
@@ -512,6 +575,17 @@ function typeList(names: readonly string[]): string {
     if (names.length === 1) return names[0]!;
     if (names.length === 2) return `${names[0]} or ${names[1]}`;
     return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
+/**
+ * An "and" list of already-emitted values, in the shape Skript
+ * list positions take (lore lines, phase 17): one value bare,
+ * two joined with "and", three or more as "a, b and c".
+ */
+function andList(values: readonly string[]): string {
+    if (values.length === 1) return values[0]!;
+    if (values.length === 2) return `${values[0]} and ${values[1]}`;
+    return `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
 }
 
 /** The .sk header line of an event top-level, filter slots included (phase 16). */
@@ -558,6 +632,10 @@ function eventHeader(t: Extract<TopLevel, { kind: "event" }>): string {
             return "on bed enter:";
         case "bedLeave":
             return "on bed leave:";
+        case "inventoryClick":
+            return "on inventory click:";
+        case "inventoryClose":
+            return "on inventory close:";
         default:
             // Engine-only events (ws / timer / papiRequest) are
             // rejected by emitTop before the header is computed.

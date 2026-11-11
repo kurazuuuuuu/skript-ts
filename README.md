@@ -59,8 +59,10 @@ commands), one per engine builtin, `logic.ts` for the core language
 (comparisons, logic, arithmetic), `lists.ts` for list variables,
 the extended loops, `while` and `wait`, `functions.ts` for custom
 functions, `gameplay.ts` for the gameplay events (block
-break/place, clicks, damage), and `events2.ts` for the event
-filters and the pickup / drop / respawn / bed events. They
+break/place, clicks, damage), `events2.ts` for the event
+filters and the pickup / drop / respawn / bed events,
+`text.ts` for the text operations, and `gui.ts` for items,
+inventories and GUIs. They
 double as golden-test fixtures.
 
 ## Supported subset (SPEC, v0)
@@ -589,6 +591,98 @@ with a `!` prefix rule, character surgery, CSV splitting and
 joining, text checks, replace demos and the paint commands —
 and `examples/behavior/text.behavior.ts` asserts the
 observable behavior under both runtimes.
+
+### Items, inventories and GUIs
+
+Items, inventories and GUIs are core language: the same
+script runs under Skript (as emitted `.sk`) and under the
+engine jar. Every semantic below was probed against the
+real Skript 2.17.1 (console probes plus a mineflayer bot
+clicking through a live GUI; see the development log):
+
+- **Item construction** composes suffixes over any
+  item-valued expression: `withName(item, nameText)`,
+  `withLore(item, ...lines)` and `withAmount(item,
+  countExpr)` — `<item> named <text>`, `<item> with lore
+  <a> and <b>`, `<count> of <item>`. The wrappers
+  materialize a real stack: a bare item name becomes a
+  fresh stack, a stack is cloned and re-meta'd.
+  `typeOf` of a meta'd stack is still its material.
+- **Item printing**: a stack prints as its type name,
+  pluralized with its amount above 1 (`3 diamond
+  swords`), plus ` named <name>` when it carries a
+  custom name. Lore never prints.
+- **Equality**: two stacks compare by type + amount plus
+  the meta fields **both** stacks carry — a named stack
+  equals a plain one, two differently named stacks
+  differ, names compare case-**sensitively**, and lore
+  compares line by line. A stack compared against an
+  item *literal* (or a type name) still compares by type
+  only, so `eventItem() is item("stone")` ignores meta.
+- **Meta reads**: `nameOf(item)` is the custom name — no
+  value when the item is unnamed (for an inventory it is
+  the title; for a player, their name). `loreOf(item)`
+  is the lore lines as a list — no value when there is
+  no lore. `amountOf(item)` is the stack size (for a
+  list value it is the list size, like the original's
+  generic amount expression).
+- **Meta statements**: `setItemName(var, text)`,
+  `setItemLore(var, ...lines)` and `setItemAmount(var,
+  count)` rewrite the item a scalar variable holds
+  (`set name of {v} to ...` and friends). A variable
+  holding a bare type name is materialized first; a
+  variable with no item value is left untouched.
+  `giveItem(player, item)` hands an item-valued
+  expression (meta included) to a player.
+- **Inventories as values**: `chestInventory(rows[,
+  title])` creates a fresh virtual chest inventory (rows
+  clamp to 1..6) that exists independently of any
+  player; `currentInventoryOf(player)` is the inventory
+  the player is viewing (their own crafting inventory
+  when nothing is open, as in the original);
+  `eventInventory()` is the top inventory of an
+  inventory event. `slotItem(inv, slot)` reads a
+  0-based slot (an empty slot has no value) and
+  `setSlot(inv, slot, item)` writes one — a player used
+  as the inventory means their own inventory, and a
+  valueless item clears the slot. `openInventory(player,
+  inv)` shows an inventory value; `openGui(player,
+  rows[, title])` builds and opens a chest GUI in one
+  statement; `closeInventory(player)` closes the view.
+- **Inventory events**: `onInventoryClick` fires for
+  every inventory click, in script GUIs and vanilla
+  containers alike. Inside, `eventItem()` is the clicked
+  slot's item (no value for an empty slot),
+  `eventInventory()` the view's top inventory,
+  `clickedSlotIndex()` the slot's index within the
+  inventory that was clicked (a click in the player's
+  own bottom inventory counts from its top-left), and
+  `clickedRawSlotIndex()` the index within the whole
+  view. `cancelEvent()` inside is the standard GUI
+  guard: a cancelled click moves nothing.
+  `onInventoryClose` fires when a view closes, by
+  script or by the player.
+
+One model boundary, as with texts: display names and
+lore are components in Skript and §-coded strings in
+the engine, converted at the meta boundary — the
+formatting a player sees agrees, and plain-text reads
+(the name without codes) match.
+
+`examples/gui.ts` exercises all of it — a `/gem`
+command that builds a named, lored sword through the
+meta statements, a `/geminfo` read-back, and a `/menu`
+chest GUI guarded by its click handler — and
+`examples/behavior/gui.behavior.ts` drives a bot
+through the whole flow under both runtimes, including
+the cancelled click that keeps the GUI's diamond out
+of the bot's inventory.
+
+Out of scope for this slice (recorded, not forgotten):
+inventory drag events (a drag can still move items in
+a GUI whose clicks are cancelled), slot add/remove
+forms, the cursor slot, and enchantment / other meta
+beyond name, lore and amount.
 
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal

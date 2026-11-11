@@ -142,7 +142,60 @@ export type Expr =
   | { kind: "coloredText"; target: Expr }
   | { kind: "formattedText"; target: Expr }
   | { kind: "uncoloredText"; target: Expr }
-  | { kind: "unformattedText"; target: Expr };
+  | { kind: "unformattedText"; target: Expr }
+  // Core-language items, inventories and GUIs (phase 17). All
+  // semantics were probed against the real Skript 2.17.1 in the
+  // sandbox (see the development log for the probe rounds):
+  //
+  // - Item construction composes suffixes over any item-valued
+  //   expression: `<base> named <text>`, `<base> with lore <a> and
+  //   <b>`, `<count> of <base>`. The wrappers materialize a real
+  //   item stack: a bare item name becomes a fresh stack, a stack
+  //   is cloned and re-meta'd. `type of` a meta'd stack is still
+  //   its material. Stack-vs-stack equality (phase 11 rules) is
+  //   type + amount, PLUS meta fields — but a field only counts
+  //   when BOTH stacks carry it: a named stack equals a plain one,
+  //   two differently named stacks differ, name comparison is
+  //   case-SENSITIVE, and lore compares line by line. A stack
+  //   prints as its type name (pluralized with its amount when
+  //   above 1: "3 diamond swords") plus " named <name>" when it
+  //   has a custom name; lore never prints.
+  // - nameOf reads the custom name of an item (no value when the
+  //   item is unnamed), the title of an inventory, or the name of
+  //   a player. loreOf reads an item's lore lines as a list (no
+  //   value when the item has no lore). amountOf reads a stack's
+  //   size (and, like Skript's generic amount expression, a list's
+  //   size).
+  // - chestInventory is a fresh virtual chest inventory value
+  //   (`chest inventory with <rows> rows [named <title>]`); it
+  //   exists independently of any player until opened, and slots
+  //   can be filled before or after opening. currentInventory is
+  //   the inventory a player is currently viewing (their chest
+  //   GUI while one is open; with nothing open it is their own
+  //   crafting inventory, as in Skript). eventInventory is the
+  //   top inventory of an inventory click / close event.
+  // - slotItem reads the item in a slot of an inventory value (a
+  //   player target means their own inventory); an empty slot has
+  //   no value. Slot indices are 0-based within the inventory.
+  // - clickedSlotIndex / clickedRawSlotIndex are the inventory
+  //   click event's slot coordinates: the index within the
+  //   inventory that was clicked (the player's own inventory
+  //   counts from its top-left when the bottom half is clicked),
+  //   and the raw index within the whole view (top inventory
+  //   first) — Skript's `index of event-slot` and `raw index of
+  //   event-slot`.
+  | { kind: "itemWithName"; base: Expr; name: Expr }
+  | { kind: "itemWithLore"; base: Expr; lines: readonly Expr[] }
+  | { kind: "itemWithAmount"; base: Expr; amount: Expr }
+  | { kind: "nameOf"; target: Expr }
+  | { kind: "loreOf"; target: Expr }
+  | { kind: "amountOf"; target: Expr }
+  | { kind: "chestInventory"; rows: Expr; title?: Expr }
+  | { kind: "currentInventory"; target: Expr }
+  | { kind: "eventInventory" }
+  | { kind: "slotItem"; inventory: Expr; slot: Expr }
+  | { kind: "clickedSlotIndex" }
+  | { kind: "clickedRawSlotIndex" };
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
@@ -291,6 +344,35 @@ export type Stmt =
   // every gap (all) or at the start (first); a missing or
   // non-text target is left untouched.
   | { kind: "textReplace"; target: ScalarVarExpr; find: Expr; replacement: Expr; firstOnly: boolean; caseSensitive: boolean; loc?: SourceLoc }
+  // Core-language inventory and GUI statements (phase 17),
+  // mirroring the change / effect forms probed against the real
+  // Skript 2.17.1:
+  // - giveItem hands an item-valued expression (meta included) to
+  //   a player: Skript's `give <item> to <player>`.
+  // - setItemName / setItemLore / setItemAmount rewrite the item
+  //   a scalar variable holds (`set name of {v} to ...` and
+  //   friends). The variable's current value is materialized
+  //   first (a bare type name becomes a stack), the meta is
+  //   rewritten, and the stack is stored back; a variable with no
+  //   item value is left untouched.
+  // - setSlot writes an item into one slot of an inventory value
+  //   (`set slot <n> of <inventory> to <item>`); a player target
+  //   means their own inventory, and an item expression with no
+  //   value clears the slot.
+  // - openInventory shows an inventory value to a player;
+  //   openGui is the direct form that builds a fresh chest
+  //   inventory and opens it in one statement (`open chest
+  //   inventory with <rows> rows [named <title>] to <player>`);
+  //   closeInventory closes what a player is viewing (`close
+  //   <player>'s inventory`).
+  | { kind: "giveItem"; target: Expr; item: Expr; loc?: SourceLoc }
+  | { kind: "setItemName"; target: ScalarVarExpr; name: Expr; loc?: SourceLoc }
+  | { kind: "setItemLore"; target: ScalarVarExpr; lines: readonly Expr[]; loc?: SourceLoc }
+  | { kind: "setItemAmount"; target: ScalarVarExpr; amount: Expr; loc?: SourceLoc }
+  | { kind: "setSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }
+  | { kind: "openInventory"; target: Expr; inventory: Expr; loc?: SourceLoc }
+  | { kind: "openGui"; target: Expr; rows: Expr; title?: Expr; loc?: SourceLoc }
+  | { kind: "closeInventory"; target: Expr; loc?: SourceLoc }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration
@@ -340,11 +422,12 @@ export type Stmt =
   // handler never sets a result resolves to no value.
   | { kind: "setPlaceholderResult"; text: TextExpr; loc?: SourceLoc };
 
-/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16. */
+/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. */
 export type EventKind =
   | "join" | "firstJoin" | "quit" | "chat" | "death"
   | "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage"
   | "pickup" | "drop" | "respawn" | "bedEnter" | "bedLeave"
+  | "inventoryClick" | "inventoryClose"
   | "wsOpen" | "wsMessage" | "wsClose"
   | "timerTick" | "timerComplete"
   | "papiRequest";

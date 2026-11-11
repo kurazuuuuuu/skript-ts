@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   add,
+  amountOf,
   and,
   argument,
   attacker,
@@ -13,10 +14,15 @@ import {
   cancelEvent,
   charAt,
   chatMessage,
+  chestInventory,
   clickedEntity,
+  clickedRawSlotIndex,
+  clickedSlotIndex,
+  closeInventory,
   colored,
   command,
   contains,
+  currentInventoryOf,
   damageAmount,
   damageCause,
   defineFunction,
@@ -26,12 +32,14 @@ import {
   endsWith,
   equals,
   eventBlock,
+  eventInventory,
   eventItem,
   eventPlayer,
   firstChars,
   fmt,
   formatted,
   give,
+  giveItem,
   greaterOrEqual,
   greaterThan,
   hasPermission,
@@ -57,8 +65,10 @@ import {
   loopRange,
   loopTimes,
   loopValue,
+  loreOf,
   lowerCase,
   minus,
+  nameOf,
   not,
   notEquals,
   num,
@@ -71,12 +81,16 @@ import {
   onDeath,
   onDrop,
   onFirstJoin,
+  onInventoryClick,
+  onInventoryClose,
   onJoin,
   onLeftClick,
   onPickup,
   onQuit,
   onRespawn,
   onRightClick,
+  openGui,
+  openInventory,
   or,
   param,
   player,
@@ -89,6 +103,11 @@ import {
   send,
   set,
   setDamage,
+  setItemAmount,
+  setItemLore,
+  setItemName,
+  setSlot,
+  slotItem,
   splitText,
   startsWith,
   stopTrigger,
@@ -106,6 +125,9 @@ import {
   victim,
   wait,
   whileLoop,
+  withAmount,
+  withLore,
+  withName,
 } from "../src/index.js";
 import { welcomeScript } from "../examples/welcome.js";
 import { kitScript } from "../examples/kit.js";
@@ -118,6 +140,7 @@ import { functionsScript } from "../examples/functions.js";
 import { gameplayScript } from "../examples/gameplay.js";
 import { textScript } from "../examples/text.js";
 import { events2Script } from "../examples/events2.js";
+import { guiScript } from "../examples/gui.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -159,6 +182,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("events2", () => {
     expect(emit(events2Script)).toBe(fixture("events2.sk"));
+  });
+  it("gui", () => {
+    expect(emit(guiScript)).toBe(fixture("gui.sk"));
   });
 });
 
@@ -1053,5 +1079,146 @@ describe("text operations (phase 15)", () => {
   });
   it("the text sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(textScript)).toBe(false);
+  });
+});
+
+describe("items, inventories and GUIs (phase 17)", () => {
+  it("item construction suffixes compose in value position", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(variable("a"), withName(item("diamond sword"), str("Gem Blade"))),
+            set(variable("b"), withLore(item("diamond"), str("one"), str("two"), str("three"))),
+            set(variable("c"), withAmount(item("stone"), num(3))),
+            set(
+              variable("d"),
+              withAmount(withLore(withName(item("diamond sword"), str("Gem")), str("line")), num(2)),
+            ),
+            set(variable("e"), withName(localVar("base"), variable("n"))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {a} to diamond sword named \"Gem Blade\"\n" +
+        "    set {b} to diamond with lore \"one\", \"two\" and \"three\"\n" +
+        "    set {c} to 3 of stone\n" +
+        "    set {d} to 2 of diamond sword named \"Gem\" with lore \"line\"\n" +
+        "    set {e} to {_base} named {n}\n",
+    );
+  });
+  it("meta statements rewrite the item a variable holds", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            setItemName(localVar("i"), str("Renamed")),
+            setItemLore(localVar("i"), str("only line")),
+            setItemAmount(localVar("i"), num(5)),
+            giveItem(player(), localVar("i")),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set name of {_i} to \"Renamed\"\n" +
+        "    set lore of {_i} to \"only line\"\n" +
+        "    set amount of {_i} to 5\n" +
+        "    give {_i} to player\n",
+    );
+  });
+  it("name, lore and amount reads in value and string positions", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(variable("a"), nameOf(variable("i"))),
+            set(localList("l"), loreOf(variable("i"))),
+            set(variable("n"), amountOf(variable("i"))),
+            broadcast(fmt("n=", nameOf(eventInventory()), " a=", amountOf(eventItem()))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {a} to name of {i}\n" +
+        "    set {_l::*} to lore of {i}\n" +
+        "    set {n} to amount of {i}\n" +
+        "    broadcast \"n=%name of event-inventory% a=%amount of event-item%\"\n",
+    );
+  });
+  it("inventory values and slot access", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("inv"), chestInventory(num(2), str("Box"))),
+            set(localVar("plain"), chestInventory(num(1))),
+            setSlot(localVar("inv"), num(4), item("emerald")),
+            setSlot(currentInventoryOf(player()), num(0), slotItem(localVar("inv"), num(4))),
+            setSlot(player(), num(9), item("stone")),
+            openInventory(player(), localVar("inv")),
+            closeInventory(player()),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_inv} to chest inventory with 2 rows named \"Box\"\n" +
+        "    set {_plain} to chest inventory with 1 rows\n" +
+        "    set slot 4 of {_inv} to emerald\n" +
+        "    set slot 0 of player's current inventory to slot 4 of {_inv}\n" +
+        "    set slot 9 of player to stone\n" +
+        "    open {_inv} to player\n" +
+        "    close player's inventory\n",
+    );
+  });
+  it("open GUI direct form, with and without a title", () => {
+    expect(
+      emit(script(onJoin([openGui(player(), num(3), str("Shop Menu"))]))),
+    ).toBe('on join:\n    open chest inventory with 3 rows named "Shop Menu" to player\n');
+    expect(emit(script(onJoin([openGui(player(), num(2))])))).toBe(
+      "on join:\n    open chest inventory with 2 rows to player\n",
+    );
+  });
+  it("inventory event headers and values", () => {
+    const body = [broadcast(str("x"))];
+    expect(emit(script(onInventoryClick(body)))).toBe(
+      'on inventory click:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onInventoryClose(body)))).toBe(
+      'on inventory close:\n    broadcast "x"\n',
+    );
+    expect(
+      emit(
+        script(
+          onInventoryClick([
+            broadcast(
+              fmt(
+                "s=",
+                clickedSlotIndex(),
+                " r=",
+                clickedRawSlotIndex(),
+                " inv=",
+                eventInventory(),
+                " it=",
+                eventItem(),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on inventory click:\n" +
+        "    broadcast \"s=%index of event-slot% r=%raw index of event-slot% inv=%event-inventory% it=%event-item%\"\n",
+    );
+  });
+  it("api guards: lore needs at least one line", () => {
+    expect(() => withLore(item("stone"))).toThrow(RangeError);
+    expect(() => setItemLore(localVar("i"))).toThrow(RangeError);
+  });
+  it("the GUI sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(guiScript)).toBe(false);
   });
 });

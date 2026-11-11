@@ -35,7 +35,7 @@ fetch() {
 }
 
 fetch "$PAPER_API" "$PAPER_URL"
-for artifact in adventure-api adventure-key adventure-text-serializer-plain; do
+for artifact in adventure-api adventure-key adventure-text-serializer-plain adventure-text-serializer-legacy; do
     fetch "$artifact-${ADVENTURE_VERSION}.jar" \
         "https://repo1.maven.org/maven2/net/kyori/$artifact/${ADVENTURE_VERSION}/$artifact-${ADVENTURE_VERSION}.jar"
 done

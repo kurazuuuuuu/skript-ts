@@ -1300,3 +1300,162 @@ export function replaceAllIn(target: ScalarVarExpr, find: Expr, replacement: Exp
 export function replaceFirstIn(target: ScalarVarExpr, find: Expr, replacement: Expr, caseSensitive = false): Stmt {
   return withLoc({ kind: "textReplace", target, find, replacement, firstOnly: true, caseSensitive });
 }
+
+// ---------------------------------------------------------------------------
+// Core language (phase 17): items, inventories and GUIs
+//
+// Semantics mirror the real Skript 2.17.1, verified against the
+// sandbox server with hand-written probes and a mineflayer bot
+// (see the development log):
+//
+// - Item suffixes compose over any item-valued expression:
+//   withName / withLore / withAmount materialize a real stack
+//   (a bare item name becomes a fresh stack; a stack is cloned).
+//   `type of` ignores meta. Equality of two stacks is type +
+//   amount plus the meta fields BOTH stacks carry: names compare
+//   case-sensitively, lore compares line by line, and a field
+//   present on only one side is ignored (a named stack equals a
+//   plain one). A stack prints as its type name (pluralized when
+//   its amount is above 1) plus " named <name>"; lore never
+//   prints.
+// - nameOf yields an item's custom name (no value when unnamed),
+//   an inventory's title, or a player's name. loreOf yields the
+//   lore lines as a list (no value when there is no lore).
+//   amountOf yields a stack's size (or a list's size, like
+//   Skript's generic amount expression).
+// - setItemName / setItemLore / setItemAmount rewrite the item
+//   a scalar variable holds; a variable holding a bare type name
+//   is materialized first, and a variable with no item value is
+//   left untouched.
+// - chestInventory builds a fresh virtual chest inventory (rows
+//   are clamped to 1..6 by the runtimes) that can be filled via
+//   setSlot before or after openInventory shows it.
+//   currentInventoryOf reads the inventory a player is viewing
+//   — their own crafting inventory when nothing is open.
+//   slotItem / setSlot address 0-based slots; a player used as
+//   the inventory means their own inventory, and setting a slot
+//   to a valueless item expression clears it.
+// - onInventoryClick fires for every inventory click (top and
+//   bottom halves alike) with eventItem() as the clicked slot's
+//   item (no value for an empty slot), eventInventory() as the
+//   view's top inventory, and the two slot-index expressions;
+//   cancelEvent() inside is the standard GUI guard.
+//   onInventoryClose fires when a view closes, by script or by
+//   the player. Neither event carries a clicked-block or filter.
+// ---------------------------------------------------------------------------
+
+/** Construct a named-item expression: the item with a custom display name (`<item> named <name>`). */
+export function withName(base: Expr, name: Expr): Expr {
+  return { kind: "itemWithName", base, name };
+}
+
+/** Construct a lored-item expression: the item with lore lines (`<item> with lore <a> and <b>`). At least one line is required. */
+export function withLore(base: Expr, ...lines: Expr[]): Expr {
+  if (lines.length === 0) throw new RangeError("withLore requires at least one lore line");
+  return { kind: "itemWithLore", base, lines };
+}
+
+/** Construct a counted-item expression: a stack of the item (`<count> of <item>`). */
+export function withAmount(base: Expr, amount: Expr): Expr {
+  return { kind: "itemWithAmount", base, amount };
+}
+
+/** Construct a name-of expression: an item's custom name, an inventory's title, or a player's name. */
+export function nameOf(target: Expr): Expr {
+  return { kind: "nameOf", target };
+}
+
+/** Construct a lore-of expression: an item's lore lines as a list (no value when the item has no lore). */
+export function loreOf(target: Expr): Expr {
+  return { kind: "loreOf", target };
+}
+
+/** Construct an amount-of expression: a stack's size (or a list's size). */
+export function amountOf(target: Expr): Expr {
+  return { kind: "amountOf", target };
+}
+
+/** Construct a chest-inventory expression: a fresh virtual chest inventory with the given rows (1..6) and optional title. */
+export function chestInventory(rows: Expr, title?: Expr): Expr {
+  return title === undefined
+    ? { kind: "chestInventory", rows }
+    : { kind: "chestInventory", rows, title };
+}
+
+/** Construct a current-inventory expression: the inventory the player is currently viewing. */
+export function currentInventoryOf(target: Expr): Expr {
+  return { kind: "currentInventory", target };
+}
+
+/** Construct an event-inventory expression: the top inventory of an inventory click / close event. */
+export function eventInventory(): Expr {
+  return { kind: "eventInventory" };
+}
+
+/** Construct a slot-item expression: the item in a 0-based slot of an inventory (a player means their own inventory). */
+export function slotItem(inventory: Expr, slot: Expr): Expr {
+  return { kind: "slotItem", inventory, slot };
+}
+
+/** Construct a clicked-slot-index expression: the clicked slot's index within its own inventory (inventory click events). */
+export function clickedSlotIndex(): Expr {
+  return { kind: "clickedSlotIndex" };
+}
+
+/** Construct a clicked-raw-slot-index expression: the clicked slot's index within the whole view (inventory click events). */
+export function clickedRawSlotIndex(): Expr {
+  return { kind: "clickedRawSlotIndex" };
+}
+
+/** Construct a give-item statement: hand an item-valued expression (meta included) to a player. */
+export function giveItem(target: Expr, itemValue: Expr): Stmt {
+  return withLoc({ kind: "giveItem", target, item: itemValue });
+}
+
+/** Construct a set-item-name statement: rewrite the display name of the item a scalar variable holds. */
+export function setItemName(target: ScalarVarExpr, name: Expr): Stmt {
+  return withLoc({ kind: "setItemName", target, name });
+}
+
+/** Construct a set-item-lore statement: replace the lore of the item a scalar variable holds. At least one line is required. */
+export function setItemLore(target: ScalarVarExpr, ...lines: Expr[]): Stmt {
+  if (lines.length === 0) throw new RangeError("setItemLore requires at least one lore line");
+  return withLoc({ kind: "setItemLore", target, lines });
+}
+
+/** Construct a set-item-amount statement: resize the stack a scalar variable holds. */
+export function setItemAmount(target: ScalarVarExpr, amount: Expr): Stmt {
+  return withLoc({ kind: "setItemAmount", target, amount });
+}
+
+/** Construct a set-slot statement: write an item into a 0-based slot of an inventory (a player means their own inventory). */
+export function setSlot(inventory: Expr, slot: Expr, itemValue: Expr): Stmt {
+  return withLoc({ kind: "setSlot", inventory, slot, item: itemValue });
+}
+
+/** Construct an open-inventory statement: show an inventory value to a player. */
+export function openInventory(target: Expr, inventory: Expr): Stmt {
+  return withLoc({ kind: "openInventory", target, inventory });
+}
+
+/** Construct an open-GUI statement: build a fresh chest inventory (rows 1..6, optional title) and open it to a player. */
+export function openGui(target: Expr, rows: Expr, title?: Expr): Stmt {
+  return title === undefined
+    ? withLoc({ kind: "openGui", target, rows })
+    : withLoc({ kind: "openGui", target, rows, title });
+}
+
+/** Construct a close-inventory statement: close the inventory view a player has open. */
+export function closeInventory(target: Expr): Stmt {
+  return withLoc({ kind: "closeInventory", target });
+}
+
+/** Construct an inventory-click event: fires for every click in an inventory view, with eventItem / eventInventory / slot indices set. */
+export function onInventoryClick(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "inventoryClick", body });
+}
+
+/** Construct an inventory-close event: fires when a player closes an inventory view. */
+export function onInventoryClose(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "inventoryClose", body });
+}

@@ -65,6 +65,26 @@ export interface BehaviorBot {
   wake(): Promise<void>;
   /** Close an open container window (e.g. a villager's trade screen after a right click), if any. */
   closeWindow(): void;
+  // Phase 17 controls: inventory windows — enough to exercise
+  // the GUI statements and the inventory click / close events.
+  /** Poll until a container window is open (optionally with a title containing the text). Throws on timeout. */
+  waitForWindow(titlePart?: string, timeoutMs?: number): Promise<void>;
+  /** The open window's title as raw text (a JSON chat component string), or null when no container is open. */
+  windowTitle(): string | null;
+  /** The item in a window slot, or null for an empty slot / no window. */
+  windowSlotItem(slot: number): WindowSlotItem | null;
+  /** Left-click a window slot (raw window index: top inventory first, then the player's own inventory). */
+  clickWindowSlot(slot: number): Promise<void>;
+}
+
+/** An item seen in a window slot (phase 17): its Minecraft name, stack count, and custom meta text. */
+export interface WindowSlotItem {
+  name: string;
+  count: number;
+  /** The custom display name, when the item carries one. */
+  customName: string | null;
+  /** The lore lines, when the item carries lore. */
+  lore: string[];
 }
 
 export interface BehaviorContext {
@@ -329,6 +349,73 @@ class MineflayerBehaviorBot implements BehaviorBot {
       }
     }
   }
+
+  async waitForWindow(titlePart?: string, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const win = this.bot.currentWindow;
+      // The bot's own inventory screen is also a "window" in
+      // mineflayer; a container window is any other type.
+      if (win && win.type !== "minecraft:inventory") {
+        if (titlePart === undefined || this.windowTitle()?.includes(titlePart)) return;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for a window${titlePart ? ` titled "${titlePart}"` : ""}; current title: ${this.windowTitle() ?? "(none)"}`,
+        );
+      }
+      await sleep(200);
+    }
+  }
+
+  windowTitle(): string | null {
+    const win = this.bot.currentWindow;
+    if (!win || win.type === "minecraft:inventory") return null;
+    return typeof win.title === "string" ? win.title : JSON.stringify(win.title);
+  }
+
+  windowSlotItem(slot: number): WindowSlotItem | null {
+    const win = this.bot.currentWindow;
+    if (!win) return null;
+    const item = win.slots[slot];
+    if (!item) return null;
+    // Custom name / lore travel as item components (1.20.5+):
+    // an array of {type, data} entries whose data is a chat
+    // component (a bare string or an object with a text/value).
+    // (prismarine-item's typings lag the component model, so the
+    // property is read through an unknown cast.)
+    let customName: string | null = null;
+    let lore: string[] = [];
+    const components: unknown = (item as unknown as { components?: unknown }).components;
+    if (Array.isArray(components)) {
+      for (const entry of components as { type?: unknown; data?: unknown }[]) {
+        if (entry.type === "custom_name") {
+          customName = componentText(entry.data);
+        } else if (entry.type === "lore" && Array.isArray(entry.data)) {
+          lore = entry.data.map((line) => componentText(line) ?? "");
+        }
+      }
+    }
+    return { name: item.name, count: item.count, customName, lore };
+  }
+
+  async clickWindowSlot(slot: number): Promise<void> {
+    if (!this.bot.currentWindow) {
+      throw new Error("cannot click a window slot: no window is open");
+    }
+    await this.bot.clickWindow(slot, 0, 0);
+  }
+}
+
+/** Read the plain text out of a chat-component-shaped value (a bare string, or an object holding text/value). */
+function componentText(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (value !== null && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    if (typeof rec.value === "string") return rec.value;
+    if (typeof rec.text === "string") return rec.text;
+  }
+  return null;
 }
 
 export interface BehaviorContextOptions {
