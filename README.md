@@ -1244,6 +1244,13 @@ stop. With `--json`, progress goes to stderr and a single JSON result
 (per-stage status, mapped errors, behavior results) is printed to
 stdout; the exit code is 0 only when everything passes.
 
+For semantics probes there is a resident mode: `probe start` boots the
+sandbox once under a background host process, each
+`probe run <probe-dir> [--commands <file>]` swaps the hand-written
+`.sk` probes into the scripts folder and reloads instead of rebooting,
+and `probe stop` shuts it down (verifying no process or `session.lock`
+is left behind). `probe status` reports whether it is running.
+
 Transpiling also writes a source map next to each `.sk` file
 (`<name>.sk.map.json`) recording, for every emitted line, the AST node
 path and the TypeScript call site that produced it. When Skript reports

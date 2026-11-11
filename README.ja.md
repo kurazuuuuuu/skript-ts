@@ -1220,6 +1220,13 @@ bin/skript-ts.mjs verify [--no-behavior] [--no-fresh] [--json]
 ステージ別成否・マッピング済みエラー・振る舞い結果を含む JSON が
 1つだけ出ます。終了コードは全合格時のみ 0 です。
 
+意味論プローブ向けの常駐モードもあります。`probe start` で
+サンドボックスをバックグラウンドのホストプロセス配下に1回だけ
+起動し、`probe run <probe-dir> [--commands <file>]` は手書きの
+`.sk` プローブを scripts フォルダへ差し替えて再起動ではなく
+リロードで回します。`probe stop` は残留プロセスと `session.lock` が
+無いことを確認して停止し、`probe status` で起動状態を確認できます。
+
 変換時には各 `.sk` の隣にソースマップ（`<name>.sk.map.json`）も出力され、
 各行について生成元の AST ノードパスと TypeScript の呼び出し位置を
 記録します。Skript がパースエラーを出した場合、`verify` はそれを

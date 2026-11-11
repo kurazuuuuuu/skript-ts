@@ -40,6 +40,11 @@ export class SandboxServer {
     return this.proc !== null && this.exitInfo === null;
   }
 
+  /** PID of the server child process, or null when it was never started. */
+  get pid(): number | null {
+    return this.proc?.pid ?? null;
+  }
+
   /** Current number of buffered log lines; pass to waitForLine as fromIndex to only see future lines. */
   mark(): number {
     return this.lines.length;

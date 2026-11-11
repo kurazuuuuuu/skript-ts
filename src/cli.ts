@@ -5,6 +5,11 @@
  *   skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--server-dir <dir>] [--json]
  *   skript-ts verify [--src <dir>] [--out <dir>] [--server-dir <dir>] [--java <path>]
  *                    [--engine] [--no-behavior] [--no-fresh] [--json]
+ *   skript-ts probe start  [--server-dir <dir>] [--java <path>] [--json]
+ *   skript-ts probe run <probe-dir> [--commands <file>] [--out <file>]
+ *                    [--pace-ms <n>] [--settle-ms <n>] [--server-dir <dir>] [--json]
+ *   skript-ts probe stop   [--server-dir <dir>] [--json]
+ *   skript-ts probe status [--server-dir <dir>] [--json]
  *
  * build:  typecheck -> transpile -> deploy (with --deploy)
  * verify: typecheck -> transpile -> deploy -> server start -> script load
@@ -16,6 +21,12 @@
  *         programs run with no Skript plugin present. The load check is
  *         `skript reload all` in Skript mode and `skript-ts reload`
  *         (engine summary line) in engine mode.
+ * probe:  boots the sandbox once and keeps it running (a detached host
+ *         process owns it, state in <server-dir>/.probe). Each
+ *         `probe run` swaps the .sk files in the Skript scripts folder
+ *         and reloads instead of rebooting, for fast semantics probes.
+ *         `probe stop` stops the server and verifies that no process
+ *         or session.lock is left behind.
  *
  * With --json, progress is written to stderr and a single JSON result
  * object is printed to stdout. Exit code is 0 on success, 1 on failure.
@@ -26,13 +37,14 @@ import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createBehaviorContext, type BehaviorTest } from "./behavior.js";
 import { installEngine, uninstallEngine } from "./cli/engine.js";
-import { createProgress, type StageHandle } from "./cli/progress.js";
+import { readProbeState, runProbeRound, startProbeServer, stopProbeServer } from "./cli/probe.js";
+import { createProgress, type ProgressReporter, type StageHandle } from "./cli/progress.js";
 import { buildProject, deployEngineScripts, deployScripts, runTypecheck, type BuildResult } from "./cli/project.js";
 import { SandboxServer } from "./cli/server.js";
 import { SkriptLogParser, mapError, type MappedError } from "./cli/skript-log.js";
 
 interface CliOptions {
-  command: "build" | "verify";
+  command: "build" | "verify" | "probe";
   srcDir: string;
   outDir: string;
   serverDir: string;
@@ -42,6 +54,12 @@ interface CliOptions {
   engine: boolean;
   behavior: boolean;
   fresh: boolean;
+  probeAction: "start" | "run" | "stop" | "status";
+  probeDir: string | null;
+  commandsFile: string | null;
+  probeOutFile: string | null;
+  paceMs: number;
+  settleMs: number;
 }
 
 interface StageResult {
@@ -71,11 +89,61 @@ interface RunResult {
 const USAGE = `usage:
   skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--server-dir <dir>] [--json]
   skript-ts verify [--src <dir>] [--out <dir>] [--server-dir <dir>] [--java <path>]
-                   [--engine] [--no-behavior] [--no-fresh] [--json]`;
+                   [--engine] [--no-behavior] [--no-fresh] [--json]
+  skript-ts probe start  [--server-dir <dir>] [--java <path>] [--json]
+  skript-ts probe run <probe-dir> [--commands <file>] [--out <file>] [--pace-ms <n>] [--settle-ms <n>]
+                   [--server-dir <dir>] [--json]
+  skript-ts probe stop   [--server-dir <dir>] [--json]
+  skript-ts probe status [--server-dir <dir>] [--json]`;
+
+function parseNonNegativeNumber(flag: string, raw: string): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`invalid number for ${flag}: ${raw}`);
+  return n;
+}
+
+function parseProbeArgs(rest: string[], opts: CliOptions): void {
+  const [action, ...args] = rest;
+  if (action !== "start" && action !== "run" && action !== "stop" && action !== "status") {
+    throw new Error(`unknown probe action: ${action ?? "(none)"}\n${USAGE}`);
+  }
+  opts.probeAction = action;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    const value = (): string => {
+      const v = args[++i];
+      if (v === undefined) throw new Error(`missing value for ${arg}\n${USAGE}`);
+      return v;
+    };
+    switch (arg) {
+      case "--server-dir": opts.serverDir = value(); break;
+      case "--java": opts.java = value(); break;
+      case "--commands": opts.commandsFile = value(); break;
+      case "--out": opts.probeOutFile = value(); break;
+      case "--pace-ms": opts.paceMs = parseNonNegativeNumber(arg, value()); break;
+      case "--settle-ms": opts.settleMs = parseNonNegativeNumber(arg, value()); break;
+      case "--json": opts.json = true; break;
+      case "--help":
+      case "-h":
+        console.log(USAGE);
+        process.exit(0);
+        break;
+      default:
+        if (!arg.startsWith("--") && opts.probeAction === "run" && opts.probeDir === null) {
+          opts.probeDir = arg;
+          break;
+        }
+        throw new Error(`unknown option: ${arg}\n${USAGE}`);
+    }
+  }
+  if (opts.probeAction === "run" && opts.probeDir === null) {
+    throw new Error(`probe run requires a probe directory\n${USAGE}`);
+  }
+}
 
 function parseArgs(argv: string[]): CliOptions {
   const [command, ...rest] = argv;
-  if (command !== "build" && command !== "verify") {
+  if (command !== "build" && command !== "verify" && command !== "probe") {
     throw new Error(`unknown command: ${command ?? "(none)"}\n${USAGE}`);
   }
   const opts: CliOptions = {
@@ -89,7 +157,17 @@ function parseArgs(argv: string[]): CliOptions {
     engine: false,
     behavior: true,
     fresh: true,
+    probeAction: "status",
+    probeDir: null,
+    commandsFile: null,
+    probeOutFile: null,
+    paceMs: 1000,
+    settleMs: 3000,
   };
+  if (command === "probe") {
+    parseProbeArgs(rest, opts);
+    return opts;
+  }
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i] as string;
     const value = (): string => {
@@ -168,6 +246,163 @@ function wipeSandboxState(serverDir: string): void {
   if (existsSync(ops)) rmSync(ops);
 }
 
+function firstLine(err: unknown): string {
+  return (err instanceof Error ? err.message : String(err)).split("\n")[0] ?? "";
+}
+
+async function runProbeCommand(
+  opts: CliOptions,
+  ctx: { rootDir: string; serverDir: string; progress: ProgressReporter; startedAt: number },
+): Promise<number> {
+  const action = opts.probeAction;
+  const fail = (err: unknown): number => {
+    const message = err instanceof Error ? err.message : String(err);
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          { command: "probe", action, ok: false, durationMs: Date.now() - ctx.startedAt, error: message },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.error(message);
+    }
+    return 1;
+  };
+
+  if (action === "status") {
+    const state = readProbeState(ctx.serverDir);
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          { command: "probe", action, ok: true, durationMs: Date.now() - ctx.startedAt, ...state },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.log(`状態: ${state.running ? "起動中" : "停止中"}`);
+      console.log(`host pid: ${state.hostPid ?? "-"}`);
+      console.log(`server pid: ${state.serverPid ?? "-"}`);
+      console.log(`ready: ${state.ready ? "yes" : "no"}`);
+    }
+    return 0;
+  }
+
+  if (action === "start") {
+    const handle = ctx.progress.begin("プローブサーバー起動");
+    try {
+      const res = await startProbeServer({
+        rootDir: ctx.rootDir,
+        serverDir: ctx.serverDir,
+        javaPath: resolveJava(opts),
+      });
+      handle.finish("passed", `起動 ${(res.bootMs / 1000).toFixed(1)}s、host pid ${res.hostPid}`);
+      if (opts.json) {
+        console.log(
+          JSON.stringify(
+            {
+              command: "probe",
+              action,
+              ok: true,
+              durationMs: Date.now() - ctx.startedAt,
+              bootMs: res.bootMs,
+              hostPid: res.hostPid,
+              serverPid: res.serverPid,
+              reclaimed: res.reclaimed,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        for (const note of res.reclaimed) console.log(`  ${note}`);
+      }
+      return 0;
+    } catch (err) {
+      handle.finish("failed", firstLine(err));
+      return fail(err);
+    }
+  }
+
+  if (action === "run") {
+    const handle = ctx.progress.begin("プローブラウンド");
+    try {
+      const res = await runProbeRound({
+        serverDir: ctx.serverDir,
+        probeDir: resolve(ctx.rootDir, opts.probeDir as string),
+        ...(opts.commandsFile !== null ? { commandsFile: resolve(ctx.rootDir, opts.commandsFile) } : {}),
+        ...(opts.probeOutFile !== null ? { outFile: resolve(ctx.rootDir, opts.probeOutFile) } : {}),
+        paceMs: opts.paceMs,
+        settleMs: opts.settleMs,
+        onUpdate: (d) => handle.update(d),
+      });
+      handle.finish("passed", `リロード ${(res.reloadMs / 1000).toFixed(1)}s、エラー ${res.errors.length} 件`);
+      if (opts.json) {
+        console.log(
+          JSON.stringify(
+            {
+              command: "probe",
+              action,
+              ok: true,
+              durationMs: Date.now() - ctx.startedAt,
+              reloadMs: res.reloadMs,
+              roundDurationMs: res.durationMs,
+              errors: res.errors,
+              outFile: res.outFile,
+              commandCount: res.commandCount,
+              lineCount: res.lines.length,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        for (const e of res.errors) {
+          console.log(`  ${e.file}:${e.skLine}`);
+          console.log(`    ${e.message}`);
+          if (e.sourceLine !== undefined) console.log(`    Line: ${e.sourceLine}`);
+        }
+        console.log(`  出力: ${res.outFile}`);
+      }
+      return 0;
+    } catch (err) {
+      handle.finish("failed", firstLine(err));
+      return fail(err);
+    }
+  }
+
+  // action === "stop"
+  const handle = ctx.progress.begin("プローブサーバー停止");
+  try {
+    const res = await stopProbeServer({ serverDir: ctx.serverDir });
+    handle.finish("passed", res.wasRunning ? "停止を確認" : "起動していません");
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          {
+            command: "probe",
+            action,
+            ok: true,
+            durationMs: Date.now() - ctx.startedAt,
+            wasRunning: res.wasRunning,
+            notes: res.notes,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      for (const note of res.notes) console.log(`  ${note}`);
+    }
+    return 0;
+  } catch (err) {
+    handle.finish("failed", firstLine(err));
+    return fail(err);
+  }
+}
+
 async function main(): Promise<number> {
   const startedAt = Date.now();
   const opts = parseArgs(process.argv.slice(2));
@@ -178,6 +413,10 @@ async function main(): Promise<number> {
 
   const progressStream = opts.json ? process.stderr : process.stdout;
   const progress = createProgress({ stream: progressStream, tty: progressStream.isTTY === true });
+
+  if (opts.command === "probe") {
+    return runProbeCommand(opts, { rootDir, serverDir, progress, startedAt });
+  }
 
   const stages: StageResult[] = [];
   const behaviorResults: BehaviorResult[] = [];
