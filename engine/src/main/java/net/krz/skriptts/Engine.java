@@ -1023,23 +1023,30 @@ final class Engine {
     }
 
     /**
-     * An expression title timing in ticks (phase 23). The
-     * emitter has always emitted literal timings as timespan
-     * literal expressions, and phase 21's rule carries over:
-     * unspecified parts are filled by the caller with the
-     * original's 10 / 70 / 20 defaults, and a part whose
-     * expression has no value falls back to the same default
-     * for that part. A number counts as a number of ticks.
+     * One title timing part as a tick count (phase 27), or
+     * null when the part does not count as given. Probed
+     * against the original: a part counts only when it
+     * evaluates to an actual Timespan — a number does NOT
+     * count as ticks here (unlike waitFor, where that rule
+     * was probed separately), and a valueless part does not
+     * count either; the sendTitle case sends a times packet
+     * only when at least one part counts, filling the rest
+     * with the 10 / 70 / 20 defaults. The conversion rounds
+     * half DOWN (25 ms → 0 ticks, 75 ms → 1 tick, measured on
+     * the wire), unlike {@link Timespan#toTicks()} — which
+     * rounds half up and serves wait / fishing — so it is
+     * computed here from the timespan's fields.
      */
-    private long timingTicksExpr(Object timingNode, Ctx ctx, long defaultTicks) {
+    private Long titleTimingTicks(Object timingNode, Ctx ctx) {
+        if (timingNode == null) return null;
         Object value = evalExpr(node(timingNode), ctx);
-        if (value instanceof Timespan timespan) {
-            return timespan.toTicks();
+        if (value instanceof Timespan ts) {
+            if (ts.eternal) return Long.MAX_VALUE / 4;
+            long ticks = ts.ms / 50;
+            long remainder = ts.ms % 50;
+            return remainder > 25 ? ticks + 1 : ticks;
         }
-        if (value instanceof Number number) {
-            return Math.max(0, Math.round(number.doubleValue()));
-        }
-        return defaultTicks;
+        return null;
     }
 
     /** A boss bar color name to Bukkit's enum (phase 21); anything else — including no color — is the probed default, white. */
@@ -1091,15 +1098,47 @@ final class Engine {
         return new NamespacedKey(namespace, key);
     }
 
-    /** A boss bar style literal (phase 24) to Bukkit's enum; anything else — including no style — is solid. */
-    private static BarStyle bossBarStyle(String name) {
-        if (name == null) return BarStyle.SOLID;
+    /**
+     * A boss bar color name for the WRITE path only (phase
+     * 27): the same mapping as {@link #bossBarColor}, but null
+     * for an unknown name. The original accepts a color value
+     * through an expression on the write path but never
+     * converts an unrecognized one — the write is a silent
+     * no-op there (probed) — so null tells the caller to skip
+     * the write and log a warning. Create paths keep the
+     * defaulting helper.
+     */
+    private static BarColor bossBarColorStrict(String name) {
+        if (name == null) return null;
         return switch (name) {
+            case "pink" -> BarColor.PINK;
+            case "blue" -> BarColor.BLUE;
+            case "red" -> BarColor.RED;
+            case "green" -> BarColor.GREEN;
+            case "yellow" -> BarColor.YELLOW;
+            case "purple" -> BarColor.PURPLE;
+            case "white" -> BarColor.WHITE;
+            default -> null;
+        };
+    }
+
+    /**
+     * A boss bar style name to Bukkit's enum (phase 24),
+     * strict since phase 27: like {@link #bossBarColorStrict},
+     * null for an unknown name so the write path skips the
+     * write with a warning. (Styles have no create-path use —
+     * a fresh bar is always solid — so no defaulting variant
+     * is kept.)
+     */
+    private static BarStyle bossBarStyleStrict(String name) {
+        if (name == null) return null;
+        return switch (name) {
+            case "solid" -> BarStyle.SOLID;
             case "6 notches" -> BarStyle.SEGMENTED_6;
             case "10 notches" -> BarStyle.SEGMENTED_10;
             case "12 notches" -> BarStyle.SEGMENTED_12;
             case "20 notches" -> BarStyle.SEGMENTED_20;
-            default -> BarStyle.SOLID;
+            default -> null;
         };
     }
 
@@ -1152,24 +1191,36 @@ final class Engine {
                 cont.run();
             }
             case "broadcast" -> {
-                Bukkit.getServer().broadcast(Component.text(renderText(node(stmt.get("message")), ctx)));
+                // Through the LEGACY serializer like the title /
+                // action-bar paths (phase 27, review item R-8):
+                // the engine's canonical text form carries §
+                // codes (phase 15), and Component.text would
+                // ship them to the client literally.
+                Bukkit.getServer().broadcast(LEGACY.deserialize(renderText(node(stmt.get("message")), ctx)));
                 cont.run();
             }
             case "sendTitle" -> {
                 // Display effects (phase 21): the parts go out
                 // in the original's packet order — times,
                 // subtitle, title (all probed raw). A times part
-                // is sent only when at least one timing is
-                // given; unspecified parts take the defaults
-                // 10 / 70 / 20 ticks the original fills in.
+                // is sent only when at least one timing part
+                // counts as given AND a title or subtitle part
+                // is present (phase 27, probed: a part counts
+                // only as an actual Timespan — see
+                // titleTimingTicks — and a timing-only
+                // statement, which the original cannot express,
+                // sends nothing at all); uncounted parts take
+                // the defaults 10 / 70 / 20 ticks the original
+                // fills in.
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
-                    Object fadeIn = stmt.get("fadeIn");
-                    Object stay = stmt.get("stay");
-                    Object fadeOut = stmt.get("fadeOut");
-                    if (fadeIn != null || stay != null || fadeOut != null) {
-                        long fi = fadeIn != null ? timingTicksExpr(fadeIn, ctx, 10) : 10;
-                        long st = stay != null ? timingTicksExpr(stay, ctx, 70) : 70;
-                        long fo = fadeOut != null ? timingTicksExpr(fadeOut, ctx, 20) : 20;
+                    Long fadeIn = titleTimingTicks(stmt.get("fadeIn"), ctx);
+                    Long stay = titleTimingTicks(stmt.get("stay"), ctx);
+                    Long fadeOut = titleTimingTicks(stmt.get("fadeOut"), ctx);
+                    if ((fadeIn != null || stay != null || fadeOut != null)
+                            && (stmt.get("title") != null || stmt.get("subtitle") != null)) {
+                        long fi = fadeIn != null ? fadeIn : 10;
+                        long st = stay != null ? stay : 70;
+                        long fo = fadeOut != null ? fadeOut : 20;
                         target.sendTitlePart(TitlePart.TIMES, Title.Times.times(
                                 Duration.ofMillis(fi * 50),
                                 Duration.ofMillis(st * 50),
@@ -1199,15 +1250,36 @@ final class Engine {
                 }
                 cont.run();
             }
+            // Boss bar writes (phase 27, review items R-1 /
+            // R-4 / R-5 / R-7): one family policy, probed
+            // against the original. The non-bar operand is
+            // evaluated FIRST and the bar operand second, BOTH
+            // unconditionally — the original evaluates the
+            // value even when the bar has no value (measured
+            // with side-effecting functions). A write whose
+            // value is missing or wrong-typed is a no-op (the
+            // original is silent; the engine logs a warning as
+            // diagnostics), and an unknown literal color /
+            // style name on the write path is a no-op with a
+            // warning — NOT the create path's white / solid
+            // default (the original accepts the value but never
+            // converts an unrecognized one).
             case "setBossBarTitle" -> {
+                String title = renderText(node(stmt.get("title")), ctx);
                 if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar) {
-                    bar.setTitle(renderText(node(stmt.get("title")), ctx));
+                    bar.setTitle(title);
                 }
                 cont.run();
             }
             case "setBossBarColor" -> {
                 if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar) {
-                    bar.setColor(bossBarColor(str(stmt.get("name"))));
+                    String name = str(stmt.get("name"));
+                    BarColor color = bossBarColorStrict(name);
+                    if (color == null) {
+                        logger.warning("skript-ts: unknown boss bar color '" + name + "' in setBossBarColor");
+                    } else {
+                        bar.setColor(color);
+                    }
                 }
                 cont.run();
             }
@@ -1215,10 +1287,15 @@ final class Engine {
                 // Progress is a fraction the original clamps
                 // to 0..1 (probed: writing 50 reads back 1).
                 Object value = evalExpr(node(stmt.get("value")), ctx);
-                if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar
-                        && value instanceof Number n) {
-                    double d = n.doubleValue();
-                    bar.setProgress(Double.isNaN(d) ? 0.0 : Math.max(0.0, Math.min(1.0, d)));
+                if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar) {
+                    if (value == null) {
+                        logger.warning("skript-ts: setBossBarProgress with no value");
+                    } else if (value instanceof Number n) {
+                        double d = n.doubleValue();
+                        bar.setProgress(Double.isNaN(d) ? 0.0 : Math.max(0.0, Math.min(1.0, d)));
+                    } else {
+                        logger.warning("skript-ts: setBossBarProgress with a non-number value: " + value);
+                    }
                 }
                 cont.run();
             }
@@ -1248,7 +1325,13 @@ final class Engine {
             }
             case "setBossBarStyle" -> {
                 if (evalExpr(node(stmt.get("bar")), ctx) instanceof BossBar bar) {
-                    bar.setStyle(bossBarStyle(str(stmt.get("style"))));
+                    String style = str(stmt.get("style"));
+                    BarStyle resolved = bossBarStyleStrict(style);
+                    if (resolved == null) {
+                        logger.warning("skript-ts: unknown boss bar style '" + style + "' in setBossBarStyle");
+                    } else {
+                        bar.setStyle(resolved);
+                    }
                 }
                 cont.run();
             }
