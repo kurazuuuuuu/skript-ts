@@ -50,8 +50,14 @@ import java.util.regex.Pattern;
  * JDBC drivers come from the server: Paper ships SQLite and MySQL
  * drivers in its own library set (the sandbox carries
  * org.xerial:sqlite-jdbc and com.mysql:mysql-connector-j), so this
- * jar deliberately bundles none. A data source whose driver the
- * server does not provide fails cleanly through {@link #lastError()}.
+ * jar deliberately bundles none. Before connecting, {@link #execute}
+ * also tries to initialize the well-known driver class of the URL's
+ * scheme through this plugin's own class loader: a driver jar placed
+ * in the plugin jar or supplied through the plugin {@code libraries}
+ * mechanism only registers with {@link DriverManager} once its class
+ * is initialized, and nothing else loads it. A data source whose
+ * driver is not visible either way fails cleanly through
+ * {@link #lastError()}.
  */
 final class Database {
 
@@ -180,6 +186,8 @@ final class Database {
                 }
             }
 
+            loadDriverClass(ds.jdbcUrl);
+
             Properties properties = new Properties();
             if (ds.user != null) {
                 properties.setProperty("user", ds.user);
@@ -240,6 +248,37 @@ final class Database {
             }
             lastError = message;
             logger.warning("skript-ts: database execution failed: " + message);
+        }
+    }
+
+    /**
+     * Initialize the well-known JDBC driver class for the URL's
+     * scheme, if it is visible to this plugin's class loader. Driver
+     * classes self-register with {@link DriverManager} from their
+     * static initializer, so this makes drivers bundled in the plugin
+     * jar (or in plugin libraries) usable; drivers the server itself
+     * loaded are already registered and unaffected. A missing class
+     * is not an error: the connection attempt then fails cleanly with
+     * "No suitable driver" through {@link #lastError()}.
+     */
+    private static void loadDriverClass(String jdbcUrl) {
+        String driverClass = null;
+        if (jdbcUrl.startsWith("jdbc:mysql:")) {
+            driverClass = "com.mysql.cj.jdbc.Driver";
+        } else if (jdbcUrl.startsWith("jdbc:mariadb:")) {
+            driverClass = "org.mariadb.jdbc.Driver";
+        } else if (jdbcUrl.startsWith("jdbc:postgresql:")) {
+            driverClass = "org.postgresql.Driver";
+        } else if (jdbcUrl.startsWith("jdbc:sqlite:")) {
+            driverClass = "org.sqlite.JDBC";
+        }
+        if (driverClass == null) {
+            return;
+        }
+        try {
+            Class.forName(driverClass);
+        } catch (Throwable ignored) {
+            // Not visible to this class loader; getConnection reports it.
         }
     }
 
