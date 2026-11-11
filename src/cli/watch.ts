@@ -146,8 +146,9 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
   }
 
   await fs.mkdir(pluginDir, { recursive: true });
-  // buildProject writes IR into outDir but does not create it (the
-  // build/verify flows rely on it existing from earlier runs).
+  // buildProject creates outDir itself since phase 27 (a fresh
+  // clone's build/verify run used to fail with ENOENT); the
+  // pre-creation here is kept as a no-cost guard.
   await fs.mkdir(outDir, { recursive: true });
 
   // --- lock file ----------------------------------------------------------

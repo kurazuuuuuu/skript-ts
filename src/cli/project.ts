@@ -106,6 +106,9 @@ export async function buildProject(opts: {
     const relSk = toPosix(relative(srcDir, absFile)).replace(/\.ts$/, ".sk");
     const irRel = relSk.replace(/\.sk$/, ".ir.json");
     const irPath = join(outDir, irRel);
+    // The output directory may not exist yet on a fresh clone
+    // (the .sk write below already guards its own directory).
+    mkdirSync(dirname(irPath), { recursive: true });
     writeFileSync(irPath, emitIr(prog), "utf8");
     if (isEngineOnlyScript(prog)) {
       // Engine-builtin features have no .sk form: emit IR only. The
