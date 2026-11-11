@@ -213,6 +213,7 @@ function emitValue(e: Expr): string {
             // use `a boss bar`; a title uses the one-word
             // `bossbar ... with title %text%` shape, with or
             // without a color word in front.
+            requireBossBarColor(e.color, undefined);
             if (e.title !== undefined) {
                 return `a ${e.color !== undefined ? `${e.color} ` : ""}bossbar with title ${emitText(e.title)}`;
             }
@@ -231,6 +232,7 @@ function emitValue(e: Expr): string {
             // key %text%`; a title adds `with title %text%` after
             // the key — two-word `boss bar` without a color, the
             // one-word `bossbar` shape with one.
+            requireBossBarColor(e.color, undefined);
             if (e.title !== undefined) {
                 return e.color !== undefined
                     ? `a keyed ${e.color} bossbar with key ${emitText(e.key)} with title ${emitText(e.title)}`
@@ -652,6 +654,46 @@ function emitWhileCond(c: Cond): string {
     return emitLeafCond(c, false);
 }
 
+// The builders validate these closed literal sets already;
+// the emitter re-checks them because an AST can be built by
+// hand, and an unchecked name would either emit a line the
+// original rejects or (for flags) silently emit the wrong
+// verb. (Phase 27: the validation asymmetry of review item
+// R-1, closed for the closed-set names; event filter type
+// names stay unchecked — that set is open-ended.)
+const EMIT_BOSS_BAR_COLORS: ReadonlySet<string> = new Set([
+    "pink", "blue", "red", "green", "yellow", "purple", "white",
+]);
+const EMIT_BOSS_BAR_STYLES: ReadonlySet<string> = new Set([
+    "solid", "6 notches", "10 notches", "12 notches", "20 notches",
+]);
+const EMIT_BOSS_BAR_FLAGS: ReadonlySet<string> = new Set([
+    "darkenSky", "createFog", "playBossMusic",
+]);
+
+function invalidNameError(what: string, value: unknown, loc?: SourceLoc): Error {
+    const location = loc ? ` (at ${loc.file}:${loc.line}:${loc.column})` : "";
+    return new Error(`invalid ${what}: ${JSON.stringify(value)}${location}`);
+}
+
+function requireBossBarColor(value: string | undefined, loc?: SourceLoc): void {
+    if (value !== undefined && !EMIT_BOSS_BAR_COLORS.has(value)) {
+        throw invalidNameError("boss bar color name", value, loc);
+    }
+}
+
+function requireBossBarStyle(value: string, loc?: SourceLoc): void {
+    if (!EMIT_BOSS_BAR_STYLES.has(value)) {
+        throw invalidNameError("boss bar style name", value, loc);
+    }
+}
+
+function requireBossBarFlag(value: string, loc?: SourceLoc): void {
+    if (!EMIT_BOSS_BAR_FLAGS.has(value)) {
+        throw invalidNameError("boss bar flag name", value, loc);
+    }
+}
+
 function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     const prefix = " ".repeat(4 * level);
     switch (s.kind) {
@@ -663,7 +705,15 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             // The timing tail comes after the target (probed:
             // `for` before `to` is a parse error), in stay /
             // fade-in / fade-out order; the fade-out is joined
-            // with "and" only when a fade-in precedes it.
+            // with "and" only when a fade-in precedes it. A
+            // statement with neither part is meaningless (the
+            // builders cannot produce one) — reject it here
+            // instead of crashing inside emitText (phase 27,
+            // review item R-2).
+            if (s.title === undefined && s.subtitle === undefined) {
+                const suffix = s.loc ? ` (at ${s.loc.file}:${s.loc.line}:${s.loc.column})` : "";
+                throw new Error(`sendTitle statement has neither a title nor a subtitle${suffix}`);
+            }
             let tail = "";
             if (s.stay !== undefined) tail += ` for ${emitValue(s.stay)}`;
             if (s.fadeIn !== undefined) tail += ` with fadein ${emitValue(s.fadeIn)}`;
@@ -684,6 +734,7 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         case "setBossBarTitle":
             return [own(`${prefix}set title of ${emitValue(s.bar)} to ${emitText(s.title)}`, path, s.loc)];
         case "setBossBarColor":
+            requireBossBarColor(s.name, s.loc);
             return [own(`${prefix}set color of ${emitValue(s.bar)} to ${s.name}`, path, s.loc)];
         case "setBossBarProgress":
             return [own(`${prefix}set progress of ${emitValue(s.bar)} to ${emitValue(s.value)}`, path, s.loc)];
@@ -694,8 +745,10 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         case "deleteKeyedBossBar":
             return [own(`${prefix}delete boss bar with key ${emitText(s.key)}`, path, s.loc)];
         case "setBossBarStyle":
+            requireBossBarStyle(s.style, s.loc);
             return [own(`${prefix}set style of ${emitValue(s.bar)} to ${s.style}`, path, s.loc)];
         case "setBossBarFlag": {
+            requireBossBarFlag(s.flag, s.loc);
             const verb = s.flag === "darkenSky"
                 ? "darken the sky"
                 : s.flag === "createFog" ? "create fog" : "play boss music";
@@ -704,6 +757,7 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
                 : `${prefix}make ${emitValue(s.bar)} no longer ${verb}`, path, s.loc)];
         }
         case "createBossBarSection": {
+            requireBossBarColor(s.color, s.loc);
             const head = s.key !== undefined
                 ? `set ${emitValue(s.target)} to a keyed ${s.color !== undefined ? `${s.color} ` : ""}boss bar with key ${emitText(s.key)}:`
                 : `set ${emitValue(s.target)} to a ${s.color !== undefined ? `${s.color} ` : ""}boss bar:`;
