@@ -2574,3 +2574,97 @@ export function setFishingBiteTime(value: Expr): Stmt {
 export function setFishingApproachAngle(bound: "min" | "max", value: Expr): Stmt {
   return withLoc({ kind: "setFishingApproachAngle", bound: requireFishingBound(bound), value });
 }
+
+// ---------------------------------------------------------------------------
+// Engine builtins (external connectors, phase 26)
+//
+// HTTP requests are asynchronous: httpFetch/httpDownload only start a
+// request under a caller-chosen literal id and return immediately. The
+// result arrives later in an onHttpResponse event, whose httpId(),
+// httpStatus(), httpBody(), httpError(), httpSavedPath(), and httpOk()
+// values describe that one response. env() reads an environment variable
+// of the JVM process; the JVM inherits its environment at launch and it
+// never changes afterwards, so changing a variable requires a server
+// restart. An unset variable yields no value.
+// ---------------------------------------------------------------------------
+
+function requireHttpId(id: string): string {
+  if (typeof id !== "string" || id.trim() === "") {
+    throw new RangeError("http id must be a non-empty string");
+  }
+  return id;
+}
+
+function requireTimeoutSeconds(opts?: { timeoutSeconds?: number }): number | undefined {
+  const value = opts?.timeoutSeconds;
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > 120) {
+    throw new RangeError("timeoutSeconds must be a number between 1 and 120");
+  }
+  return value;
+}
+
+/** Construct an http-fetch statement that starts an asynchronous text fetch (engine builtin). */
+export function httpFetch(id: string, url: TextExpr, opts?: { timeoutSeconds?: number }): Stmt {
+  const timeout = requireTimeoutSeconds(opts);
+  return withLoc({
+    kind: "httpFetch",
+    id: requireHttpId(id),
+    url,
+    ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
+  } as unknown as Stmt);
+}
+
+/** Construct an http-download statement that starts an asynchronous file download (engine builtin). */
+export function httpDownload(id: string, url: TextExpr, path: TextExpr, opts?: { timeoutSeconds?: number }): Stmt {
+  const timeout = requireTimeoutSeconds(opts);
+  return withLoc({
+    kind: "httpDownload",
+    id: requireHttpId(id),
+    url,
+    path,
+    ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
+  } as unknown as Stmt);
+}
+
+/** Construct an on-http-response event (engine builtin). */
+export function onHttpResponse(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "httpResponse", body } as unknown as TopLevel);
+}
+
+/** Construct an http-id expression: the request id, inside httpResponse events. */
+export function httpId(): Expr {
+  return { kind: "httpId" } as unknown as Expr;
+}
+
+/** Construct an http-status expression: the numeric status, no value when there was no response. */
+export function httpStatus(): Expr {
+  return { kind: "httpStatus" } as unknown as Expr;
+}
+
+/** Construct an http-body expression: the fetched text body (fetch only). */
+export function httpBody(): Expr {
+  return { kind: "httpBody" } as unknown as Expr;
+}
+
+/** Construct an http-error expression: the error kind text, no value on success. */
+export function httpError(): Expr {
+  return { kind: "httpError" } as unknown as Expr;
+}
+
+/** Construct an http-saved-path expression: the saved file path (download only). */
+export function httpSavedPath(): Expr {
+  return { kind: "httpSavedPath" } as unknown as Expr;
+}
+
+/** Construct an http-ok condition (engine builtin): a response arrived and was not an error. */
+export function httpOk(): Cond {
+  return { kind: "httpOk" } as unknown as Cond;
+}
+
+/** Construct an env expression: a JVM-start environment variable; changing it requires a server restart, and an unset variable yields no value. */
+export function env(name: TextExpr): Expr {
+  return { kind: "envVar", name } as unknown as Expr;
+}

@@ -71,6 +71,15 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "placeholderIdentifier",
   "placeholderPrefix",
   "setPlaceholderResult",
+  "httpFetch",
+  "httpDownload",
+  "envVar",
+  "httpId",
+  "httpStatus",
+  "httpBody",
+  "httpError",
+  "httpSavedPath",
+  "httpOk",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
@@ -80,6 +89,7 @@ const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
   "timerTick",
   "timerComplete",
   "papiRequest",
+  "httpResponse",
 ]);
 
 function containsEngineOnly(value: unknown): boolean {
