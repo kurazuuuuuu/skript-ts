@@ -281,8 +281,14 @@ function emitValue(e: Expr): string {
         case "placeholderValue":
         case "placeholderIdentifier":
         case "placeholderPrefix":
-            // Engine-builtin expressions (phases 6-10) exist only in
-            // the engine jar; there is no Skript text form to emit.
+        case "httpId":
+        case "httpStatus":
+        case "httpBody":
+        case "httpError":
+        case "httpSavedPath":
+        case "envVar":
+            // Engine-builtin expressions (phases 6-10, 26) exist only
+            // in the engine jar; there is no Skript text form to emit.
             throw new Error(`Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
@@ -420,6 +426,12 @@ function emitString(e: Expr): string {
         case "placeholderValue":
         case "placeholderIdentifier":
         case "placeholderPrefix":
+        case "httpId":
+        case "httpStatus":
+        case "httpBody":
+        case "httpError":
+        case "httpSavedPath":
+        case "envVar":
             throw new Error(`Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = e;
@@ -523,6 +535,7 @@ function emitLeafCond(c: Cond, negated: boolean): string {
                 : `${emitValue(c.bar)} plays boss music`;
         case "timerActive":
         case "fileExists":
+        case "httpOk":
             throw new Error(`Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`);
         case "and":
         case "or":
@@ -855,6 +868,8 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         case "fileWrite":
         case "fileAppend":
         case "setPlaceholderResult":
+        case "httpFetch":
+        case "httpDownload":
             throw new Error(`Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`);
         default: {
             const exhaustive: never = s;
@@ -968,7 +983,8 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
         case "event": {
             if (
                 t.event === "wsOpen" || t.event === "wsMessage" || t.event === "wsClose" ||
-                t.event === "timerTick" || t.event === "timerComplete" || t.event === "papiRequest"
+                t.event === "timerTick" || t.event === "timerComplete" || t.event === "papiRequest" ||
+                t.event === "httpResponse"
             ) {
                 throw new Error(`Unhandled Event in emitTop: '${t.event}' is an engine-only builtin with no .sk form`);
             }

@@ -2614,7 +2614,7 @@ export function httpFetch(id: string, url: TextExpr, opts?: { timeoutSeconds?: n
     id: requireHttpId(id),
     url,
     ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
-  } as unknown as Stmt);
+  });
 }
 
 /** Construct an http-download statement that starts an asynchronous file download (engine builtin). */
@@ -2626,45 +2626,45 @@ export function httpDownload(id: string, url: TextExpr, path: TextExpr, opts?: {
     url,
     path,
     ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
-  } as unknown as Stmt);
+  });
 }
 
 /** Construct an on-http-response event (engine builtin). */
 export function onHttpResponse(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "httpResponse", body } as unknown as TopLevel);
+  return withLoc({ kind: "event", event: "httpResponse", body });
 }
 
 /** Construct an http-id expression: the request id, inside httpResponse events. */
 export function httpId(): Expr {
-  return { kind: "httpId" } as unknown as Expr;
+  return { kind: "httpId" };
 }
 
 /** Construct an http-status expression: the numeric status, no value when there was no response. */
 export function httpStatus(): Expr {
-  return { kind: "httpStatus" } as unknown as Expr;
+  return { kind: "httpStatus" };
 }
 
 /** Construct an http-body expression: the fetched text body (fetch only). */
 export function httpBody(): Expr {
-  return { kind: "httpBody" } as unknown as Expr;
+  return { kind: "httpBody" };
 }
 
 /** Construct an http-error expression: the error kind text, no value on success. */
 export function httpError(): Expr {
-  return { kind: "httpError" } as unknown as Expr;
+  return { kind: "httpError" };
 }
 
 /** Construct an http-saved-path expression: the saved file path (download only). */
 export function httpSavedPath(): Expr {
-  return { kind: "httpSavedPath" } as unknown as Expr;
+  return { kind: "httpSavedPath" };
 }
 
 /** Construct an http-ok condition (engine builtin): a response arrived and was not an error. */
 export function httpOk(): Cond {
-  return { kind: "httpOk" } as unknown as Cond;
+  return { kind: "httpOk" };
 }
 
 /** Construct an env expression: a JVM-start environment variable; changing it requires a server restart, and an unset variable yields no value. */
 export function env(name: TextExpr): Expr {
-  return { kind: "envVar", name } as unknown as Expr;
+  return { kind: "envVar", name };
 }

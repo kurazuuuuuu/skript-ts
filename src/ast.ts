@@ -40,6 +40,15 @@ export type Expr =
   // of the last failed database execution.
   | { kind: "dataSource"; url: TextExpr }
   | { kind: "dbLastError" }
+  // Engine-builtin expressions (external connectors, phase 26): the
+  // payload of an HTTP completion event, and a JVM-start environment
+  // variable resolved by the engine (an unset variable is no value).
+  | { kind: "httpId" }
+  | { kind: "httpStatus" }
+  | { kind: "httpBody" }
+  | { kind: "httpError" }
+  | { kind: "httpSavedPath" }
+  | { kind: "envVar"; name: TextExpr }
   // Engine-builtin expressions (skUtilities slice, phase 9): reads
   // from text files under the engine's files root. All three yield
   // no value when the file is missing.
@@ -448,6 +457,9 @@ export type Cond =
   // Engine-builtin condition (skUtilities slice, phase 9): a file or
   // directory exists under the engine's files root.
   | { kind: "fileExists"; path: TextExpr }
+  // Engine-builtin condition (external connectors, phase 26): the
+  // HTTP completion being handled arrived with a response.
+  | { kind: "httpOk" }
   // Boss bar flag conditions (phase 24), probed on Skript 2.17.1:
   // `%bar% darkens the sky`, `%bar% creates fog`,
   // `%bar% plays boss music` (with native negative spellings).
@@ -869,7 +881,12 @@ export type Stmt =
   // answer string for the placeholder request being handled. Only
   // meaningful inside an onPlaceholderRequest body; a request whose
   // handler never sets a result resolves to no value.
-  | { kind: "setPlaceholderResult"; text: TextExpr; loc?: SourceLoc };
+  | { kind: "setPlaceholderResult"; text: TextExpr; loc?: SourceLoc }
+  // Engine-builtin statements (external connectors, phase 26): start
+  // an asynchronous HTTP fetch / download. The statement returns at
+  // once; the outcome arrives later as an httpResponse event.
+  | { kind: "httpFetch"; id: string; url: TextExpr; timeoutSeconds?: number; loc?: SourceLoc }
+  | { kind: "httpDownload"; id: string; url: TextExpr; path: TextExpr; timeoutSeconds?: number; loc?: SourceLoc };
 
 /** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. Phase 22 generalized death (any entity, victim filter), added the entity pickup / drop forms, and split fishing into its state sub-events. */
 export type EventKind =
@@ -883,7 +900,8 @@ export type EventKind =
   | "fishingStateChange"
   | "wsOpen" | "wsMessage" | "wsClose"
   | "timerTick" | "timerComplete"
-  | "papiRequest";
+  | "papiRequest"
+  | "httpResponse";
 
 /**
  * A Skript event filter (phase 16): the type-name lists of the
