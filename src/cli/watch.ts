@@ -146,6 +146,9 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
   }
 
   await fs.mkdir(pluginDir, { recursive: true });
+  // buildProject writes IR into outDir but does not create it (the
+  // build/verify flows rely on it existing from earlier runs).
+  await fs.mkdir(outDir, { recursive: true });
 
   // --- lock file ----------------------------------------------------------
   const existing = await readLock(lockPath);
