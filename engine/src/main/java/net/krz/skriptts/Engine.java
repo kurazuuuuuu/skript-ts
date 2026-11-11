@@ -942,8 +942,10 @@ final class Engine {
             i++;
             if (!(raw instanceof Map<?, ?>)) continue;
             Map<String, Object> stmt = node(raw);
-            if ("wait".equals(kind(stmt))) {
-                long ticks = waitTicks(stmt, ctx);
+            if ("wait".equals(kind(stmt)) || "waitFor".equals(kind(stmt))) {
+                long ticks = "waitFor".equals(kind(stmt))
+                        ? waitForTicks(stmt, ctx)
+                        : waitTicks(stmt, ctx);
                 if (ticks <= 0) continue;
                 if (delayHost == null) {
                     logger.warning("skript-ts: wait without a delay host installed");
@@ -960,6 +962,18 @@ final class Engine {
         done.run();
     }
 
+    /** A waitFor statement's delay in ticks: the expression's timespan value (a number counts as ticks; no value waits not at all). */
+    private long waitForTicks(Map<String, Object> stmt, Ctx ctx) {
+        Object value = evalExpr(node(stmt.get("value")), ctx);
+        if (value instanceof Timespan timespan) {
+            return timespan.toTicks();
+        }
+        if (value instanceof Number number) {
+            return Math.max(0, Math.round(number.doubleValue()));
+        }
+        return 0;
+    }
+
     /** The wait duration of a wait statement in ticks (0 for a missing or non-numeric amount). */
     private long waitTicks(Map<String, Object> stmt, Ctx ctx) {
         Object amount = evalExpr(node(stmt.get("amount")), ctx);
@@ -972,15 +986,24 @@ final class Engine {
         return Math.max(0, Math.round(n.doubleValue() * perUnit));
     }
 
-    /** A literal title timing ({amount, unit} from the IR) in ticks (phase 21). */
-    private static long timingTicks(Object timing) {
-        if (!(timing instanceof Map<?, ?> map)) return 0;
-        double perUnit = switch (String.valueOf(map.get("unit"))) {
-            case "seconds" -> 20.0;
-            case "minutes" -> 1200.0;
-            default -> 1.0; // ticks
-        };
-        return Math.max(0, Math.round(num(map.get("amount")) * perUnit));
+    /**
+     * An expression title timing in ticks (phase 23). The
+     * emitter has always emitted literal timings as timespan
+     * literal expressions, and phase 21's rule carries over:
+     * unspecified parts are filled by the caller with the
+     * original's 10 / 70 / 20 defaults, and a part whose
+     * expression has no value falls back to the same default
+     * for that part. A number counts as a number of ticks.
+     */
+    private long timingTicksExpr(Object timingNode, Ctx ctx, long defaultTicks) {
+        Object value = evalExpr(node(timingNode), ctx);
+        if (value instanceof Timespan timespan) {
+            return timespan.toTicks();
+        }
+        if (value instanceof Number number) {
+            return Math.max(0, Math.round(number.doubleValue()));
+        }
+        return defaultTicks;
     }
 
     /** A boss bar color name to Bukkit's enum (phase 21); anything else — including no color — is the probed default, white. */
@@ -1021,9 +1044,9 @@ final class Engine {
                     Object stay = stmt.get("stay");
                     Object fadeOut = stmt.get("fadeOut");
                     if (fadeIn != null || stay != null || fadeOut != null) {
-                        long fi = fadeIn != null ? timingTicks(fadeIn) : 10;
-                        long st = stay != null ? timingTicks(stay) : 70;
-                        long fo = fadeOut != null ? timingTicks(fadeOut) : 20;
+                        long fi = fadeIn != null ? timingTicksExpr(fadeIn, ctx, 10) : 10;
+                        long st = stay != null ? timingTicksExpr(stay, ctx, 70) : 70;
+                        long fo = fadeOut != null ? timingTicksExpr(fadeOut, ctx, 20) : 20;
                         target.sendTitlePart(TitlePart.TIMES, Title.Times.times(
                                 Duration.ofMillis(fi * 50),
                                 Duration.ofMillis(st * 50),
@@ -1147,7 +1170,19 @@ final class Engine {
             }
             case "addVar" -> {
                 Object v = evalExpr(node(stmt.get("value")), ctx);
-                if (v instanceof Number n) {
+                Map<String, Object> tsTarget = node(stmt.get("variable"));
+                Store tsStore = storeFor(tsTarget, ctx);
+                String tsKey = varKey(tsTarget, ctx);
+                Object tsCur = tsStore.get(tsKey);
+                // Phase 23: timespans ("add 1 hour to {_t}") go
+                // through the probed arithmetic; a valueless
+                // combination leaves the variable unchanged.
+                if (v instanceof Timespan || tsCur instanceof Timespan) {
+                    Object r = evalArith("+", tsCur, v);
+                    if (r != null) {
+                        tsStore.set(tsKey, r);
+                    }
+                } else if (v instanceof Number n) {
                     Map<String, Object> target = node(stmt.get("variable"));
                     if ("localVariable".equals(kind(target))) {
                         Store store = localStore(ctx);
@@ -1156,6 +1191,34 @@ final class Engine {
                         store.set(key, (cur instanceof Number c ? c.doubleValue() : 0.0) + n.doubleValue());
                     } else {
                         variables.add(varKey(target, ctx), n.doubleValue());
+                    }
+                }
+                cont.run();
+            }
+            case "removeVar" -> {
+                Object v = evalExpr(node(stmt.get("value")), ctx);
+                Map<String, Object> tsTarget = node(stmt.get("variable"));
+                Store tsStore = storeFor(tsTarget, ctx);
+                String tsKey = varKey(tsTarget, ctx);
+                Object tsCur = tsStore.get(tsKey);
+                // Phase 23: timespans ("remove 30 minutes from
+                // {_t}") go through the probed arithmetic,
+                // saturating at zero; a valueless combination
+                // leaves the variable unchanged.
+                if (v instanceof Timespan || tsCur instanceof Timespan) {
+                    Object r = evalArith("-", tsCur, v);
+                    if (r != null) {
+                        tsStore.set(tsKey, r);
+                    }
+                } else if (v instanceof Number n) {
+                    Map<String, Object> target = node(stmt.get("variable"));
+                    if ("localVariable".equals(kind(target))) {
+                        Store store = localStore(ctx);
+                        String key = varKey(target, ctx);
+                        Object cur = store.get(key);
+                        store.set(key, (cur instanceof Number c ? c.doubleValue() : 0.0) - n.doubleValue());
+                    } else {
+                        variables.add(varKey(target, ctx), -n.doubleValue());
                     }
                 }
                 cont.run();
@@ -1560,6 +1623,50 @@ final class Engine {
                 // Handled in execRange, which owns scheduling; a
                 // wait reaching here is simply complete.
                 cont.run();
+            case "waitFor" ->
+                // Handled in execRange too, like "wait".
+                cont.run();
+            // The fishing wait / bite / angle setters (phase
+            // 23): event values of fishing events. Outside them
+            // there is no hook and the statement does nothing
+            // (probed), and a value of the wrong type is ignored
+            // like the original's failed change.
+            case "setFishingWaitTime" -> {
+                if (ctx.fishingHook != null) {
+                    Object value = evalExpr(node(stmt.get("value")), ctx);
+                    if (value instanceof Timespan timespan) {
+                        if ("min".equals(str(stmt.get("bound")))) {
+                            ctx.fishingHook.setMinWaitTime(timespan.toTicksInt());
+                        } else {
+                            ctx.fishingHook.setMaxWaitTime(timespan.toTicksInt());
+                        }
+                    }
+                }
+                cont.run();
+            }
+            case "setFishingBiteTime" -> {
+                if (ctx.fishingHook != null) {
+                    Object value = evalExpr(node(stmt.get("value")), ctx);
+                    if (value instanceof Timespan timespan) {
+                        ctx.fishingHook.setTimeUntilBite(timespan.toTicksInt());
+                    }
+                }
+                cont.run();
+            }
+            case "setFishingApproachAngle" -> {
+                if (ctx.fishingHook != null) {
+                    Object value = evalExpr(node(stmt.get("value")), ctx);
+                    if (value instanceof Number number) {
+                        float angle = (float) number.doubleValue();
+                        if ("min".equals(str(stmt.get("bound")))) {
+                            ctx.fishingHook.setMinLureAngle(angle);
+                        } else {
+                            ctx.fishingHook.setMaxLureAngle(angle);
+                        }
+                    }
+                }
+                cont.run();
+            }
             case "wsConnect" -> {
                 if (wsHost == null) {
                     logger.warning("skript-ts: wsConnect without a websocket host installed");
@@ -1975,7 +2082,7 @@ final class Engine {
     }
 
     private static final Set<String> PLURAL_TYPE_NAMES =
-            Set.of("numbers", "texts", "booleans", "players", "locations", "objects");
+            Set.of("numbers", "texts", "booleans", "players", "locations", "objects", "timespans");
 
     private static boolean isPluralTypeName(String type) {
         return type != null && PLURAL_TYPE_NAMES.contains(type);
@@ -2003,6 +2110,7 @@ final class Engine {
             case "block" -> value instanceof Block;
             case "item" -> value instanceof ItemStack;
             case "entity" -> value instanceof Entity;
+            case "timespan" -> value instanceof Timespan;
             default -> true; // object, and any type outside the subset's checks
         };
     }
@@ -2132,6 +2240,12 @@ final class Engine {
      */
     private static boolean valuesEqual(Object a, Object b) {
         if (a == null || b == null) return false;
+        // A timespan equals only another timespan with the
+        // same millisecond count (eternity equals eternity);
+        // it never equals a number or a text (probed).
+        if (a instanceof Timespan || b instanceof Timespan) {
+            return a instanceof Timespan ta && b instanceof Timespan tb && ta.equals(tb);
+        }
         if (a instanceof Number na && b instanceof Number nb) {
             double x = na.doubleValue(), y = nb.doubleValue();
             return !Double.isNaN(x) && !Double.isNaN(y) && x == y;
@@ -2195,6 +2309,7 @@ final class Engine {
         if (value instanceof Entity entity) {
             return entity.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
         }
+        if (value instanceof Timespan) return "timespan";
         if (value instanceof Number) return "number";
         if (value instanceof String) return "text";
         if (value instanceof Boolean) return "boolean";
@@ -2232,6 +2347,12 @@ final class Engine {
      * are incomparable), and NaN orders against nothing.
      */
     private static Integer numericRelation(Object a, Object b) {
+        // Two timespans relate by their millisecond counts
+        // (eternity greatest); a timespan against anything
+        // else is incomparable (probed: ordering against a
+        // mismatched type is false).
+        if (a instanceof Timespan ta && b instanceof Timespan tb) return ta.compareTo(tb);
+        if (a instanceof Timespan || b instanceof Timespan) return null;
         if (!(a instanceof Number na) || !(b instanceof Number nb)) return null;
         double x = na.doubleValue(), y = nb.doubleValue();
         if (Double.isNaN(x) || Double.isNaN(y)) return null;
@@ -2413,6 +2534,23 @@ final class Engine {
             case "eventEntity" -> ctx.eventEntity;
             case "hookedEntity" -> ctx.eventEntity;
             case "fishingHook" -> ctx.fishingHook;
+            // Timespan values and the fishing wait / bite /
+            // angle expressions (phase 23): event values of
+            // fishing events, like the hook itself — no value
+            // outside them. Wait and bite times are the hook's
+            // tick counts at 50 ms per tick; the angles are
+            // plain numbers of degrees.
+            case "timespan" -> Timespan.literal(num(expr.get("amount")), str(expr.get("unit")));
+            case "fishingWaitTime" -> ctx.fishingHook == null ? null
+                    : Timespan.ofTicks("min".equals(str(expr.get("bound")))
+                            ? ctx.fishingHook.getMinWaitTime()
+                            : ctx.fishingHook.getMaxWaitTime());
+            case "fishingBiteTime" -> ctx.fishingHook == null ? null
+                    : Timespan.ofTicks(ctx.fishingHook.getTimeUntilBite());
+            case "fishingApproachAngle" -> ctx.fishingHook == null ? null
+                    : ("min".equals(str(expr.get("bound")))
+                            ? (double) ctx.fishingHook.getMinLureAngle()
+                            : (double) ctx.fishingHook.getMaxLureAngle());
             case "eventFishingState" -> ctx.fishingState;
             case "fishingState" -> str(expr.get("name"));
             case "droppedItemEntity" -> ctx.droppedItem;
@@ -2663,8 +2801,14 @@ final class Engine {
      * or boolean partner, or with both sides missing, the result
      * has no value. mod() does not substitute: a missing operand
      * makes it valueless.
+     *
+     * <p>Timespan operands (phase 23) delegate to
+     * {@link #evalTimespanArith} before any of the above.
      */
     private static Object evalArith(String op, Object a, Object b) {
+        if (a instanceof Timespan || b instanceof Timespan) {
+            return evalTimespanArith(op, a, b);
+        }
         if (!"mod".equals(op)) {
             if (a == null && b instanceof Number) a = 0.0;
             else if (b == null && a instanceof Number) b = 0.0;
@@ -2680,6 +2824,66 @@ final class Engine {
             case "*" -> x * y;
             case "/" -> x / y;
             case "mod" -> x - Math.floor(x / y) * y;
+            default -> null;
+        };
+    }
+
+    /**
+     * Arithmetic involving a timespan (phase 23), as probed
+     * against the real Skript 2.17.1: a missing operand counts as
+     * the number zero for multiplication and as Timespan.ZERO for
+     * addition, subtraction and division; two missing operands
+     * produce no value. mod() produces no value when a timespan
+     * is involved. Addition and subtraction require two
+     * timespans; multiplication requires one timespan and one
+     * number; dividing two timespans produces their numeric
+     * ratio, dividing a timespan by a number produces a
+     * timespan, and dividing a number by a timespan produces no
+     * value. Negative or NaN factors and divisors likewise
+     * produce no value (inside Timespan.times / dividedBy).
+     */
+    private static Object evalTimespanArith(String op, Object a, Object b) {
+        if (op == null || "mod".equals(op) || (a == null && b == null)) {
+            return null;
+        }
+
+        if (a == null) {
+            a = "*".equals(op) ? 0.0 : Timespan.ZERO;
+        } else if (b == null) {
+            b = "*".equals(op) ? 0.0 : Timespan.ZERO;
+        }
+
+        return switch (op) {
+            case "+" -> {
+                if (a instanceof Timespan ta && b instanceof Timespan tb) {
+                    yield ta.plus(tb);
+                }
+                yield null;
+            }
+            case "-" -> {
+                if (a instanceof Timespan ta && b instanceof Timespan tb) {
+                    yield ta.minus(tb);
+                }
+                yield null;
+            }
+            case "*" -> {
+                if (a instanceof Timespan ta && b instanceof Number nb) {
+                    yield ta.times(nb.doubleValue());
+                }
+                if (a instanceof Number na && b instanceof Timespan tb) {
+                    yield tb.times(na.doubleValue());
+                }
+                yield null;
+            }
+            case "/" -> {
+                if (a instanceof Timespan ta && b instanceof Timespan tb) {
+                    yield Double.valueOf(ta.ratio(tb));
+                }
+                if (a instanceof Timespan ta && b instanceof Number nb) {
+                    yield ta.dividedBy(nb.doubleValue());
+                }
+                yield null;
+            }
             default -> null;
         };
     }
@@ -3120,6 +3324,7 @@ final class Engine {
         }
         if (value instanceof Entity entity) return typeNameOf(entity);
         if (value instanceof World w) return w.getName();
+        if (value instanceof Timespan t) return t.toString();
         if (value instanceof Number n) return formatNumber(n.doubleValue());
         if (value instanceof Boolean b) return b.toString();
         if (value instanceof Location l) {
@@ -3138,11 +3343,36 @@ final class Engine {
     }
 
     /** Whole numbers print without a fraction (1, not 1.0), matching the SPEC's message examples. */
+    /**
+     * A number's script-visible text form. Integral values
+     * below 1e15 print bare; everything else is rounded to two
+     * decimals (half-up, as java.util.Formatter's "%.2f" does on
+     * the shortest decimal digits) with trailing zeros and a
+     * trailing dot stripped — probed against Skript 2.17.1:
+     * 5 / 3 prints "1.67", 0.1 + 0.2 prints "0.3", 1.005
+     * prints "1.01", while Infinity and NaN print as-is.
+     * Integral values at or beyond 1e15 keep Double.toString
+     * (unprobed territory).
+     */
     static String formatNumber(double d) {
         if (Double.isFinite(d) && d == Math.rint(d) && Math.abs(d) < 1e15) {
             return Long.toString((long) d);
         }
-        return Double.toString(d);
+        if (Double.isFinite(d) && d == Math.rint(d)) {
+            return Double.toString(d);
+        }
+        String formatted = String.format(java.util.Locale.ROOT, "%.2f", d);
+        if (formatted.indexOf('.') >= 0) {
+            int end = formatted.length();
+            while (end > 0 && formatted.charAt(end - 1) == '0') {
+                end--;
+            }
+            if (end > 0 && formatted.charAt(end - 1) == '.') {
+                end--;
+            }
+            formatted = formatted.substring(0, end);
+        }
+        return formatted;
     }
 
     /**

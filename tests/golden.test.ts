@@ -49,6 +49,9 @@ import {
   eventPlayer,
   experienceOf,
   firstChars,
+  fishingApproachAngle,
+  fishingBiteTime,
+  fishingWaitTime,
   fmt,
   foodLevelOf,
   formatted,
@@ -103,6 +106,7 @@ import {
   onDeath,
   onDrop,
   onFirstJoin,
+  onFishCast,
   onInventoryClick,
   onInventoryClose,
   onJoin,
@@ -121,6 +125,7 @@ import {
   plus,
   relativeBlock,
   remainder,
+  remove,
   removeFrom,
   removeBossBarViewer,
   removePotion,
@@ -141,6 +146,9 @@ import {
   setBlockAt,
   setDamage,
   setExperience,
+  setFishingApproachAngle,
+  setFishingBiteTime,
+  setFishingWaitTime,
   setFoodLevel,
   setGameMode,
   setHealth,
@@ -163,6 +171,7 @@ import {
   teleport,
   textLength,
   times,
+  timespan,
   typeOf,
   uncancelEvent,
   uncolored,
@@ -171,6 +180,7 @@ import {
   variable,
   victim,
   wait,
+  waitFor,
   weatherType,
   world,
   worldOf,
@@ -201,6 +211,7 @@ import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
 import { commandsScript } from "../examples/commands.js";
 import { displayScript } from "../examples/display.js";
+import { timespanScript } from "../examples/timespan.js";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -245,6 +256,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("events3", () => {
     expect(emit(events3Script)).toBe(fixture("events3.sk"));
+  });
+  it("timespan", () => {
+    expect(emit(timespanScript)).toBe(fixture("timespan.sk"));
   });
   it("gui", () => {
     expect(emit(guiScript)).toBe(fixture("gui.sk"));
@@ -1783,7 +1797,7 @@ describe("display effects and boss bars (phase 21)", () => {
   it("api guards: title timings and boss bar colors", () => {
     expect(() => sendTitle(player(), str("x"), { stay: { amount: -1, unit: "seconds" } })).toThrow(RangeError);
     expect(() => sendTitle(player(), str("x"), { fadeIn: { amount: Number.NaN, unit: "seconds" } })).toThrow(RangeError);
-    expect(() => sendTitle(player(), str("x"), { fadeOut: { amount: 1, unit: "hours" as never } })).toThrow(RangeError);
+    expect(() => sendTitle(player(), str("x"), { fadeOut: { amount: 1, unit: "fortnights" as never } })).toThrow(RangeError);
     expect(() => sendSubtitle(player(), str("x"), { stay: { amount: -2, unit: "ticks" } })).toThrow(RangeError);
     expect(() => bossBar({ color: "orange" as never })).toThrow(RangeError);
     expect(() => setBossBarColor(variable("bar"), "black" as never)).toThrow(RangeError);
@@ -1794,5 +1808,104 @@ describe("display effects and boss bars (phase 21)", () => {
   });
   it("the display sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(displayScript)).toBe(false);
+  });
+});
+
+describe("timespans (phase 23)", () => {
+  it("timespan literals of every unit in value position", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(variable("a"), timespan(5, "ticks")),
+            set(variable("b"), timespan(2.5, "seconds")),
+            set(variable("c"), timespan(3, "minutes")),
+            set(variable("d"), timespan(1, "hours")),
+            set(variable("e"), timespan(2, "days")),
+            set(variable("f"), timespan(1, "weeks")),
+            set(variable("g"), timespan(2, "months")),
+            set(variable("h"), timespan(1, "years")),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {a} to 5 ticks\n" +
+        "    set {b} to 2.5 seconds\n" +
+        "    set {c} to 3 minutes\n" +
+        "    set {d} to 1 hours\n" +
+        "    set {e} to 2 days\n" +
+        "    set {f} to 1 weeks\n" +
+        "    set {g} to 2 months\n" +
+        "    set {h} to 1 years\n",
+    );
+  });
+  it("waitFor, the fishing expressions and their setters", () => {
+    expect(
+      emit(
+        script(
+          onJoin([set(localVar("t"), timespan(2, "seconds")), waitFor(localVar("t"))]),
+          onFishCast([
+            setFishingWaitTime("min", timespan(5, "seconds")),
+            setFishingWaitTime("max", localVar("t")),
+            setFishingBiteTime(localVar("t")),
+            setFishingApproachAngle("max", num(90)),
+            set(variable("x"), fishingWaitTime("max")),
+            set(variable("y"), fishingBiteTime()),
+            set(variable("z"), fishingApproachAngle("min")),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_t} to 2 seconds\n" +
+        "    wait {_t}\n" +
+        "\n" +
+        "on fishing line cast:\n" +
+        "    set min fishing wait time to 5 seconds\n" +
+        "    set max fishing wait time to {_t}\n" +
+        "    set fishing bite time to {_t}\n" +
+        "    set max fishing approach angle to 90\n" +
+        "    set {x} to max fishing wait time\n" +
+        "    set {y} to fishing bite time\n" +
+        "    set {z} to min fishing approach angle\n",
+    );
+  });
+  it("title timings accept expressions and the extended literal units", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            sendTitle(player(), str("x"), { fadeIn: timespan(1, "seconds"), stay: { amount: 2, unit: "hours" } }),
+          ]),
+        ),
+      ),
+    ).toBe('on join:\n    send title "x" to player for 2 hours with fadein 1 seconds\n');
+  });
+  it("the remove statement on a variable", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("t"), timespan(5, "seconds")),
+            remove(localVar("t"), timespan(1, "seconds")),
+          ]),
+        ),
+      ),
+    ).toBe("on join:\n    set {_t} to 5 seconds\n    remove 1 seconds from {_t}\n");
+  });
+  it("api guards: timespan literals and fishing bounds", () => {
+    expect(() => timespan(-1, "seconds")).toThrow(RangeError);
+    expect(() => timespan(Number.NaN, "seconds")).toThrow(RangeError);
+    expect(() => timespan(1, "fortnights" as never)).toThrow(RangeError);
+    expect(() => fishingWaitTime("middle" as never)).toThrow(RangeError);
+    expect(() => fishingApproachAngle("middle" as never)).toThrow(RangeError);
+    expect(() => setFishingWaitTime("middle" as never, timespan(1, "seconds"))).toThrow(RangeError);
+    expect(() => setFishingApproachAngle("middle" as never, num(1))).toThrow(RangeError);
+    expect(() => param("t", "timespan")).not.toThrow();
+    expect(() => param("ts", "timespans")).not.toThrow();
+  });
+  it("the timespan sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(timespanScript)).toBe(false);
   });
 });

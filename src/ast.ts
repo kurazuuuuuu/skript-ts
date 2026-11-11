@@ -125,6 +125,21 @@ export type Expr =
   | { kind: "fishingState"; name: FishingStateName }
   | { kind: "droppedItemEntity" }
   | { kind: "itemOfEntity"; target: Expr }
+  // A timespan is a duration stored as whole milliseconds. Literals
+  // quantize by rounding to the nearest millisecond (0.0015 seconds is
+  // 2 ms); months are 30 days and years 365 days (the original's fixed
+  // lengths). Timespan arithmetic and comparisons ride the existing
+  // arith / comparison nodes; their rules live with the engine's
+  // evalArith. A missing operand counts as zero of the partner's kind
+  // (for multiplication, as the number 0). The fishing wait-time /
+  // bite-time expressions read the current fishing event's hook
+  // (timespans); the approach-angle expressions read plain numbers
+  // (degrees). All three are event values like fishingHook: no value
+  // outside fishing events.
+  | { kind: "timespan"; amount: number; unit: TimespanUnit }
+  | { kind: "fishingWaitTime"; bound: "min" | "max" }
+  | { kind: "fishingBiteTime" }
+  | { kind: "fishingApproachAngle"; bound: "min" | "max" }
   // Core-language text operations (phase 15). All semantics were
   // probed against the real Skript 2.17.1 in the sandbox (see the
   // development log for the probe rounds):
@@ -441,7 +456,10 @@ export type FunctionTypeName =
   // All three parse as Skript declaration types (probed against
   // the real Skript 2.17.1); the engine matches them against its
   // Block / ItemStack / Entity values.
-  | "block" | "item" | "entity";
+  | "block" | "item" | "entity"
+  // Both "timespan" and "timespans" parse as Skript declaration types
+  // (probed); the engine matches them against its timespan values.
+  | "timespan" | "timespans";
 
 /**
  * One declared parameter of a custom function. The parameter is a
@@ -458,6 +476,15 @@ export interface FunctionParam {
 
 /** Represents a wait duration unit (phase 12). */
 export type TimeUnit = "ticks" | "seconds" | "minutes";
+
+/**
+ * A timespan literal unit (phase 23). Months are 30 days and years
+ * 365 days (the original's fixed lengths, probed through its printed
+ * forms).
+ */
+export type TimespanUnit =
+  | TimeUnit
+  | "hours" | "days" | "weeks" | "months" | "years";
 
 /**
  * A direction for relativeBlock (phase 18): the absolute
@@ -486,15 +513,15 @@ export type FishingStateName =
   | "entity caught" | "bobber in ground" | "fish escape" | "reel in";
 
 /**
- * A title timing (phase 21): a literal timespan for one part of
- * a title send (fade-in, stay, fade-out). Like the periodical
- * amount (phase 18) the amount is a plain number — fractional
+ * A title timing in literal form (phase 21): a literal timespan for
+ * one part of a title send (fade-in, stay, fade-out). Fractional
  * amounts are fine (2.5 seconds is 50 ticks on the wire, probed).
- * The original also accepts expression timespans in these slots
- * (a timespan variable parses), but this subset has no timespan
- * value type, so the builders take literals only.
+ * Since phase 23 the builders also accept any timespan-valued
+ * expression in these slots, like the original (a timespan variable
+ * parses there — probed); a TitleTiming is normalized to a timespan
+ * literal expression by the builders.
  */
-export interface TitleTiming { amount: number; unit: TimeUnit }
+export interface TitleTiming { amount: number; unit: TimespanUnit }
 
 /**
  * A boss bar color name (phase 21): the seven colors of the
@@ -519,6 +546,7 @@ export type Stmt =
   | { kind: "teleport"; target: Expr; location: Expr; loc?: SourceLoc }
   | { kind: "setVar"; variable: VarTarget; value: Expr; loc?: SourceLoc }
   | { kind: "addVar"; variable: ScalarVarExpr; value: Expr; loc?: SourceLoc }
+  | { kind: "removeVar"; variable: ScalarVarExpr; value: Expr; loc?: SourceLoc }
   | { kind: "if"; cond: Cond; then: readonly Stmt[]; else?: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "loopPlayers"; body: readonly Stmt[]; loc?: SourceLoc }
   // Core-language function statements (phase 13). return carries a
@@ -694,7 +722,7 @@ export type Stmt =
   //   %bossbar%`. Style (notches) and the sky/fog/music flags
   //   parse in the original but are not offered: the slice is
   //   create / show / progress (see the bossBar expression).
-  | { kind: "sendTitle"; target: Expr; title?: Expr; subtitle?: Expr; fadeIn?: TitleTiming; stay?: TitleTiming; fadeOut?: TitleTiming; loc?: SourceLoc }
+  | { kind: "sendTitle"; target: Expr; title?: Expr; subtitle?: Expr; fadeIn?: Expr; stay?: Expr; fadeOut?: Expr; loc?: SourceLoc }
   | { kind: "sendActionBar"; target: Expr; message: Expr; loc?: SourceLoc }
   | { kind: "clearTitle"; target: Expr; reset: boolean; loc?: SourceLoc }
   | { kind: "setBossBarTitle"; bar: Expr; title: Expr; loc?: SourceLoc }
@@ -718,6 +746,14 @@ export type Stmt =
   | { kind: "loopRange"; from: Expr; to: Expr; body: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "while"; cond: Cond; body: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "wait"; amount: Expr; unit: TimeUnit; loc?: SourceLoc }
+  // waitFor suspends for a timespan-valued expression — the
+  // original's `wait <timespan>` form (probed). The fishing setters
+  // write the current fishing event's hook and are no-ops outside
+  // fishing events.
+  | { kind: "waitFor"; value: Expr; loc?: SourceLoc }
+  | { kind: "setFishingWaitTime"; bound: "min" | "max"; value: Expr; loc?: SourceLoc }
+  | { kind: "setFishingBiteTime"; value: Expr; loc?: SourceLoc }
+  | { kind: "setFishingApproachAngle"; bound: "min" | "max"; value: Expr; loc?: SourceLoc }
   // Engine-builtin statements (MundoSK slice, phase 6): no .sk equivalent.
   | { kind: "wsConnect"; id: string; url: TextExpr; loc?: SourceLoc }
   | { kind: "wsSend"; id: string; message: TextExpr; loc?: SourceLoc }

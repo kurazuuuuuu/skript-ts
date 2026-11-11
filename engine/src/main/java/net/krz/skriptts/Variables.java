@@ -38,6 +38,7 @@ import java.util.logging.Logger;
 final class Variables {
     private static final String LOCATION_TAG = "__location";
     private static final String ITEM_TAG = "__item";
+    private static final String TIMESPAN_TAG = "__timespan";
 
     private final Map<String, Object> values = new LinkedHashMap<>();
     private final Path file;
@@ -184,6 +185,16 @@ final class Variables {
             m.put("pitch", (double) loc.getPitch());
             return m;
         }
+        // Timespans are plain data and persist like numbers —
+        // the original stores them in its variable store too.
+        // The millisecond count is exact in a double up to 2^53.
+        if (value instanceof Timespan timespan) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put(TIMESPAN_TAG, Boolean.TRUE);
+            m.put("ms", (double) timespan.ms);
+            m.put("eternal", timespan.eternal);
+            return m;
+        }
         return value;
     }
 
@@ -220,6 +231,12 @@ final class Variables {
                     world,
                     num(map.get("x")), num(map.get("y")), num(map.get("z")),
                     (float) num(map.get("yaw")), (float) num(map.get("pitch")));
+        }
+        if (value instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get(TIMESPAN_TAG))) {
+            if (Boolean.TRUE.equals(map.get("eternal"))) {
+                return Timespan.ETERNAL;
+            }
+            return Timespan.ofMs((long) num(map.get("ms")));
         }
         return value;
     }

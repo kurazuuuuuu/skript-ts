@@ -1,0 +1,124 @@
+function tsId(t: timespan) :: timespan:
+    return {_t}
+
+function tsDefault(t: timespan = 42 seconds) :: timespan:
+    return {_t}
+
+function tsCount(ts: timespans) :: number:
+    set {_n} to 0
+    loop {_ts::*}:
+        add 1 to {_n}
+    return {_n}
+
+command /tscalc:
+    trigger:
+        set {_t} to 5 seconds
+        set {_big} to (100000 years * 100000000)
+        set {_c100} to 100 ticks
+        set {_c90} to 90 seconds
+        set {_c2m} to 2 minutes
+        set {_v} to 90 seconds
+        broadcast "TS lit90=[%{_v}%]"
+        set {_v} to 100 ticks
+        broadcast "TS lit100t=[%{_v}%]"
+        set {_v} to 25 hours
+        broadcast "TS lit25h=[%{_v}%]"
+        set {_v} to 8 days
+        broadcast "TS lit8d=[%{_v}%]"
+        set {_v} to 400 days
+        broadcast "TS lit400d=[%{_v}%]"
+        set {_v} to 2 months
+        broadcast "TS lit2mo=[%{_v}%]"
+        set {_v} to 1 years
+        broadcast "TS lit1y=[%{_v}%]"
+        set {_v} to 0 seconds
+        broadcast "TS lit0=[%{_v}%]"
+        set {_v} to 1 ticks
+        broadcast "TS lit1t=[%{_v}%]"
+        set {_v} to 19 ticks
+        broadcast "TS lit19t=[%{_v}%]"
+        set {_v} to 2.5 seconds
+        broadcast "TS lit2.5s=[%{_v}%]"
+        set {_v} to 59.999 seconds
+        broadcast "TS lit59999=[%{_v}%]"
+        set {_v} to 119.999 seconds
+        broadcast "TS lit119999=[%{_v}%]"
+        broadcast "TS comp=[%(1 hours + 30 minutes)%]"
+        broadcast "TS add=[%({_t} + 3 seconds)%]"
+        broadcast "TS sub=[%({_t} - 3 seconds)%]"
+        broadcast "TS subrev=[%(3 seconds - {_t})%]"
+        broadcast "TS mul=[%({_t} * 2)%]"
+        broadcast "TS mulrev=[%(2 * {_t})%]"
+        broadcast "TS div=[%({_t} / 2)%]"
+        broadcast "TS ratio=[%({_t} / 3 seconds)%]"
+        broadcast "TS trunc=[%((10 ticks / 3) * 3)%]"
+        broadcast "TS inf=[%{_big}%]"
+        broadcast "TS infminus=[%({_big} - {_big})%]"
+        broadcast "TS infzero=[%({_big} * 0)%]"
+        broadcast "TS mix=[%({_t} + 5)%]"
+        broadcast "TS neg=[%({_t} * -1)%]"
+        set {_acc} to 5 seconds
+        add 3 seconds to {_acc}
+        broadcast "TS stmtadd=[%{_acc}%]"
+        remove 10 seconds from {_acc}
+        broadcast "TS stmtremove=[%{_acc}%]"
+        set {tsg} to 33 seconds
+        broadcast "TS global=[%{tsg}%]"
+        set {_i} to 2
+        set {tsl::%{_i}%} to 44 seconds
+        broadcast "TS listelem=[%{tsl::%{_i}%}%]"
+        if {_t} is {_c100}:
+            broadcast "TS eq=true"
+        else:
+            broadcast "TS eq=false"
+        if {_c2m} is greater than {_c90}:
+            broadcast "TS gt=true"
+        else:
+            broadcast "TS gt=false"
+        if {_c90} is less than {_c2m}:
+            broadcast "TS lt=true"
+        else:
+            broadcast "TS lt=false"
+        if {_t} is 5:
+            broadcast "TS eqnum=true"
+        else:
+            broadcast "TS eqnum=false"
+        if {_big} is {_big}:
+            broadcast "TS infeq=true"
+        else:
+            broadcast "TS infeq=false"
+        broadcast "TS fn=[%tsId(7 seconds)%]"
+        broadcast "TS fnvar=[%tsId({_t})%]"
+        broadcast "TS fndef=[%tsDefault()%]"
+        add 1 seconds to {_args::*}
+        add 2 seconds to {_args::*}
+        add 3 seconds to {_args::*}
+        broadcast "TS fncount=[%tsCount({_args::*})%]"
+
+command /tswait:
+    trigger:
+        broadcast "TS wait start"
+        set {_t} to 1 seconds
+        wait ({_t} + {_t})
+        broadcast "TS wait end"
+
+command /tstitle:
+    trigger:
+        set {_stay} to 3 seconds
+        send title "TS Title" to player for {_stay} with fadein 1 seconds and fade out 20 ticks
+
+command /tsfish:
+    trigger:
+        set {tsfish} to true
+        broadcast "TS fish armed"
+
+on fishing line cast:
+    if {tsfish} is true:
+        broadcast "TS fish def min=[%min fishing wait time%] max=[%max fishing wait time%] bite=[%fishing bite time%] amin=[%min fishing approach angle%] amax=[%max fishing approach angle%]"
+        set min fishing wait time to 10 seconds
+        set max fishing wait time to 20 seconds
+        set fishing bite time to 3 seconds
+        set min fishing approach angle to 45
+        set max fishing approach angle to 270
+        broadcast "TS fish set min=[%min fishing wait time%] max=[%max fishing wait time%] bite=[%fishing bite time%] amin=[%min fishing approach angle%] amax=[%max fishing approach angle%]"
+        set {tsfish} to false

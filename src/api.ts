@@ -1,4 +1,4 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, EventFilter, RelativeDirection, WeatherName, GameModeName, TitleTiming, BossBarColorName, FishingStateName } from "./ast.js";
+import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, TimespanUnit, EventFilter, RelativeDirection, WeatherName, GameModeName, TitleTiming, BossBarColorName, FishingStateName } from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -245,6 +245,11 @@ export function add(variable: ScalarVarExpr, value: Expr): Stmt {
   return withLoc({ kind: "addVar", variable, value });
 }
 
+/** Construct a remove-variable statement. The target may be a global or a local scalar variable. */
+export function remove(variable: ScalarVarExpr, value: Expr): Stmt {
+  return withLoc({ kind: "removeVar", variable, value });
+}
+
 /** Construct an if statement with optional else branch. */
 export function ifElse(cond: Cond, then: readonly Stmt[], elseBody?: readonly Stmt[]): Stmt {
   if (elseBody === undefined) return withLoc({ kind: "if", cond, then });
@@ -430,7 +435,7 @@ export function wait(amount: Expr, unit: TimeUnit): Stmt {
 const FUNCTION_TYPES: ReadonlySet<string> = new Set([
   "number", "numbers", "text", "texts", "boolean", "booleans",
   "player", "players", "location", "locations", "object", "objects",
-  "block", "item", "entity",
+  "block", "item", "entity", "timespan", "timespans",
 ]);
 
 function requireFunctionName(name: string): string {
@@ -2210,11 +2215,11 @@ export function playSound(name: string, at: Expr): Stmt {
 //   bar styles and the darken-sky / fog / boss-music flags.
 // ---------------------------------------------------------------------------
 
-/** The optional timing parts of a title send (phase 21): literal timespans for the fade-in, the stay (`for ...`) and the fade-out. Unspecified parts are filled with the original's defaults (10 / 70 / 20 ticks) whenever any timing is given. */
+/** The optional timing parts of a title send (phase 21, extended in phase 23): a literal timing or any timespan-valued expression for the fade-in, the stay (`for ...`) and the fade-out. Literal timings are normalized into timespan literal expressions; unspecified parts are filled with the original's defaults (10 / 70 / 20 ticks) whenever any timing is given. */
 export interface TitleTimingOptions {
-  fadeIn?: TitleTiming;
-  stay?: TitleTiming;
-  fadeOut?: TitleTiming;
+  fadeIn?: TitleTiming | Expr;
+  stay?: TitleTiming | Expr;
+  fadeOut?: TitleTiming | Expr;
 }
 
 /** The options of a title send: an optional subtitle plus the optional timing parts. */
@@ -2222,30 +2227,49 @@ export interface SendTitleOptions extends TitleTimingOptions {
   subtitle?: Expr;
 }
 
+function isExprValue(value: unknown): value is Expr {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    typeof (value as { kind?: unknown }).kind === "string"
+  );
+}
+
 function requireTitleTiming(label: string, timing: TitleTiming | undefined): void {
   if (timing === undefined) return;
+  const validUnit = (
+    ["ticks", "seconds", "minutes", "hours", "days", "weeks", "months", "years"] as readonly string[]
+  ).includes(timing.unit);
   if (
     typeof timing.amount !== "number" ||
     !Number.isFinite(timing.amount) ||
     timing.amount < 0 ||
-    (timing.unit !== "ticks" && timing.unit !== "seconds" && timing.unit !== "minutes")
+    !validUnit
   ) {
     throw new RangeError(`invalid title ${label} timing: ${JSON.stringify(timing)}`);
   }
 }
 
+function normalizeTitleTiming(label: string, timing: TitleTiming | Expr | undefined): Expr | undefined {
+  if (timing === undefined) return undefined;
+  if (isExprValue(timing)) return timing;
+  requireTitleTiming(label, timing);
+  return { kind: "timespan", amount: timing.amount, unit: timing.unit };
+}
+
 function titleTimingFields(options: TitleTimingOptions): {
-  fadeIn?: TitleTiming;
-  stay?: TitleTiming;
-  fadeOut?: TitleTiming;
+  fadeIn?: Expr;
+  stay?: Expr;
+  fadeOut?: Expr;
 } {
-  requireTitleTiming("fade-in", options.fadeIn);
-  requireTitleTiming("stay", options.stay);
-  requireTitleTiming("fade-out", options.fadeOut);
+  const fadeIn = normalizeTitleTiming("fade-in", options.fadeIn);
+  const stay = normalizeTitleTiming("stay", options.stay);
+  const fadeOut = normalizeTitleTiming("fade-out", options.fadeOut);
   return {
-    ...(options.fadeIn !== undefined ? { fadeIn: options.fadeIn } : {}),
-    ...(options.stay !== undefined ? { stay: options.stay } : {}),
-    ...(options.fadeOut !== undefined ? { fadeOut: options.fadeOut } : {}),
+    ...(fadeIn !== undefined ? { fadeIn } : {}),
+    ...(stay !== undefined ? { stay } : {}),
+    ...(fadeOut !== undefined ? { fadeOut } : {}),
   };
 }
 
@@ -2360,4 +2384,84 @@ export function bossBarTitleOf(bar: Expr): Expr {
 /** Construct a boss bar progress expression: the bar's current progress as a fraction (`progress of %bossbar%`; 1 is full). */
 export function bossBarProgressOf(bar: Expr): Expr {
   return { kind: "bossBarProgressOf", bar };
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 23): timespan values and the fishing
+// wait / bite / angle expressions
+//
+// A timespan is a duration stored as whole milliseconds; literal amounts round
+// to the nearest millisecond, months are 30 days and years 365 days. Composite
+// durations are composed with plus(); there is no dynamic `<number> <unit>`
+// literal in the original, so a variable amount times a unit timespan (for
+// example times(num(3), timespan(1, "seconds"))) builds one from a number.
+// Arithmetic and comparisons ride the phase-11 arith/comparison builders with
+// timespan rules (see the engine's evalArith). waitFor is the original's
+// `wait <timespan>` form, accepting a variable or an arithmetic result. The
+// fishing expressions are event values of fishing events (before lure: wait
+// 5-30 seconds by hook roll between min and max, bite time 0 until a fish
+// approaches, approach angles 0 and 360 degrees) and their setters write the
+// current hook.
+// ---------------------------------------------------------------------------
+
+const TIMESPAN_UNITS: ReadonlySet<string> = new Set([
+  "ticks",
+  "seconds",
+  "minutes",
+  "hours",
+  "days",
+  "weeks",
+  "months",
+  "years",
+]);
+
+/** Builds a timespan literal (phase 23). The amount must be finite and non-negative; unit must be one of the timespan units. */
+export function timespan(amount: number, unit: TimespanUnit): Expr {
+  if (!Number.isFinite(amount) || amount < 0 || !TIMESPAN_UNITS.has(unit)) {
+    throw new RangeError(`invalid timespan literal: ${amount} ${String(unit)}`);
+  }
+  return { kind: "timespan", amount, unit };
+}
+
+/** Builds the original's `wait <timespan>` statement (phase 23); a variable or an arithmetic result both work. */
+export function waitFor(value: Expr): Stmt {
+  return withLoc({ kind: "waitFor", value });
+}
+
+/** Validates a fishing bound argument ("min" or "max"). */
+function requireFishingBound(bound: "min" | "max"): "min" | "max" {
+  if (bound !== "min" && bound !== "max") {
+    throw new RangeError(`invalid fishing bound: ${String(bound)}`);
+  }
+  return bound;
+}
+
+/** The current fishing hook's wait-time bound (phase 23): an event value of fishing events, defaulting to a 5-30 second roll before a lure. */
+export function fishingWaitTime(bound: "min" | "max"): Expr {
+  return { kind: "fishingWaitTime", bound: requireFishingBound(bound) };
+}
+
+/** The current fishing hook's bite time (phase 23): an event value of fishing events, 0 seconds until a fish starts approaching. */
+export function fishingBiteTime(): Expr {
+  return { kind: "fishingBiteTime" };
+}
+
+/** The current fishing hook's approach-angle bound (phase 23): an event value of fishing events, defaulting to 0 and 360 degrees before a lure. */
+export function fishingApproachAngle(bound: "min" | "max"): Expr {
+  return { kind: "fishingApproachAngle", bound: requireFishingBound(bound) };
+}
+
+/** Sets the current fishing hook's wait-time bound (phase 23). */
+export function setFishingWaitTime(bound: "min" | "max", value: Expr): Stmt {
+  return withLoc({ kind: "setFishingWaitTime", bound: requireFishingBound(bound), value });
+}
+
+/** Sets the current fishing hook's bite time (phase 23). */
+export function setFishingBiteTime(value: Expr): Stmt {
+  return withLoc({ kind: "setFishingBiteTime", value });
+}
+
+/** Sets the current fishing hook's approach-angle bound (phase 23). */
+export function setFishingApproachAngle(bound: "min" | "max", value: Expr): Stmt {
+  return withLoc({ kind: "setFishingApproachAngle", bound: requireFishingBound(bound), value });
 }

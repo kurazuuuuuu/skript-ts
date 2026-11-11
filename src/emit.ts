@@ -235,6 +235,14 @@ function emitValue(e: Expr): string {
                 : `(${emitValue(e.left)} ${e.op} ${emitValue(e.right)})`;
         case "format":
             return `"${emitStringParts(e.parts)}"`;
+        case "timespan":
+            return emitTimespan(e);
+        case "fishingWaitTime":
+            return `${e.bound} fishing wait time`;
+        case "fishingBiteTime":
+            return "fishing bite time";
+        case "fishingApproachAngle":
+            return `${e.bound} fishing approach angle`;
         case "wsMessage":
         case "wsId":
         case "borderSize":
@@ -360,6 +368,10 @@ function emitString(e: Expr): string {
         case "bossBar":
         case "bossBarTitleOf":
         case "bossBarProgressOf":
+        case "timespan":
+        case "fishingWaitTime":
+        case "fishingBiteTime":
+        case "fishingApproachAngle":
             return `%${emitValue(e)}%`;
         case "arith":
             return `%${emitValue(e)}%`;
@@ -599,12 +611,12 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             // fade-in / fade-out order; the fade-out is joined
             // with "and" only when a fade-in precedes it.
             let tail = "";
-            if (s.stay !== undefined) tail += ` for ${emitTimespan(s.stay)}`;
-            if (s.fadeIn !== undefined) tail += ` with fadein ${emitTimespan(s.fadeIn)}`;
+            if (s.stay !== undefined) tail += ` for ${emitValue(s.stay)}`;
+            if (s.fadeIn !== undefined) tail += ` with fadein ${emitValue(s.fadeIn)}`;
             if (s.fadeOut !== undefined) {
                 tail += s.fadeIn !== undefined
-                    ? ` and fade out ${emitTimespan(s.fadeOut)}`
-                    : ` with fade out ${emitTimespan(s.fadeOut)}`;
+                    ? ` and fade out ${emitValue(s.fadeOut)}`
+                    : ` with fade out ${emitValue(s.fadeOut)}`;
             }
             const head = s.title !== undefined
                 ? `send title ${emitText(s.title)}${s.subtitle !== undefined ? ` with subtitle ${emitText(s.subtitle)}` : ""} to ${emitValue(s.target)}`
@@ -633,6 +645,8 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
             return [own(`${prefix}set ${emitValue(s.variable)} to ${emitValue(s.value)}`, path, s.loc)];
         case "addVar":
             return [own(`${prefix}add ${emitValue(s.value)} to ${emitValue(s.variable)}`, path, s.loc)];
+        case "removeVar":
+            return [own(`${prefix}remove ${emitValue(s.value)} from ${emitValue(s.variable)}`, path, s.loc)];
         case "if":
             return emitIfLines(s.cond, s.then, s.else, level, path, s.loc);
         case "loopPlayers": {
@@ -668,6 +682,14 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         }
         case "wait":
             return [own(`${prefix}wait ${emitValue(s.amount)} ${s.unit}`, path, s.loc)];
+        case "waitFor":
+            return [own(`${prefix}wait ${emitValue(s.value)}`, path, s.loc)];
+        case "setFishingWaitTime":
+            return [own(`${prefix}set ${s.bound} fishing wait time to ${emitValue(s.value)}`, path, s.loc)];
+        case "setFishingBiteTime":
+            return [own(`${prefix}set fishing bite time to ${emitValue(s.value)}`, path, s.loc)];
+        case "setFishingApproachAngle":
+            return [own(`${prefix}set ${s.bound} fishing approach angle to ${emitValue(s.value)}`, path, s.loc)];
         case "return":
             return [own(`${prefix}return ${emitValue(s.value)}`, path, s.loc)];
         case "cancelEvent":

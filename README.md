@@ -1146,6 +1146,30 @@ event the original wraps, so it fires exactly when the
 platform produces it — the original has the same platform
 dependency.
 
+### Timespans as values
+
+Timespans are now a first-class value type on all three paths (TS API, .sk emitter, jar engine), with every rule probed against the real Skript 2.17.1. A timespan is a whole number of milliseconds (a month is 30 days, a year is 365 days); the literal builder `timespan(amount, unit)` covers all eight units — ticks, seconds, minutes, hours, days, weeks, months, years — and rounds the amount to the nearest millisecond.
+
+Printing decomposes greedily from years down to minutes and shows the sub-minute remainder as seconds rounded to two decimals without carry: 59.999 seconds prints "60 seconds" and 119.999 seconds prints "1 minute and 60 seconds"; a unit is singular only for an exact count of one, so 999 milliseconds prints "1 seconds"; zero prints "0 seconds" and the infinite value prints "forever".
+
+**Arithmetic.** Addition and subtraction work between two timespans — subtraction saturates at zero, and if either operand is infinite the result is infinite for both operations (even eternity minus eternity); multiplication takes a number on either side (a negative or NaN factor yields no value, a zero factor yields zero even for eternity, overflow yields eternity).
+
+Division by a number truncates toward zero in milliseconds (dividing by zero yields eternity unless the dividend is zero), while dividing two timespans yields their numeric ratio; any other mix with numbers or texts yields no value. A missing operand counts as the other side's zero — as the number zero for multiplication — and two missing operands yield no value.
+
+Comparisons order by milliseconds (5 seconds equals 100 ticks), eternity is greater than every finite value and equal to itself, and against numbers or texts both equality and ordering are false. The engine's number printing was aligned to the original in passing: fractional numbers print rounded to two decimals (5 / 3 prints "1.67").
+
+Timespans store in local and global variables and in list elements, persist in the engine's variable store, and type function parameters and returns as `timespan` / `timespans` (plurals collect; defaults allowed).
+
+**Unlocked by the value type.** `waitFor(value)` emits the original's `wait <timespan>` and accepts a variable or an arithmetic result (the literal wait is unchanged). Title and subtitle timings accept expressions — a literal, a variable or arithmetic — with unspecified parts, and parts whose expression has no value, falling back to the original's 10 / 70 / 20 tick defaults.
+
+The fishing expressions `fishingWaitTime("min" | "max")`, `fishingBiteTime()` and `fishingApproachAngle("min" | "max")` read the current hook inside fishing events — at cast they read 5 seconds, 30 seconds, 0 seconds, 0 and 360 degrees — and the matching setters retune it; outside fishing events the reads have no value and the writes do nothing. The add / remove statements on variables accept timespans (remove saturates at zero); `remove(variable, value)` is new for variables in general.
+
+**Probed and not adopted.** World time does not combine with timespans in the original — setting world time to a timespan is a changer error and `time in world + 2 hours` has no value — so the phase-18 exclusion stands; a periodical with a variable period (`every {_t}:`) parses but was never observed firing, so periodic events stay literal-only.
+
+The "minecraft" unit family (1 minecraft day measured at 20 minutes) is a separate literal grammar and is left for later; composite literals (`2 hours, 30 minutes`) exist in the original — adjacent literal arguments even merge into one inside a function call — but the API composes with `plus()` instead.
+
+Three grammar edges were found by load-checking: a bare timespan literal cannot be a string interpolation, a literal number cannot be a `%{...}%` list index, and a statically typed timespan-versus-number condition is a load-time error (through variables it evaluates to false, as the semantics require).
+
 ### String escaping
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal
 `%` is doubled (`%%`). This applies to `str()` values, the literal parts of
