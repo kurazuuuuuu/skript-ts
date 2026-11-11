@@ -553,8 +553,12 @@ final class Engine {
         // entry is deprecated there and never delivered, so there
         // is nothing else to send.
         if (node.get("permission") instanceof String permission && !sender.hasPermission(permission)) {
-            sender.sendMessage("Unknown or incomplete command. See below for error\n"
-                    + syntaxContext(input, input.length()));
+            // A single Component message, like ArgMatcher.sendError:
+            // the String overload would split the two lines into
+            // separate packets.
+            sender.sendMessage(net.kyori.adventure.text.Component.text(
+                    "Unknown or incomplete command. See below for error\n"
+                            + syntaxContext(input, input.length())));
             return;
         }
         List<Map<String, Object>> specs = new ArrayList<>();
@@ -658,10 +662,14 @@ final class Engine {
             // One chat message: the reason, and the context line
             // after an embedded newline — the wire shape the
             // original's Brigadier feedback takes (a behavior
-            // test reads it as a single message entry).
-            sender.sendMessage(bestContext
+            // test reads it as a single message entry). It must
+            // go out as a Component: Paper's sendMessage(String)
+            // SPLITS a multi-line string into one packet per
+            // line, while a component's text keeps the newline
+            // inside a single packet (measured in both modes).
+            sender.sendMessage(net.kyori.adventure.text.Component.text(bestContext
                     ? bestReason + "\n" + syntaxContext(input, bestCursor)
-                    : bestReason);
+                    : bestReason));
         }
 
         private void fail(String reason, int cursor, int priority, boolean context) {
