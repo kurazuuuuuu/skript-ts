@@ -86,3 +86,14 @@ Skript の `variables.csv`、`ops.json`）を消去し、振る舞いテスト�
 状態、表示、タイムスパン、ボスバー、コマンド定義、HTTP）と
 エンジン内蔵機能をカバーします。
 
+
+## CI とリリース
+
+GitHub Actions（`.github/workflows/ci.yml`）は push と pull request の
+たびに fast gates（`pnpm install --frozen-lockfile`、`pnpm typecheck`、
+`pnpm test`）とエンジン jar のビルドを実行します。上記のサーバーを
+使う `verify` は CI v1 には含めません。実 Paper サーバーの起動が
+重いため、振る舞い検証は Freestyle の検証ファームが担当します。
+`v*` タグを push すると `.github/workflows/release.yml` が走り、
+fast gates を再実行して `skript-ts.jar` をビルドし、jar と CLI
+一式の zip を添付した GitHub Release を作成します。

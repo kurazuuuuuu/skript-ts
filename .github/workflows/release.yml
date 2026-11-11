@@ -1,0 +1,67 @@
+name: Release
+
+# Pushing a version tag (vYYYY.MM.DD, e.g. v2026.11.11) builds the
+# engine jar and publishes a GitHub Release with the jar and a CLI
+# bundle attached. The fast gates run first, so a tag whose tree does
+# not typecheck or pass tests never becomes a release.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Fetch engine libraries (SHA-512 verified)
+        run: sh engine/fetch-libs.sh
+
+      - name: Build skript-ts.jar
+        run: sh engine/build.sh
+        env:
+          # build.sh defaults to the maintainer's local JDK path;
+          # point it at the CI JDK instead.
+          SKRIPT_TS_JDK: ${{ env.JAVA_HOME }}
+
+      - name: Package the CLI bundle
+        run: |
+          mkdir -p dist/skript-ts-cli
+          cp -r bin src dist/skript-ts-cli/
+          cp package.json pnpm-workspace.yaml pnpm-lock.yaml README.md README.ja.md LICENSE dist/skript-ts-cli/
+          cd dist && zip -r "skript-ts-cli-${GITHUB_REF_NAME}.zip" skript-ts-cli
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            engine/build/skript-ts.jar
+            dist/skript-ts-cli-${{ github.ref_name }}.zip
+          generate_release_notes: true

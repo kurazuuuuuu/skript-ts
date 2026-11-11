@@ -86,3 +86,14 @@ functions, gameplay, events, text, GUIs, world, player state, display,
 timespans, boss bars, command definitions, HTTP) plus the engine
 builtins.
 
+
+## CI and releases
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the fast gates
+(`pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm test`) and
+the engine jar build on every push and pull request. The server-backed
+`verify` above is not part of CI v1 — booting a real Paper server is
+heavy, so behavior verification stays on the Freestyle verification
+farm. Pushing a `v*` tag runs `.github/workflows/release.yml`, which
+re-runs the fast gates, builds `skript-ts.jar`, and publishes a GitHub
+Release with the jar and a CLI bundle zip attached.
