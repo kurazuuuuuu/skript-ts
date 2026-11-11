@@ -61,6 +61,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     private Variables variables;
     private Engine engine;
     private WebSockets websockets;
+    private Urls urls;
     private Timers timers;
     private Placeholders placeholders;
     private Database database;
@@ -117,6 +118,38 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
             @Override
             public void disconnect(String id) {
                 websockets.disconnect(id);
+            }
+        });
+        // HTTP client (phase 26): config.json may opt in to private /
+        // loopback targets (for trusted local services only).
+        boolean allowPrivateAddresses = false;
+        Path configPath = dataDir.resolve("config.json");
+        if (Files.exists(configPath)) {
+            try {
+                Object config = Json.parse(Files.readString(configPath, StandardCharsets.UTF_8));
+                if (config instanceof Map<?, ?> configMap
+                        && configMap.get("http") instanceof Map<?, ?> httpMap
+                        && httpMap.get("allowPrivateAddresses") instanceof Boolean allow) {
+                    allowPrivateAddresses = allow;
+                }
+            } catch (Exception e) {
+                getLogger().warning("skript-ts: could not read config.json: " + e.getMessage());
+            }
+        }
+        if (allowPrivateAddresses) {
+            getLogger().warning("skript-ts: WARNING http.allowPrivateAddresses is ON in config.json — private/loopback HTTP targets and all ports are allowed. Do not use this setting on a production server.");
+        }
+        urls = new Urls(result -> getServer().getScheduler().runTask(this, () -> fireHttpEvent(result)),
+                dataDir.resolve("files"), allowPrivateAddresses, getLogger());
+        engine.setHttpHost(new Engine.HttpHost() {
+            @Override
+            public void fetchText(String id, String url, double timeoutSeconds) {
+                urls.fetchText(id, url, timeoutSeconds);
+            }
+
+            @Override
+            public void download(String id, String url, String path, double timeoutSeconds) {
+                urls.download(id, url, path, timeoutSeconds);
             }
         });
         timers = new Timers(this, new Timers.Events() {
@@ -206,6 +239,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         unregisterScriptCommands();
         if (placeholders != null) placeholders.shutdown();
         if (timers != null) timers.shutdown();
+        if (urls != null) urls.shutdown();
         if (websockets != null) websockets.closeAll();
         if (variables != null) variables.save();
     }
@@ -247,6 +281,22 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
      * WebSocket callbacks arrive on IO threads; script bodies belong on
      * the main thread (same discipline as the chat handler).
      */
+    /**
+     * HTTP completions arrive on the Urls worker threads; the plugin's
+     * Completion hops them to the main thread before this runs, so
+     * script bodies execute where they belong. The script-visible
+     * error is the kind only — details stay in the server log.
+     */
+    private void fireHttpEvent(Urls.Result r) {
+        Engine.Ctx ctx = new Engine.Ctx();
+        ctx.httpId = r.id();
+        ctx.httpStatus = r.status();
+        ctx.httpBody = r.body();
+        ctx.httpError = r.ok() ? null : r.errorKind();
+        ctx.httpSavedPath = r.savedPath();
+        engine.fireEvent("httpResponse", ctx, false);
+    }
+
     private void fireWsEvent(String event, String id, String text) {
         getServer().getScheduler().runTask(this, () -> {
             Engine.Ctx ctx = new Engine.Ctx();

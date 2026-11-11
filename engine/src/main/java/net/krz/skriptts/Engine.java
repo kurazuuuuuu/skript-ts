@@ -237,6 +237,11 @@ final class Engine {
         String wsId;        // websocket connection id in websocket events
         String wsText;      // received text in websocket message events
         String timerId;     // timer name in timer tick/complete events
+        String httpId;      // http request id in http response events (phase 26)
+        Double httpStatus;  // http status in http response events; null when no response arrived
+        String httpBody;    // fetched text in http response events (fetch only)
+        String httpError;   // http error kind in http response events; null on success
+        String httpSavedPath; // saved file path in http response events (download only)
         String papiPrefix;  // matched expansion prefix in placeholder request events
         String papiIdentifier; // parameter part of the placeholder being requested
         String papiResult;  // answer set by the set-result statement (read back after dispatch)
@@ -269,6 +274,11 @@ final class Engine {
             c.wsId = wsId;
             c.wsText = wsText;
             c.timerId = timerId;
+            c.httpId = httpId;
+            c.httpStatus = httpStatus;
+            c.httpBody = httpBody;
+            c.httpError = httpError;
+            c.httpSavedPath = httpSavedPath;
             c.papiPrefix = papiPrefix;
             c.papiIdentifier = papiIdentifier;
             c.papiResult = papiResult;
@@ -287,6 +297,16 @@ final class Engine {
         void connect(String id, String url);
         void send(String id, String text);
         void disconnect(String id);
+    }
+
+    /**
+     * Bridge to the plugin's HTTP client manager (phase 26). The
+     * engine only issues requests through this interface; completions
+     * come back as engine events fired by the plugin.
+     */
+    interface HttpHost {
+        void fetchText(String id, String url, double timeoutSeconds);
+        void download(String id, String url, String path, double timeoutSeconds);
     }
 
     /**
@@ -330,6 +350,7 @@ final class Engine {
     /** Custom functions (phase 13) by exact, case-sensitive name; overloads share a name. */
     private Map<String, List<Map<String, Object>>> functions = Map.of();
     private WsHost wsHost;
+    private HttpHost httpHost;
     private TimerHost timerHost;
     private DelayHost delayHost;
     private PlaceholderHost placeholderHost;
@@ -358,6 +379,17 @@ final class Engine {
     /** Install the WebSocket host (called by the plugin on enable). */
     void setWsHost(WsHost wsHost) {
         this.wsHost = wsHost;
+    }
+
+    /** Install the HTTP host (called by the plugin on enable). */
+    void setHttpHost(HttpHost httpHost) {
+        this.httpHost = httpHost;
+    }
+
+    /** The timeout of an http statement: the IR timeoutSeconds when numeric, otherwise 15 seconds. */
+    private static double httpTimeoutSeconds(Map<String, Object> stmt) {
+        Object value = stmt.get("timeoutSeconds");
+        return value instanceof Number n ? n.doubleValue() : 15.0;
     }
 
     /** Install the timer host (called by the plugin on enable). */
@@ -1835,6 +1867,22 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "httpFetch" -> {
+                if (httpHost == null) {
+                    logger.warning("skript-ts: httpFetch without an http host installed");
+                } else {
+                    httpHost.fetchText(str(stmt.get("id")), renderText(node(stmt.get("url")), ctx), httpTimeoutSeconds(stmt));
+                }
+                cont.run();
+            }
+            case "httpDownload" -> {
+                if (httpHost == null) {
+                    logger.warning("skript-ts: httpDownload without an http host installed");
+                } else {
+                    httpHost.download(str(stmt.get("id")), renderText(node(stmt.get("url")), ctx), renderText(node(stmt.get("path")), ctx), httpTimeoutSeconds(stmt));
+                }
+                cont.run();
+            }
             case "setBorderSize" -> {
                 Object w = evalExpr(node(stmt.get("world")), ctx);
                 Object size = evalExpr(node(stmt.get("size")), ctx);
@@ -2347,6 +2395,9 @@ final class Engine {
             case "timerActive" -> {
                 String name = renderText(node(cond.get("name")), ctx);
                 yield timerHost != null && name != null && timerHost.isActive(name);
+            }
+            case "httpOk" -> {
+                yield ctx.httpId != null && ctx.httpError == null;
             }
             case "fileExists" -> {
                 String path = renderText(node(cond.get("path")), ctx);
@@ -2895,6 +2946,15 @@ final class Engine {
                 mapText(evalExpr(node(expr.get("target")), ctx), Engine::stripColors);
             case "wsMessage" -> ctx.wsText;
             case "wsId" -> ctx.wsId;
+            case "envVar" -> {
+                String envName = renderText(node(expr.get("name")), ctx);
+                yield envName == null ? null : System.getenv(envName);
+            }
+            case "httpId" -> ctx.httpId;
+            case "httpStatus" -> ctx.httpStatus;
+            case "httpBody" -> ctx.httpBody;
+            case "httpError" -> ctx.httpError;
+            case "httpSavedPath" -> ctx.httpSavedPath;
             case "worldOf" -> {
                 // Core language since phase 18 (`world of ...`
                 // is plain Skript, probed for player, location
