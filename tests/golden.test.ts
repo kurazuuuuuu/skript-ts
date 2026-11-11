@@ -227,10 +227,7 @@ import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
 
 function fixture(name: string): string {
-  return readFileSync(
-    fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)),
-    "utf8",
-  );
+  return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), "utf8");
 }
 
 describe("whole sample programs (golden fixtures)", () => {
@@ -341,9 +338,9 @@ describe("gameplay events (phase 14)", () => {
     );
   });
   it("type-of parenthesizes an arithmetic operand", () => {
-    expect(
-      emit(script(onDamage([set(variable("t"), typeOf(plus(num(1), num(2))))]))),
-    ).toBe("on damage:\n    set {t} to type of ((1 + 2))\n");
+    expect(emit(script(onDamage([set(variable("t"), typeOf(plus(num(1), num(2))))])))).toBe(
+      "on damage:\n    set {t} to type of ((1 + 2))\n",
+    );
   });
   it("cancel, uncancel and set damage statements", () => {
     expect(
@@ -453,16 +450,12 @@ describe("event filters and more events (phase 16)", () => {
     expect(() => onBlockBreak(body, { block: [] })).toThrow(RangeError);
     expect(() => onBlockBreak(body, { block: "  " })).toThrow(RangeError);
     expect(() => onDamage(body, { victim: ["player", ""] })).toThrow(RangeError);
-    expect(() => onRightClick(body, { block: "stone", entity: "zombie" })).toThrow(
+    expect(() => onRightClick(body, { block: "stone", entity: "zombie" })).toThrow(RangeError);
+    expect(() => onPickup(body, { block: "stone" } as unknown as { item: string })).toThrow(
       RangeError,
     );
-    expect(() =>
-      onPickup(body, { block: "stone" } as unknown as { item: string }),
-    ).toThrow(RangeError);
     // An empty options object is the unfiltered event.
-    expect(emit(script(onBlockBreak(body, {})))).toBe(
-      'on block break:\n    broadcast "x"\n',
-    );
+    expect(emit(script(onBlockBreak(body, {})))).toBe('on block break:\n    broadcast "x"\n');
   });
   it("the new constructs are core language, not engine-only", () => {
     expect(isEngineOnlyScript(events2Script)).toBe(false);
@@ -494,42 +487,31 @@ describe("custom functions (phase 13)", () => {
     ).toBe('function f(a: number, b: text = "x") :: text:\n    return {_b}\n');
   });
   it("void definition without parameters", () => {
-    expect(
-      emit(script(defineFunction("g", [], null, [broadcast(str("y"))]))),
-    ).toBe('function g():\n    broadcast "y"\n');
+    expect(emit(script(defineFunction("g", [], null, [broadcast(str("y"))])))).toBe(
+      'function g():\n    broadcast "y"\n',
+    );
   });
   it("plural parameter definition", () => {
     expect(
-      emit(
-        script(
-          defineFunction("h", [param("ns", "numbers")], "number", [
-            returnValue(num(0)),
-          ]),
-        ),
-      ),
+      emit(script(defineFunction("h", [param("ns", "numbers")], "number", [returnValue(num(0))]))),
     ).toBe("function h(ns: numbers) :: number:\n    return 0\n");
   });
   it("call as an expression, a nested call, and a bare call statement", () => {
     expect(
       emit(
-        script(
-          onJoin([
-            set(variable("x"), call("f", num(1), call("g", num(2)))),
-            callStmt("h"),
-          ]),
-        ),
+        script(onJoin([set(variable("x"), call("f", num(1), call("g", num(2)))), callStmt("h")])),
       ),
     ).toBe("on join:\n    set {x} to f(1, g(2))\n    h()\n");
   });
   it("call interpolated in a string, with a text literal argument", () => {
-    expect(
-      emit(script(onJoin([send(player(), fmt("r=", call("greet", str("World"))))]))),
-    ).toBe('on join:\n    send "r=%greet("World")%" to player\n');
+    expect(emit(script(onJoin([send(player(), fmt("r=", call("greet", str("World"))))])))).toBe(
+      'on join:\n    send "r=%greet("World")%" to player\n',
+    );
   });
   it("send accepts a bare call as the message", () => {
-    expect(
-      emit(script(onJoin([send(player(), call("greet", str("x")))]))),
-    ).toBe('on join:\n    send greet("x") to player\n');
+    expect(emit(script(onJoin([send(player(), call("greet", str("x")))])))).toBe(
+      'on join:\n    send greet("x") to player\n',
+    );
   });
   it("local variables and local lists", () => {
     expect(
@@ -557,9 +539,7 @@ describe("custom functions (phase 13)", () => {
           ]),
         ),
       ),
-    ).toBe(
-      "function k() :: number:\n    if {a} is 1:\n        stop\n    return 3\n",
-    );
+    ).toBe("function k() :: number:\n    if {a} is 1:\n        stop\n    return 3\n");
   });
   it("api guards: defineFunction and param validation", () => {
     expect(() => defineFunction("bad name", [], null, [])).toThrow(RangeError);
@@ -580,9 +560,7 @@ describe("event headers", () => {
     expect(emit(script(onJoin(body)))).toBe('on join:\n    broadcast "x"\n');
   });
   it("first join", () => {
-    expect(emit(script(onFirstJoin(body)))).toBe(
-      'on first join:\n    broadcast "x"\n',
-    );
+    expect(emit(script(onFirstJoin(body)))).toBe('on first join:\n    broadcast "x"\n');
   });
   it("quit", () => {
     expect(emit(script(onQuit(body)))).toBe('on quit:\n    broadcast "x"\n');
@@ -607,9 +585,9 @@ describe("commands", () => {
     );
   });
   it("required player argument uses <player>", () => {
-    expect(
-      emit(script(command("tp", "player", [broadcast(str("x"))], false))),
-    ).toBe('command /tp <player>:\n    trigger:\n        broadcast "x"\n');
+    expect(emit(script(command("tp", "player", [broadcast(str("x"))], false)))).toBe(
+      'command /tp <player>:\n    trigger:\n        broadcast "x"\n',
+    );
   });
   it("integer argument", () => {
     expect(emit(script(command("give2", "integer", [broadcast(str("x"))])))).toBe(
@@ -623,25 +601,24 @@ describe("commands (phase 20)", () => {
     expect(
       emit(
         script(
-          command("mix", [cmdArg("player"), cmdArg("integer", true), cmdArg("text")], [
-            broadcast(str("x")),
-          ]),
+          command(
+            "mix",
+            [cmdArg("player"), cmdArg("integer", true), cmdArg("text")],
+            [broadcast(str("x"))],
+          ),
         ),
       ),
-    ).toBe(
-      'command /mix <player> [<integer>] <text>:\n    trigger:\n        broadcast "x"\n',
-    );
+    ).toBe('command /mix <player> [<integer>] <text>:\n    trigger:\n        broadcast "x"\n');
   });
   it("the newer argument types, with offline player spelled as two words", () => {
     expect(
       emit(
         script(
-          command("types", [
-            cmdArg("number"),
-            cmdArg("boolean"),
-            cmdArg("item"),
-            cmdArg("offlinePlayer"),
-          ], [broadcast(str("x"))]),
+          command(
+            "types",
+            [cmdArg("number"), cmdArg("boolean"), cmdArg("item"), cmdArg("offlinePlayer")],
+            [broadcast(str("x"))],
+          ),
         ),
       ),
     ).toBe(
@@ -665,18 +642,16 @@ describe("commands (phase 20)", () => {
   });
   it("options also attach to the legacy single-argument form", () => {
     expect(
-      emit(
-        script(command("one", "text", [broadcast(str("x"))], { permission: "test.one" })),
-      ),
+      emit(script(command("one", "text", [broadcast(str("x"))], { permission: "test.one" }))),
     ).toBe(
       'command /one [<text>]:\n    permission: test.one\n    trigger:\n        broadcast "x"\n',
     );
   });
   it("an unknown argument type and a boolean fourth argument are rejected", () => {
     expect(() => cmdArg("bogus" as never)).toThrow(RangeError);
-    expect(() =>
-      command("x", [cmdArg("text")], [broadcast(str("x"))], true as never),
-    ).toThrow(RangeError);
+    expect(() => command("x", [cmdArg("text")], [broadcast(str("x"))], true as never)).toThrow(
+      RangeError,
+    );
   });
 });
 
@@ -692,9 +667,9 @@ describe("effects", () => {
     );
   });
   it("teleport to a location expression", () => {
-    expect(
-      emit(script(onJoin([teleport(player(), locationOf(eventPlayer()))]))),
-    ).toBe("on join:\n    teleport player to location of event-player\n");
+    expect(emit(script(onJoin([teleport(player(), locationOf(eventPlayer()))])))).toBe(
+      "on join:\n    teleport player to location of event-player\n",
+    );
   });
   it("set variable to string / number / boolean / item", () => {
     expect(emit(script(onJoin([set(variable("a"), str("v"))])))).toBe(
@@ -711,37 +686,23 @@ describe("effects", () => {
     );
   });
   it("add to an indexed variable", () => {
-    expect(
-      emit(script(onJoin([add(variable("coins", player()), num(5))]))),
-    ).toBe("on join:\n    add 5 to {coins::%player%}\n");
+    expect(emit(script(onJoin([add(variable("coins", player()), num(5))])))).toBe(
+      "on join:\n    add 5 to {coins::%player%}\n",
+    );
   });
 });
 
 describe("conditions and control flow", () => {
   it("if with hasPermission, no else", () => {
     expect(
-      emit(
-        script(
-          onJoin([
-            ifElse(hasPermission(player(), "a.b"), [broadcast(str("y"))]),
-          ]),
-        ),
-      ),
-    ).toBe(
-      'on join:\n    if player has permission "a.b":\n        broadcast "y"\n',
-    );
+      emit(script(onJoin([ifElse(hasPermission(player(), "a.b"), [broadcast(str("y"))])]))),
+    ).toBe('on join:\n    if player has permission "a.b":\n        broadcast "y"\n');
   });
   it("if/else with isOp", () => {
     expect(
       emit(
         script(
-          onJoin([
-            ifElse(
-              isOp(player()),
-              [broadcast(str("op"))],
-              [broadcast(str("not op"))],
-            ),
-          ]),
+          onJoin([ifElse(isOp(player()), [broadcast(str("op"))], [broadcast(str("not op"))])]),
         ),
       ),
     ).toBe(
@@ -749,9 +710,9 @@ describe("conditions and control flow", () => {
     );
   });
   it("loop all players exposes loop-player", () => {
-    expect(
-      emit(script(onJoin([loopPlayers([send(loopPlayer(), str("hi"))])]))),
-    ).toBe('on join:\n    loop all players:\n        send "hi" to loop-player\n');
+    expect(emit(script(onJoin([loopPlayers([send(loopPlayer(), str("hi"))])])))).toBe(
+      'on join:\n    loop all players:\n        send "hi" to loop-player\n',
+    );
   });
 });
 
@@ -790,9 +751,9 @@ describe("expressions inside format strings", () => {
     );
   });
   it("format in value position becomes a quoted string", () => {
-    expect(
-      emit(script(onJoin([set(variable("a"), fmt("x ", player()))]))),
-    ).toBe('on join:\n    set {a} to "x %player%"\n');
+    expect(emit(script(onJoin([set(variable("a"), fmt("x ", player()))])))).toBe(
+      'on join:\n    set {a} to "x %player%"\n',
+    );
   });
 });
 
@@ -803,20 +764,14 @@ describe("string escaping", () => {
     );
   });
   it("escaping applies to format literal parts but not to expression placeholders", () => {
-    expect(
-      emit(script(onJoin([broadcast(fmt("50% off, ", player(), "!"))]))),
-    ).toBe('on join:\n    broadcast "50%% off, %player%!"\n');
+    expect(emit(script(onJoin([broadcast(fmt("50% off, ", player(), "!"))])))).toBe(
+      'on join:\n    broadcast "50%% off, %player%!"\n',
+    );
   });
   it("escaping applies to permission strings", () => {
     expect(
-      emit(
-        script(
-          onJoin([ifElse(hasPermission(player(), 'we"ird'), [broadcast(str("y"))])]),
-        ),
-      ),
-    ).toBe(
-      'on join:\n    if player has permission "we""ird":\n        broadcast "y"\n',
-    );
+      emit(script(onJoin([ifElse(hasPermission(player(), 'we"ird'), [broadcast(str("y"))])]))),
+    ).toBe('on join:\n    if player has permission "we""ird":\n        broadcast "y"\n');
   });
 });
 
@@ -845,26 +800,26 @@ describe("comparisons (phase 11)", () => {
       'on join:\n    if message is "ping":\n        broadcast "y"\n',
     );
     expect(wrap(notEquals(variable("count"), num(0)))).toBe(
-      "on join:\n    if {count} is not 0:\n        broadcast \"y\"\n",
+      'on join:\n    if {count} is not 0:\n        broadcast "y"\n',
     );
   });
   it("ordering comparisons", () => {
     expect(wrap(greaterThan(variable("count"), num(5)))).toBe(
-      "on join:\n    if {count} is greater than 5:\n        broadcast \"y\"\n",
+      'on join:\n    if {count} is greater than 5:\n        broadcast "y"\n',
     );
     expect(wrap(greaterOrEqual(argument(1), num(100)))).toBe(
-      "on join:\n    if arg-1 is greater than or equal to 100:\n        broadcast \"y\"\n",
+      'on join:\n    if arg-1 is greater than or equal to 100:\n        broadcast "y"\n',
     );
     expect(wrap(lessThan(variable("count"), num(5)))).toBe(
-      "on join:\n    if {count} is less than 5:\n        broadcast \"y\"\n",
+      'on join:\n    if {count} is less than 5:\n        broadcast "y"\n',
     );
     expect(wrap(lessOrEqual(variable("count"), num(5)))).toBe(
-      "on join:\n    if {count} is less than or equal to 5:\n        broadcast \"y\"\n",
+      'on join:\n    if {count} is less than or equal to 5:\n        broadcast "y"\n',
     );
   });
   it("an arithmetic operand is parenthesized", () => {
     expect(wrap(equals(plus(variable("count"), num(1)), num(5)))).toBe(
-      "on join:\n    if ({count} + 1) is 5:\n        broadcast \"y\"\n",
+      'on join:\n    if ({count} + 1) is 5:\n        broadcast "y"\n',
     );
   });
 });
@@ -881,14 +836,22 @@ describe("logic conditions lower to control flow (phase 11)", () => {
   });
   it("and with else duplicates the else branch", () => {
     expect(
-      emit(script(onJoin([ifElse(and(equals(variable("a"), num(1)), equals(variable("b"), num(2))), y, n)]))),
+      emit(
+        script(
+          onJoin([ifElse(and(equals(variable("a"), num(1)), equals(variable("b"), num(2))), y, n)]),
+        ),
+      ),
     ).toBe(
       'on join:\n    if {a} is 1:\n        if {b} is 2:\n            broadcast "y"\n        else:\n            broadcast "n"\n    else:\n        broadcast "n"\n',
     );
   });
   it("or with else nests the second check in the else branch", () => {
     expect(
-      emit(script(onJoin([ifElse(or(equals(variable("a"), num(1)), equals(variable("b"), num(2))), y, n)]))),
+      emit(
+        script(
+          onJoin([ifElse(or(equals(variable("a"), num(1)), equals(variable("b"), num(2))), y, n)]),
+        ),
+      ),
     ).toBe(
       'on join:\n    if {a} is 1:\n        broadcast "y"\n    else:\n        if {b} is 2:\n            broadcast "y"\n        else:\n            broadcast "n"\n',
     );
@@ -898,7 +861,7 @@ describe("logic conditions lower to control flow (phase 11)", () => {
       'on join:\n    if player is not op:\n        broadcast "y"\n',
     );
     expect(emit(script(onJoin([ifElse(not(greaterThan(variable("a"), num(5))), y)])))).toBe(
-      "on join:\n    if {a} is not greater than 5:\n        broadcast \"y\"\n",
+      'on join:\n    if {a} is not greater than 5:\n        broadcast "y"\n',
     );
     expect(emit(script(onJoin([ifElse(not(hasPermission(player(), "a.b")), y)])))).toBe(
       'on join:\n    if player does not have permission "a.b":\n        broadcast "y"\n',
@@ -927,7 +890,11 @@ describe("logic conditions lower to control flow (phase 11)", () => {
         script(
           onJoin([
             ifElse(
-              and(equals(variable("a"), num(1)), equals(variable("b"), num(2)), equals(variable("c"), num(3))),
+              and(
+                equals(variable("a"), num(1)),
+                equals(variable("b"), num(2)),
+                equals(variable("c"), num(3)),
+              ),
               y,
             ),
           ]),
@@ -958,17 +925,17 @@ describe("arithmetic expressions (phase 11)", () => {
     );
   });
   it("nesting parenthesizes every level", () => {
-    expect(
-      emit(script(onJoin([set(variable("a"), times(plus(num(1), num(2)), num(3)))]))),
-    ).toBe("on join:\n    set {a} to ((1 + 2) * 3)\n");
+    expect(emit(script(onJoin([set(variable("a"), times(plus(num(1), num(2)), num(3)))])))).toBe(
+      "on join:\n    set {a} to ((1 + 2) * 3)\n",
+    );
     expect(
       emit(script(onJoin([set(variable("a"), remainder(plus(num(7), num(1)), num(3)))]))),
     ).toBe("on join:\n    set {a} to mod((7 + 1), 3)\n");
   });
   it("arithmetic embeds in format strings", () => {
-    expect(
-      emit(script(onJoin([broadcast(fmt("total: ", plus(variable("a"), num(1))))]))),
-    ).toBe('on join:\n    broadcast "total: %({a} + 1)%"\n');
+    expect(emit(script(onJoin([broadcast(fmt("total: ", plus(variable("a"), num(1))))])))).toBe(
+      'on join:\n    broadcast "total: %({a} + 1)%"\n',
+    );
   });
 });
 
@@ -995,7 +962,13 @@ describe("list variables (phase 12)", () => {
       "on join:\n    set {n} to size of {groceries::*}\n",
     );
     expect(
-      emit(script(onJoin([broadcast(fmt("n=", listSize(listVar("groceries")), " all=", listVar("groceries")))]))),
+      emit(
+        script(
+          onJoin([
+            broadcast(fmt("n=", listSize(listVar("groceries")), " all=", listVar("groceries"))),
+          ]),
+        ),
+      ),
     ).toBe('on join:\n    broadcast "n=%size of {groceries::*}% all=%{groceries::*}%"\n');
   });
   it("list loop exposes loop-index and loop-value", () => {
@@ -1017,34 +990,34 @@ describe("list variables (phase 12)", () => {
 
 describe("loops, while and wait (phase 12)", () => {
   it("times loop and range loop", () => {
-    expect(
-      emit(script(onJoin([loopTimes(num(3), [broadcast(str("x"))])]))),
-    ).toBe('on join:\n    loop 3 times:\n        broadcast "x"\n');
-    expect(
-      emit(script(onJoin([loopTimes(argument(1), [broadcast(str("x"))])]))),
-    ).toBe('on join:\n    loop arg-1 times:\n        broadcast "x"\n');
+    expect(emit(script(onJoin([loopTimes(num(3), [broadcast(str("x"))])])))).toBe(
+      'on join:\n    loop 3 times:\n        broadcast "x"\n',
+    );
+    expect(emit(script(onJoin([loopTimes(argument(1), [broadcast(str("x"))])])))).toBe(
+      'on join:\n    loop arg-1 times:\n        broadcast "x"\n',
+    );
     expect(
       emit(script(onJoin([loopRange(num(2), num(4), [broadcast(fmt("v=", loopValue()))])]))),
     ).toBe('on join:\n    loop numbers from 2 to 4:\n        broadcast "v=%loop-value%"\n');
   });
   it("while with a leaf condition and with not(leaf)", () => {
     expect(
-      emit(script(onJoin([whileLoop(lessThan(variable("n"), num(3)), [add(variable("n"), num(1))])]))),
+      emit(
+        script(onJoin([whileLoop(lessThan(variable("n"), num(3)), [add(variable("n"), num(1))])])),
+      ),
     ).toBe("on join:\n    while {n} is less than 3:\n        add 1 to {n}\n");
     expect(
-      emit(script(onJoin([whileLoop(not(equals(variable("n"), num(3))), [add(variable("n"), num(1))])]))),
+      emit(
+        script(
+          onJoin([whileLoop(not(equals(variable("n"), num(3))), [add(variable("n"), num(1))])]),
+        ),
+      ),
     ).toBe("on join:\n    while {n} is not 3:\n        add 1 to {n}\n");
   });
   it("wait in each unit", () => {
-    expect(emit(script(onJoin([wait(num(20), "ticks")])))).toBe(
-      "on join:\n    wait 20 ticks\n",
-    );
-    expect(emit(script(onJoin([wait(num(2), "seconds")])))).toBe(
-      "on join:\n    wait 2 seconds\n",
-    );
-    expect(emit(script(onJoin([wait(num(1), "minutes")])))).toBe(
-      "on join:\n    wait 1 minutes\n",
-    );
+    expect(emit(script(onJoin([wait(num(20), "ticks")])))).toBe("on join:\n    wait 20 ticks\n");
+    expect(emit(script(onJoin([wait(num(2), "seconds")])))).toBe("on join:\n    wait 2 seconds\n");
+    expect(emit(script(onJoin([wait(num(1), "minutes")])))).toBe("on join:\n    wait 1 minutes\n");
     expect(emit(script(onJoin([wait(variable("delay"), "seconds")])))).toBe(
       "on join:\n    wait {delay} seconds\n",
     );
@@ -1053,9 +1026,9 @@ describe("loops, while and wait (phase 12)", () => {
 
 describe("api guards", () => {
   it("whileLoop rejects composite conditions", () => {
-    expect(() =>
-      whileLoop(and(isOp(player()), equals(variable("a"), num(1))), []),
-    ).toThrow(RangeError);
+    expect(() => whileLoop(and(isOp(player()), equals(variable("a"), num(1))), [])).toThrow(
+      RangeError,
+    );
     expect(() => whileLoop(or(isOp(player()), isOp(player())), [])).toThrow(RangeError);
     expect(() => whileLoop(not(and(isOp(player()), isOp(player()))), [])).toThrow(RangeError);
     expect(() => whileLoop(not(not(isOp(player()))), [])).toThrow(RangeError);
@@ -1073,9 +1046,7 @@ describe("api guards", () => {
     expect(() => argument(1.5)).toThrow(RangeError);
   });
   it("blocks are separated by exactly one blank line and file ends with newline", () => {
-    const out = emit(
-      script(onJoin([broadcast(str("a"))]), onQuit([broadcast(str("b"))])),
-    );
+    const out = emit(script(onJoin([broadcast(str("a"))]), onQuit([broadcast(str("b"))])));
     expect(out).toBe('on join:\n    broadcast "a"\n\non quit:\n    broadcast "b"\n');
   });
 });
@@ -1098,7 +1069,7 @@ describe("text operations (phase 15)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    set {a} to length of \"hello\"\n" +
+        '    set {a} to length of "hello"\n' +
         "    set {b} to substring of {_s} from 2 to 4\n" +
         "    set {c} to first 2 characters of {_s}\n" +
         "    set {d} to last 2 characters of {_s}\n" +
@@ -1122,11 +1093,11 @@ describe("text operations (phase 15)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    set {_p::*} to split \"a,b\" at \",\"\n" +
-        "    set {_q::*} to split \"aAb\" at \"a\" with case sensitivity\n" +
-        "    set {a} to join {_p::*} with \"-\"\n" +
+        '    set {_p::*} to split "a,b" at ","\n' +
+        '    set {_q::*} to split "aAb" at "a" with case sensitivity\n' +
+        '    set {a} to join {_p::*} with "-"\n' +
         "    set {b} to join {_p::*}\n" +
-        "    set {c} to join split arg-1 at \",\" with \"+\"\n",
+        '    set {c} to join split arg-1 at "," with "+"\n',
     );
   });
   it("color expressions in value position", () => {
@@ -1143,8 +1114,8 @@ describe("text operations (phase 15)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    set {a} to colored \"&aX\"\n" +
-        "    set {b} to formatted \"<b>Bold</b>\"\n" +
+        '    set {a} to colored "&aX"\n' +
+        '    set {b} to formatted "<b>Bold</b>"\n' +
         "    set {c} to uncolored {a}\n" +
         "    set {d} to unformatted {a}\n",
     );
@@ -1166,20 +1137,20 @@ describe("text operations (phase 15)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    if {_s} contains \"ell\":\n" +
-        "        broadcast \"y\"\n" +
-        "    if {_s} does not contain \"z\":\n" +
-        "        broadcast \"y\"\n" +
-        "    if {_s} starts with \"he\":\n" +
-        "        broadcast \"y\"\n" +
-        "    if {_s} does not start with \"x\":\n" +
-        "        broadcast \"y\"\n" +
-        "    if {_s} ends with \"lo\":\n" +
-        "        broadcast \"y\"\n" +
-        "    if {_s} does not end with \"x\":\n" +
-        "        broadcast \"y\"\n" +
-        "    if {l::*} contains \"banana\":\n" +
-        "        broadcast \"y\"\n",
+        '    if {_s} contains "ell":\n' +
+        '        broadcast "y"\n' +
+        '    if {_s} does not contain "z":\n' +
+        '        broadcast "y"\n' +
+        '    if {_s} starts with "he":\n' +
+        '        broadcast "y"\n' +
+        '    if {_s} does not start with "x":\n' +
+        '        broadcast "y"\n' +
+        '    if {_s} ends with "lo":\n' +
+        '        broadcast "y"\n' +
+        '    if {_s} does not end with "x":\n' +
+        '        broadcast "y"\n' +
+        '    if {l::*} contains "banana":\n' +
+        '        broadcast "y"\n',
     );
   });
   it("text conditions can head a while loop", () => {
@@ -1194,10 +1165,10 @@ describe("text operations (phase 15)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    while {_s} contains \"x\":\n" +
-        "        broadcast \"y\"\n" +
-        "    while {_s} does not start with \"x\":\n" +
-        "        broadcast \"y\"\n",
+        '    while {_s} contains "x":\n' +
+        '        broadcast "y"\n' +
+        '    while {_s} does not start with "x":\n' +
+        '        broadcast "y"\n',
     );
   });
   it("replace statements", () => {
@@ -1213,9 +1184,9 @@ describe("text operations (phase 15)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    replace all \"a\" in {_t} with \"o\"\n" +
-        "    replace first \"a\" in {_t} with \"o\"\n" +
-        "    replace all \"a\" in {g} with \"o\" with case sensitivity\n",
+        '    replace all "a" in {_t} with "o"\n' +
+        '    replace first "a" in {_t} with "o"\n' +
+        '    replace all "a" in {g} with "o" with case sensitivity\n',
     );
   });
   it("text expressions interpolate into format strings", () => {
@@ -1238,7 +1209,7 @@ describe("text operations (phase 15)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    broadcast \"len=%length of {_s}% up=%{_s} in uppercase% has=%join split {_s} at \",\" with \"+\"%\"\n",
+        '    broadcast "len=%length of {_s}% up=%{_s} in uppercase% has=%join split {_s} at "," with "+"%"\n',
     );
   });
   it("the text sample is core language, not engine-only", () => {
@@ -1257,7 +1228,10 @@ describe("items, inventories and GUIs (phase 17)", () => {
             set(variable("c"), withAmount(item("stone"), num(3))),
             set(
               variable("d"),
-              withAmount(withLore(withName(item("diamond sword"), str("Gem")), str("line")), num(2)),
+              withAmount(
+                withLore(withName(item("diamond sword"), str("Gem")), str("line")),
+                num(2),
+              ),
             ),
             set(variable("e"), withName(localVar("base"), variable("n"))),
           ]),
@@ -1265,10 +1239,10 @@ describe("items, inventories and GUIs (phase 17)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    set {a} to diamond sword named \"Gem Blade\"\n" +
-        "    set {b} to diamond with lore \"one\", \"two\" and \"three\"\n" +
+        '    set {a} to diamond sword named "Gem Blade"\n' +
+        '    set {b} to diamond with lore "one", "two" and "three"\n' +
         "    set {c} to 3 of stone\n" +
-        "    set {d} to 2 of diamond sword named \"Gem\" with lore \"line\"\n" +
+        '    set {d} to 2 of diamond sword named "Gem" with lore "line"\n' +
         "    set {e} to {_base} named {n}\n",
     );
   });
@@ -1286,8 +1260,8 @@ describe("items, inventories and GUIs (phase 17)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    set name of {_i} to \"Renamed\"\n" +
-        "    set lore of {_i} to \"only line\"\n" +
+        '    set name of {_i} to "Renamed"\n' +
+        '    set lore of {_i} to "only line"\n' +
         "    set amount of {_i} to 5\n" +
         "    give {_i} to player\n",
     );
@@ -1309,7 +1283,7 @@ describe("items, inventories and GUIs (phase 17)", () => {
         "    set {a} to name of {i}\n" +
         "    set {_l::*} to lore of {i}\n" +
         "    set {n} to amount of {i}\n" +
-        "    broadcast \"n=%name of event-inventory% a=%amount of event-item%\"\n",
+        '    broadcast "n=%name of event-inventory% a=%amount of event-item%"\n',
     );
   });
   it("inventory values and slot access", () => {
@@ -1329,7 +1303,7 @@ describe("items, inventories and GUIs (phase 17)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    set {_inv} to chest inventory with 2 rows named \"Box\"\n" +
+        '    set {_inv} to chest inventory with 2 rows named "Box"\n' +
         "    set {_plain} to chest inventory with 1 rows\n" +
         "    set slot 4 of {_inv} to emerald\n" +
         "    set slot 0 of player's current inventory to slot 4 of {_inv}\n" +
@@ -1339,21 +1313,17 @@ describe("items, inventories and GUIs (phase 17)", () => {
     );
   });
   it("open GUI direct form, with and without a title", () => {
-    expect(
-      emit(script(onJoin([openGui(player(), num(3), str("Shop Menu"))]))),
-    ).toBe('on join:\n    open chest inventory with 3 rows named "Shop Menu" to player\n');
+    expect(emit(script(onJoin([openGui(player(), num(3), str("Shop Menu"))])))).toBe(
+      'on join:\n    open chest inventory with 3 rows named "Shop Menu" to player\n',
+    );
     expect(emit(script(onJoin([openGui(player(), num(2))])))).toBe(
       "on join:\n    open chest inventory with 2 rows to player\n",
     );
   });
   it("inventory event headers and values", () => {
     const body = [broadcast(str("x"))];
-    expect(emit(script(onInventoryClick(body)))).toBe(
-      'on inventory click:\n    broadcast "x"\n',
-    );
-    expect(emit(script(onInventoryClose(body)))).toBe(
-      'on inventory close:\n    broadcast "x"\n',
-    );
+    expect(emit(script(onInventoryClick(body)))).toBe('on inventory click:\n    broadcast "x"\n');
+    expect(emit(script(onInventoryClose(body)))).toBe('on inventory close:\n    broadcast "x"\n');
     expect(
       emit(
         script(
@@ -1375,7 +1345,7 @@ describe("items, inventories and GUIs (phase 17)", () => {
       ),
     ).toBe(
       "on inventory click:\n" +
-        "    broadcast \"s=%index of event-slot% r=%raw index of event-slot% inv=%event-inventory% it=%event-item%\"\n",
+        '    broadcast "s=%index of event-slot% r=%raw index of event-slot% inv=%event-inventory% it=%event-item%"\n',
     );
   });
   it("api guards: lore needs at least one line", () => {
@@ -1407,7 +1377,7 @@ describe("world operations and periodical events (phase 18)", () => {
       "on join:\n" +
         "    set {_b} to block at {_l}\n" +
         "    set {_l2} to location(10, 64, -5)\n" +
-        "    set {_l3} to location(10, 64, -5, world \"world\")\n" +
+        '    set {_l3} to location(10, 64, -5, world "world")\n' +
         "    set {_x} to x-coordinate of {_l}\n" +
         "    set {_y} to y-coordinate of {_l}\n" +
         "    set {_z} to z-coordinate of {_l}\n" +
@@ -1462,14 +1432,14 @@ describe("world operations and periodical events (phase 18)", () => {
       ),
     ).toBe(
       "on join:\n" +
-        "    set {_w} to world \"world\"\n" +
+        '    set {_w} to world "world"\n' +
         "    set {_w2} to world of player\n" +
         "    set {_t} to time in {_w}\n" +
         "    set {_x} to weather in {_w}\n" +
         "    if {_x} is rain:\n" +
-        "        broadcast \"wet\"\n" +
+        '        broadcast "wet"\n' +
         "    if {_t} is 13:00:\n" +
-        "        broadcast \"one\"\n" +
+        '        broadcast "one"\n' +
         "    set time in {_w} to 6:00\n" +
         "    set time in {_w} to {_t}\n" +
         "    set weather in {_w} to thunder\n" +
@@ -1478,18 +1448,12 @@ describe("world operations and periodical events (phase 18)", () => {
   });
   it("periodical headers in each unit, fractional amounts included", () => {
     const body = [broadcast(str("x"))];
-    expect(emit(script(every(3, "seconds", body)))).toBe(
-      'every 3 seconds:\n    broadcast "x"\n',
-    );
+    expect(emit(script(every(3, "seconds", body)))).toBe('every 3 seconds:\n    broadcast "x"\n');
     expect(emit(script(every(2.5, "seconds", body)))).toBe(
       'every 2.5 seconds:\n    broadcast "x"\n',
     );
-    expect(emit(script(every(40, "ticks", body)))).toBe(
-      'every 40 ticks:\n    broadcast "x"\n',
-    );
-    expect(emit(script(every(1, "minutes", body)))).toBe(
-      'every 1 minutes:\n    broadcast "x"\n',
-    );
+    expect(emit(script(every(40, "ticks", body)))).toBe('every 40 ticks:\n    broadcast "x"\n');
+    expect(emit(script(every(1, "minutes", body)))).toBe('every 1 minutes:\n    broadcast "x"\n');
   });
   it("api guards: period, clock, weather and direction validation", () => {
     expect(() => every(0, "seconds", [])).toThrow(RangeError);
@@ -1552,7 +1516,9 @@ describe("player state and effects (phase 19)", () => {
   });
   it("state expressions interpolate into texts", () => {
     expect(
-      emit(script(onJoin([broadcast(fmt("hp=", healthOf(player()), " gm=", gameModeOf(player())))]))),
+      emit(
+        script(onJoin([broadcast(fmt("hp=", healthOf(player()), " gm=", gameModeOf(player())))])),
+      ),
     ).toBe('on join:\n    broadcast "hp=%health of player% gm=%gamemode of player%"\n');
   });
   it("gamemode comparisons use the bare literal", () => {
@@ -1751,16 +1717,11 @@ describe("display effects and boss bars (phase 21)", () => {
     expect(
       emit(
         script(
-          onJoin([
-            sendTitle(player(), localVar("t")),
-            sendTitle(player(), fmt("Hi ", player())),
-          ]),
+          onJoin([sendTitle(player(), localVar("t")), sendTitle(player(), fmt("Hi ", player()))]),
         ),
       ),
     ).toBe(
-      "on join:\n" +
-        "    send title {_t} to player\n" +
-        '    send title "Hi %player%" to player\n',
+      "on join:\n" + "    send title {_t} to player\n" + '    send title "Hi %player%" to player\n',
     );
   });
   it("boss bar create forms", () => {
@@ -1793,7 +1754,9 @@ describe("display effects and boss bars (phase 21)", () => {
             setBossBarProgress(variable("bar"), num(0.5)),
             addBossBarViewer(variable("bar"), player()),
             removeBossBarViewer(variable("bar"), player()),
-            broadcast(fmt("t=", bossBarTitleOf(variable("bar")), " p=", bossBarProgressOf(variable("bar")))),
+            broadcast(
+              fmt("t=", bossBarTitleOf(variable("bar")), " p=", bossBarProgressOf(variable("bar"))),
+            ),
           ]),
         ),
       ),
@@ -1808,16 +1771,26 @@ describe("display effects and boss bars (phase 21)", () => {
     );
   });
   it("api guards: title timings and boss bar colors", () => {
-    expect(() => sendTitle(player(), str("x"), { stay: { amount: -1, unit: "seconds" } })).toThrow(RangeError);
-    expect(() => sendTitle(player(), str("x"), { fadeIn: { amount: Number.NaN, unit: "seconds" } })).toThrow(RangeError);
-    expect(() => sendTitle(player(), str("x"), { fadeOut: { amount: 1, unit: "fortnights" as never } })).toThrow(RangeError);
-    expect(() => sendSubtitle(player(), str("x"), { stay: { amount: -2, unit: "ticks" } })).toThrow(RangeError);
+    expect(() => sendTitle(player(), str("x"), { stay: { amount: -1, unit: "seconds" } })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      sendTitle(player(), str("x"), { fadeIn: { amount: Number.NaN, unit: "seconds" } }),
+    ).toThrow(RangeError);
+    expect(() =>
+      sendTitle(player(), str("x"), { fadeOut: { amount: 1, unit: "fortnights" as never } }),
+    ).toThrow(RangeError);
+    expect(() => sendSubtitle(player(), str("x"), { stay: { amount: -2, unit: "ticks" } })).toThrow(
+      RangeError,
+    );
     expect(() => bossBar({ color: "orange" as never })).toThrow(RangeError);
     expect(() => setBossBarColor(variable("bar"), "black" as never)).toThrow(RangeError);
     // Zero-length timings are valid (an instant fade).
-    expect(emit(script(onJoin([sendTitle(player(), str("x"), { fadeIn: { amount: 0, unit: "ticks" } })])))).toBe(
-      'on join:\n    send title "x" to player with fadein 0 ticks\n',
-    );
+    expect(
+      emit(
+        script(onJoin([sendTitle(player(), str("x"), { fadeIn: { amount: 0, unit: "ticks" } })])),
+      ),
+    ).toBe('on join:\n    send title "x" to player with fadein 0 ticks\n');
   });
   it("the display sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(displayScript)).toBe(false);
@@ -1851,7 +1824,9 @@ describe("keyed boss bars, styles, flags and sections (phase 24)", () => {
         script(
           onJoin([
             set(localVar("f"), keyedBossBarOf(str("ex:a"))),
-            broadcast(fmt("k=", bossBarKeyOf(variable("bar")), " s=", bossBarStyleOf(variable("bar")))),
+            broadcast(
+              fmt("k=", bossBarKeyOf(variable("bar")), " s=", bossBarStyleOf(variable("bar"))),
+            ),
           ]),
         ),
       ),
@@ -1915,12 +1890,14 @@ describe("keyed boss bars, styles, flags and sections (phase 24)", () => {
               setBossBarTitle(eventBossBar(), str("Sec")),
               setBossBarProgress(eventBossBar(), num(0.5)),
             ]),
-            createBossBarSection(localVar("b"), [
-              setBossBarTitle(eventBossBar(), str("Keyed")),
-            ], { key: str("ex:k") }),
-            createBossBarSection(localVar("c"), [
-              setBossBarFlag(eventBossBar(), "createFog", true),
-            ], { key: str("ex:c"), color: "red" }),
+            createBossBarSection(localVar("b"), [setBossBarTitle(eventBossBar(), str("Keyed"))], {
+              key: str("ex:k"),
+            }),
+            createBossBarSection(
+              localVar("c"),
+              [setBossBarFlag(eventBossBar(), "createFog", true)],
+              { key: str("ex:c"), color: "red" },
+            ),
           ]),
         ),
       ),
@@ -1937,7 +1914,9 @@ describe("keyed boss bars, styles, flags and sections (phase 24)", () => {
   });
   it("api guards: keyed colors, styles and flags", () => {
     expect(() => keyedBossBar(str("ex:a"), { color: "orange" as never })).toThrow(RangeError);
-    expect(() => createBossBarSection(localVar("a"), [], { color: "black" as never })).toThrow(RangeError);
+    expect(() => createBossBarSection(localVar("a"), [], { color: "black" as never })).toThrow(
+      RangeError,
+    );
     expect(() => setBossBarStyle(variable("bar"), "7 notches" as never)).toThrow(RangeError);
     expect(() => setBossBarFlag(variable("bar"), "glow" as never, true)).toThrow(RangeError);
   });
@@ -2014,7 +1993,10 @@ describe("timespans (phase 23)", () => {
       emit(
         script(
           onJoin([
-            sendTitle(player(), str("x"), { fadeIn: timespan(1, "seconds"), stay: { amount: 2, unit: "hours" } }),
+            sendTitle(player(), str("x"), {
+              fadeIn: timespan(1, "seconds"),
+              stay: { amount: 2, unit: "hours" },
+            }),
           ]),
         ),
       ),

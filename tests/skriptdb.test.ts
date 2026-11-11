@@ -13,9 +13,20 @@ describe("skript-db builtin slice (phase 8, engine-only)", () => {
     const ir = JSON.parse(emitIr(skriptdbScript)) as {
       body: { kind: string; body: { kind: string }[] }[];
     };
-    expect(ir.body.map((t) => t.kind)).toEqual(["command", "command", "command", "command", "command"]);
+    expect(ir.body.map((t) => t.kind)).toEqual([
+      "command",
+      "command",
+      "command",
+      "command",
+      "command",
+    ]);
     // /dbsetup: set the data source, then two executes without a store.
-    expect(ir.body[0]?.body.map((s) => s.kind)).toEqual(["setVar", "dbExecute", "dbExecute", "send"]);
+    expect(ir.body[0]?.body.map((s) => s.kind)).toEqual([
+      "setVar",
+      "dbExecute",
+      "dbExecute",
+      "send",
+    ]);
     // /dbadd: set, execute with a store, send.
     expect(ir.body[1]?.body.map((s) => s.kind)).toEqual(["setVar", "dbExecute", "send"]);
     // /dbbad ends by reporting the last error.

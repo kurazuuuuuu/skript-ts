@@ -46,11 +46,7 @@ export const skriptdbScript: Script = script(
   ]),
   command("dbadd", "text", [
     set(sql, ds),
-    dbExecute(
-      sql,
-      fmt("insert into players (name) values (", argument(1), ")"),
-      variable("added"),
-    ),
+    dbExecute(sql, fmt("insert into players (name) values (", argument(1), ")"), variable("added")),
     send(player(), fmt("added ", variable("added"), " row")),
   ]),
   command("dbcount", null, [

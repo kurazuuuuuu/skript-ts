@@ -1,4 +1,16 @@
-import { script, onFirstJoin, onJoin, broadcast, fmt, player, give, set, variable, bool, send } from "../src/index.js";
+import {
+  script,
+  onFirstJoin,
+  onJoin,
+  broadcast,
+  fmt,
+  player,
+  give,
+  set,
+  variable,
+  bool,
+  send,
+} from "../src/index.js";
 import type { Script } from "../src/index.js";
 
 export const welcomeScript: Script = script(
@@ -7,7 +19,5 @@ export const welcomeScript: Script = script(
     give(player(), "wooden sword", 1),
     set(variable("welcomed", player()), bool(true)),
   ]),
-  onJoin([
-    send(player(), fmt("おかえりなさい、", player(), " さん")),
-  ])
+  onJoin([send(player(), fmt("おかえりなさい、", player(), " さん"))]),
 );

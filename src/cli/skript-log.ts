@@ -23,8 +23,7 @@ interface PendingError {
 }
 
 export class SkriptLogParser {
-  private static readonly headerRegex =
-    /^(?:\[Skript\] )?Line (\d+): \(([^)]+)\)\s*$/;
+  private static readonly headerRegex = /^(?:\[Skript\] )?Line (\d+): \(([^)]+)\)\s*$/;
   private static readonly sourceLineRegex = /^\s+Line: (.*)$/;
 
   private phase: "load" | "reload" = "load";
@@ -59,9 +58,7 @@ export class SkriptLogParser {
       this.reloadErrorCount = Number(encounteredMatch[1]);
     }
 
-    const loadedMatch = message.match(
-      /Loaded (\d+) scripts? with a total of \d+ structures?/
-    );
+    const loadedMatch = message.match(/Loaded (\d+) scripts? with a total of \d+ structures?/);
     if (loadedMatch) {
       this.loadedScriptCount = Number(loadedMatch[1]);
     }
@@ -73,7 +70,7 @@ export class SkriptLogParser {
         phase: this.phase,
         skLine: Number(headerMatch[1]),
         file: headerMatch[2] ?? "",
-        messages: []
+        messages: [],
       };
       return;
     }
@@ -115,7 +112,7 @@ export class SkriptLogParser {
       file: pending.file,
       skLine: pending.skLine,
       message: pending.messages[0] ?? "",
-      phase: pending.phase
+      phase: pending.phase,
     };
     if (pending.sourceLine !== undefined) {
       error.sourceLine = pending.sourceLine;
@@ -148,7 +145,7 @@ export class SkriptLogParser {
 
 export function mapError(
   err: SkriptParseError,
-  maps: ReadonlyMap<string, SourceMapFile>
+  maps: ReadonlyMap<string, SourceMapFile>,
 ): MappedError {
   const result: MappedError = { ...err };
 

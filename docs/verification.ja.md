@@ -86,7 +86,6 @@ Skript の `variables.csv`、`ops.json`）を消去し、振る舞いテスト�
 状態、表示、タイムスパン、ボスバー、コマンド定義、HTTP）と
 エンジン内蔵機能をカバーします。
 
-
 ## CI とリリース
 
 GitHub Actions（`.github/workflows/ci.yml`）は push と pull request の

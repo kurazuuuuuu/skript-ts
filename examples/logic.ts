@@ -36,9 +36,7 @@ import type { Script } from "../src/index.js";
 //                             "gate stays shut" otherwise (or)
 export const logicScript: Script = script(
   onChat([
-    ifElse(equals(chatMessage(), str("ping")), [
-      send(player(), str("pong")),
-    ]),
+    ifElse(equals(chatMessage(), str("ping")), [send(player(), str("pong"))]),
     ifElse(and(equals(chatMessage(), str("hello")), not(isOp(player()))), [
       send(player(), str("hi, regular player")),
     ]),
@@ -58,9 +56,7 @@ export const logicScript: Script = script(
         remainder(argument(1), num(3)),
       ),
     ),
-    ifElse(greaterOrEqual(argument(1), num(100)), [
-      broadcast(fmt("big number: ", argument(1))),
-    ]),
+    ifElse(greaterOrEqual(argument(1), num(100)), [broadcast(fmt("big number: ", argument(1)))]),
   ]),
   command("gate", "text", [
     ifElse(

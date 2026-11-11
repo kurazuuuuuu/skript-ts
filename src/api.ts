@@ -1,4 +1,35 @@
-import type { Expr, TextExpr, Cond, VariableExpr, ListExpr, LocalVariableExpr, LocalListExpr, AnyListExpr, ScalarVarExpr, VarTarget, FunctionParam, FunctionTypeName, Stmt, TopLevel, Script, CommandArgType, CommandArgSpec, SourceLoc, ArithOp, TimeUnit, TimespanUnit, EventFilter, RelativeDirection, WeatherName, GameModeName, TitleTiming, BossBarColorName, BossBarStyleName, BossBarFlagName, FishingStateName } from "./ast.js";
+import type {
+  Expr,
+  TextExpr,
+  Cond,
+  VariableExpr,
+  ListExpr,
+  LocalVariableExpr,
+  LocalListExpr,
+  AnyListExpr,
+  ScalarVarExpr,
+  VarTarget,
+  FunctionParam,
+  FunctionTypeName,
+  Stmt,
+  TopLevel,
+  Script,
+  CommandArgType,
+  CommandArgSpec,
+  SourceLoc,
+  ArithOp,
+  TimeUnit,
+  TimespanUnit,
+  EventFilter,
+  RelativeDirection,
+  WeatherName,
+  GameModeName,
+  TitleTiming,
+  BossBarColorName,
+  BossBarStyleName,
+  BossBarFlagName,
+  FishingStateName,
+} from "./ast.js";
 import { captureLoc } from "./loc.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
@@ -30,7 +61,8 @@ export function victim(): Expr {
 
 /** Construct an argument expression with a 1-based index. */
 export function argument(index: number): Expr {
-  if (!Number.isInteger(index) || index < 1) throw new RangeError("argument index must be a positive integer");
+  if (!Number.isInteger(index) || index < 1)
+    throw new RangeError("argument index must be a positive integer");
   return { kind: "argument", index };
 }
 
@@ -155,7 +187,10 @@ function combine(kind: "and" | "or", conds: readonly Cond[]): Cond {
   }
   let acc: Cond = conds[0]!;
   for (let i = 1; i < conds.length; i++) {
-    acc = kind === "and" ? { kind: "and", left: acc, right: conds[i]! } : { kind: "or", left: acc, right: conds[i]! };
+    acc =
+      kind === "and"
+        ? { kind: "and", left: acc, right: conds[i]! }
+        : { kind: "or", left: acc, right: conds[i]! };
   }
   return acc;
 }
@@ -436,9 +471,23 @@ export function wait(amount: Expr, unit: TimeUnit): Stmt {
 // ---------------------------------------------------------------------------
 
 const FUNCTION_TYPES: ReadonlySet<string> = new Set([
-  "number", "numbers", "text", "texts", "boolean", "booleans",
-  "player", "players", "location", "locations", "object", "objects",
-  "block", "item", "entity", "timespan", "timespans",
+  "number",
+  "numbers",
+  "text",
+  "texts",
+  "boolean",
+  "booleans",
+  "player",
+  "players",
+  "location",
+  "locations",
+  "object",
+  "objects",
+  "block",
+  "item",
+  "entity",
+  "timespan",
+  "timespans",
 ]);
 
 function requireFunctionName(name: string): string {
@@ -637,7 +686,8 @@ export function onDamage(body: readonly Stmt[], filter?: DamageEventFilter): Top
   requireFilterKeys(filter, ["victim", "attacker"], "onDamage");
   const f: EventFilter = {};
   if (filter?.victim !== undefined) f.victimTypes = requireTypeNames(filter.victim, "victim");
-  if (filter?.attacker !== undefined) f.attackerTypes = requireTypeNames(filter.attacker, "attacker");
+  if (filter?.attacker !== undefined)
+    f.attackerTypes = requireTypeNames(filter.attacker, "attacker");
   return withLoc(eventWithFilter("damage", body, f));
 }
 
@@ -730,7 +780,17 @@ function requireFilterKeys(
 }
 
 function eventWithFilter(
-  event: "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage" | "death" | "pickup" | "drop" | "entityPickup" | "entityDrop",
+  event:
+    | "blockBreak"
+    | "blockPlace"
+    | "rightClick"
+    | "leftClick"
+    | "damage"
+    | "death"
+    | "pickup"
+    | "drop"
+    | "entityPickup"
+    | "entityDrop",
   body: readonly Stmt[],
   filter: EventFilter,
 ): TopLevel {
@@ -904,8 +964,14 @@ export function eventFishingState(): Expr {
 }
 
 const FISHING_STATE_NAMES: readonly FishingStateName[] = [
-  "fishing line cast", "lured", "bite", "fish caught",
-  "entity caught", "bobber in ground", "fish escape", "reel in",
+  "fishing line cast",
+  "lured",
+  "bite",
+  "fish caught",
+  "entity caught",
+  "bobber in ground",
+  "fish escape",
+  "reel in",
 ];
 
 /** Construct a fishing-state literal: the value eventFishingState() compares against, written bare in the .sk text like a weather or game mode literal. */
@@ -1010,7 +1076,13 @@ export interface CommandOptions {
 }
 
 const COMMAND_ARG_TYPES: ReadonlySet<string> = new Set([
-  "text", "player", "offlinePlayer", "integer", "number", "boolean", "item",
+  "text",
+  "player",
+  "offlinePlayer",
+  "integer",
+  "number",
+  "boolean",
+  "item",
 ]);
 
 /** Construct one typed argument for the multi-argument form of command(). */
@@ -1400,7 +1472,10 @@ export function placeholderValue(player: Expr, text: TextExpr): Expr {
 }
 
 /** Construct an on-placeholder-request event (engine builtin): serve PAPI requests for the given prefix(es). */
-export function onPlaceholderRequest(prefix: string | readonly string[], body: readonly Stmt[]): TopLevel {
+export function onPlaceholderRequest(
+  prefix: string | readonly string[],
+  body: readonly Stmt[],
+): TopLevel {
   return withLoc({ kind: "event", event: "papiRequest", prefixes: requirePrefixes(prefix), body });
 }
 
@@ -1558,8 +1633,20 @@ export function endsWith(target: Expr, suffix: Expr): Cond {
  * `find` in the text held by a scalar variable. Matching is
  * literal and case-insensitive unless `caseSensitive` is true.
  */
-export function replaceAllIn(target: ScalarVarExpr, find: Expr, replacement: Expr, caseSensitive = false): Stmt {
-  return withLoc({ kind: "textReplace", target, find, replacement, firstOnly: false, caseSensitive });
+export function replaceAllIn(
+  target: ScalarVarExpr,
+  find: Expr,
+  replacement: Expr,
+  caseSensitive = false,
+): Stmt {
+  return withLoc({
+    kind: "textReplace",
+    target,
+    find,
+    replacement,
+    firstOnly: false,
+    caseSensitive,
+  });
 }
 
 /**
@@ -1568,8 +1655,20 @@ export function replaceAllIn(target: ScalarVarExpr, find: Expr, replacement: Exp
  * Matching is literal and case-insensitive unless
  * `caseSensitive` is true.
  */
-export function replaceFirstIn(target: ScalarVarExpr, find: Expr, replacement: Expr, caseSensitive = false): Stmt {
-  return withLoc({ kind: "textReplace", target, find, replacement, firstOnly: true, caseSensitive });
+export function replaceFirstIn(
+  target: ScalarVarExpr,
+  find: Expr,
+  replacement: Expr,
+  caseSensitive = false,
+): Stmt {
+  return withLoc({
+    kind: "textReplace",
+    target,
+    find,
+    replacement,
+    firstOnly: true,
+    caseSensitive,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1818,7 +1917,14 @@ export function offsetLocation(location: Expr, dx: Expr, dy: Expr, dz: Expr): Ex
 }
 
 const RELATIVE_DIRECTIONS: ReadonlySet<string> = new Set([
-  "above", "below", "north", "south", "east", "west", "front", "behind",
+  "above",
+  "below",
+  "north",
+  "south",
+  "east",
+  "west",
+  "front",
+  "behind",
 ]);
 
 /**
@@ -1987,7 +2093,10 @@ export function gameModeOf(target: Expr): Expr {
 }
 
 const GAME_MODE_NAMES: ReadonlySet<string> = new Set([
-  "survival", "creative", "adventure", "spectator",
+  "survival",
+  "creative",
+  "adventure",
+  "spectator",
 ]);
 
 /** Construct a game-mode literal (survival / creative / adventure / spectator): the value gameModeOf compares against and setGameMode writes. Emitted bare, as the original's gamemode literals are. */
@@ -2059,7 +2168,10 @@ export function heal(target: Expr, amount?: Expr): Stmt {
 }
 
 const ADDABLE_STATE_KINDS: ReadonlySet<string> = new Set([
-  "healthOf", "foodLevelOf", "experienceOf", "levelOf",
+  "healthOf",
+  "foodLevelOf",
+  "experienceOf",
+  "levelOf",
 ]);
 
 function requireStateExpr(builder: string, expr: Expr): Expr {
@@ -2087,13 +2199,39 @@ export function removeFrom(expr: Expr, value: Expr): Stmt {
  * included. "swiftness" is an accepted alias of "speed".
  */
 const POTION_TYPES: ReadonlySet<string> = new Set([
-  "absorption", "bad omen", "blindness", "conduit power", "darkness",
-  "dolphin's grace", "fire resistance", "glowing", "haste", "health boost",
-  "hero of the village", "hunger", "instant damage", "instant health",
-  "invisibility", "jump boost", "levitation", "luck", "mining fatigue",
-  "nausea", "night vision", "poison", "regeneration", "resistance",
-  "slow falling", "slowness", "speed", "strength", "unluck",
-  "water breathing", "weakness", "wither", "swiftness",
+  "absorption",
+  "bad omen",
+  "blindness",
+  "conduit power",
+  "darkness",
+  "dolphin's grace",
+  "fire resistance",
+  "glowing",
+  "haste",
+  "health boost",
+  "hero of the village",
+  "hunger",
+  "instant damage",
+  "instant health",
+  "invisibility",
+  "jump boost",
+  "levitation",
+  "luck",
+  "mining fatigue",
+  "nausea",
+  "night vision",
+  "poison",
+  "regeneration",
+  "resistance",
+  "slow falling",
+  "slowness",
+  "speed",
+  "strength",
+  "unluck",
+  "water breathing",
+  "weakness",
+  "wither",
+  "swiftness",
 ]);
 
 function requirePotionType(name: string): string {
@@ -2120,7 +2258,10 @@ export function applyPotion(
   if (level !== undefined && (!Number.isInteger(level) || level < 1)) {
     throw new RangeError("potion level must be a positive integer");
   }
-  if (durationSeconds !== undefined && (!Number.isFinite(durationSeconds) || durationSeconds <= 0)) {
+  if (
+    durationSeconds !== undefined &&
+    (!Number.isFinite(durationSeconds) || durationSeconds <= 0)
+  ) {
     throw new RangeError("potion duration must be a positive number of seconds");
   }
   return withLoc({
@@ -2138,7 +2279,10 @@ export function removePotion(target: Expr, potion: string): Stmt {
 }
 
 function requireEntityType(name: string): string {
-  const canonical = typeof name === "string" ? name.trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ") : "";
+  const canonical =
+    typeof name === "string"
+      ? name.trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ")
+      : "";
   if (!/^[a-z][a-z0-9 ]*$/.test(canonical)) {
     throw new RangeError(`invalid entity type name: ${String(name)}`);
   }
@@ -2245,7 +2389,16 @@ function isExprValue(value: unknown): value is Expr {
 function requireTitleTiming(label: string, timing: TitleTiming | undefined): void {
   if (timing === undefined) return;
   const validUnit = (
-    ["ticks", "seconds", "minutes", "hours", "days", "weeks", "months", "years"] as readonly string[]
+    [
+      "ticks",
+      "seconds",
+      "minutes",
+      "hours",
+      "days",
+      "weeks",
+      "months",
+      "years",
+    ] as readonly string[]
   ).includes(timing.unit);
   if (
     typeof timing.amount !== "number" ||
@@ -2257,7 +2410,10 @@ function requireTitleTiming(label: string, timing: TitleTiming | undefined): voi
   }
 }
 
-function normalizeTitleTiming(label: string, timing: TitleTiming | Expr | undefined): Expr | undefined {
+function normalizeTitleTiming(
+  label: string,
+  timing: TitleTiming | Expr | undefined,
+): Expr | undefined {
   if (timing === undefined) return undefined;
   if (isExprValue(timing)) return timing;
   requireTitleTiming(label, timing);
@@ -2329,15 +2485,27 @@ export function resetTitle(target: Expr): Stmt {
 }
 
 const BOSS_BAR_COLOR_NAMES: ReadonlySet<string> = new Set([
-  "pink", "blue", "red", "green", "yellow", "purple", "white",
+  "pink",
+  "blue",
+  "red",
+  "green",
+  "yellow",
+  "purple",
+  "white",
 ]);
 
 const BOSS_BAR_STYLE_NAMES: ReadonlySet<string> = new Set([
-  "solid", "6 notches", "10 notches", "12 notches", "20 notches",
+  "solid",
+  "6 notches",
+  "10 notches",
+  "12 notches",
+  "20 notches",
 ]);
 
 const BOSS_BAR_FLAG_NAMES: ReadonlySet<string> = new Set([
-  "darkenSky", "createFog", "playBossMusic",
+  "darkenSky",
+  "createFog",
+  "playBossMusic",
 ]);
 
 /**
@@ -2408,7 +2576,10 @@ export function bossBarProgressOf(bar: Expr): Expr {
  * persistent boss bar storage. Unlike a plain bar, a keyed bar
  * CAN be stored in a persistent variable.
  */
-export function keyedBossBar(key: Expr, options: { title?: Expr; color?: BossBarColorName } = {}): Expr {
+export function keyedBossBar(
+  key: Expr,
+  options: { title?: Expr; color?: BossBarColorName } = {},
+): Expr {
   if (options.color !== undefined && !BOSS_BAR_COLOR_NAMES.has(options.color)) {
     throw new RangeError(`invalid boss bar color name: ${String(options.color)}`);
   }
@@ -2485,7 +2656,11 @@ export function bossBarPlaysBossMusic(bar: Expr): Cond {
  * typically sets the title, progress, style and flags on
  * eventBossBar().
  */
-export function createBossBarSection(target: VarTarget, body: readonly Stmt[], options: { key?: Expr; color?: BossBarColorName } = {}): Stmt {
+export function createBossBarSection(
+  target: VarTarget,
+  body: readonly Stmt[],
+  options: { key?: Expr; color?: BossBarColorName } = {},
+): Stmt {
   if (options.color !== undefined && !BOSS_BAR_COLOR_NAMES.has(options.color)) {
     throw new RangeError(`invalid boss bar color name: ${String(options.color)}`);
   }
@@ -2621,7 +2796,12 @@ export function httpFetch(id: string, url: TextExpr, opts?: { timeoutSeconds?: n
 }
 
 /** Construct an http-download statement that starts an asynchronous file download (engine builtin). */
-export function httpDownload(id: string, url: TextExpr, path: TextExpr, opts?: { timeoutSeconds?: number }): Stmt {
+export function httpDownload(
+  id: string,
+  url: TextExpr,
+  path: TextExpr,
+  opts?: { timeoutSeconds?: number },
+): Stmt {
   const timeout = requireTimeoutSeconds(opts);
   return withLoc({
     kind: "httpDownload",

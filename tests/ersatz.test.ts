@@ -13,7 +13,9 @@ describe("Ersatz builtin slice (phase 10, engine-only)", () => {
     const ir = JSON.parse(emitIr(ersatzScript)) as {
       body: { kind: string; event?: string; prefixes?: string[]; body: { kind: string }[] }[];
     };
-    const kinds = ir.body.map((t) => (t.kind === "event" ? `event:${t.event ?? ""}` : `command:${t.kind}`));
+    const kinds = ir.body.map((t) =>
+      t.kind === "event" ? `event:${t.event ?? ""}` : `command:${t.kind}`,
+    );
     expect(kinds).toEqual(["event:papiRequest", "event:papiRequest", "command:command"]);
     expect(ir.body[0]?.prefixes).toEqual(["skriptts"]);
     expect(ir.body[1]?.prefixes).toEqual(["skripttswho"]);

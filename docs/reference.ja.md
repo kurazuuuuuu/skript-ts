@@ -9,25 +9,27 @@
 ここに無いものは対応範囲外です。
 
 ## イベント
-| TypeScript | Skript |
-| --- | --- |
-| `onJoin` | `on join:` |
-| `onFirstJoin` | `on first join:` |
-| `onQuit` | `on quit:` |
-| `onChat` | `on chat:` |
-| `onDeath` | `on death:` |
+
+| TypeScript     | Skript            |
+| -------------- | ----------------- |
+| `onJoin`       | `on join:`        |
+| `onFirstJoin`  | `on first join:`  |
+| `onQuit`       | `on quit:`        |
+| `onChat`       | `on chat:`        |
+| `onDeath`      | `on death:`       |
 | `onBlockBreak` | `on block break:` |
 | `onBlockPlace` | `on block place:` |
 | `onRightClick` | `on right click:` |
-| `onLeftClick` | `on left click:` |
-| `onDamage` | `on damage:` |
-| `onPickup` | `on pick up:` |
-| `onDrop` | `on drop:` |
-| `onRespawn` | `on respawn:` |
-| `onBedEnter` | `on bed enter:` |
-| `onBedLeave` | `on bed leave:` |
+| `onLeftClick`  | `on left click:`  |
+| `onDamage`     | `on damage:`      |
+| `onPickup`     | `on pick up:`     |
+| `onDrop`       | `on drop:`        |
+| `onRespawn`    | `on respawn:`     |
+| `onBedEnter`   | `on bed enter:`   |
+| `onBedLeave`   | `on bed leave:`   |
 
 ## コマンド
+
 `command(name, args, body, options?)` — 型付き引数を任意個まで定義できます
 （意味論の全体は下記「コマンド定義」を参照）。`args` は従来形式の引数型1つ
 （`"text"` / `"player"` / `"integer"`、常に省略可能、第4引数に真偽値も可）か、
@@ -35,73 +37,75 @@
 必須引数は `<type>` と出力されます。本体は `trigger:` セクションになります。
 
 ## エフェクト（文）
-| TypeScript | Skript |
-| --- | --- |
-| `send(target, message)` | `send "<text>" to <target>`（任意の式。テキストは引用符つき、それ以外は素の値） |
-| `broadcast(message)` | `broadcast "<text>"`（任意の式） |
-| `give(target, itemName, amount)` | `give <amount> <item> to <target>` |
-| `teleport(target, location)` | `teleport <target> to <location>` |
-| `set(variable, value)` | `set {var} to <value>` |
-| `add(variable, value)` | `add <value> to {var}` |
-| `ifElse(cond, then, else?)` | `if <cond>:` … `else:` |
-| `loopPlayers(body)` | `loop all players:` |
-| `listAdd(list, value)` | `add <value> to {list::*}` |
-| `listRemove(list, value)` | `remove <value> from {list::*}` |
-| `deleteVar(target)` | `delete {var}` / `delete {list::*}` |
-| `loopList(list, body)` | `loop {list::*}:` |
-| `loopTimes(count, body)` | `loop <n> times:` |
-| `loopRange(from, to, body)` | `loop numbers from <a> to <b>:` |
-| `whileLoop(cond, body)` | `while <cond>:`（葉条件のみ、下記） |
-| `wait(amount, unit)` | `wait <n> ticks` / `seconds` / `minutes` |
-| `returnValue(value)` | `return <value>`（`defineFunction` 内） |
-| `stopTrigger()` | `stop`（トリガー／関数からの早期終了） |
-| `callStmt(name, ...args)` | `<name>(<args>)` を単独の文として |
-| `cancelEvent()` | `cancel event`（キャンセル可能なイベントのハンドラ内） |
-| `uncancelEvent()` | `uncancel event` |
-| `setDamage(value)` | `set damage to <value>`（`onDamage` 内） |
-| `replaceAllIn(var, find, repl, caseSensitive?)` | `replace all <find> in {var} with <repl>`（指定時は `with case sensitivity`） |
-| `replaceFirstIn(var, find, repl, caseSensitive?)` | `replace first <find> in {var} with <repl>` |
+
+| TypeScript                                        | Skript                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `send(target, message)`                           | `send "<text>" to <target>`（任意の式。テキストは引用符つき、それ以外は素の値） |
+| `broadcast(message)`                              | `broadcast "<text>"`（任意の式）                                                |
+| `give(target, itemName, amount)`                  | `give <amount> <item> to <target>`                                              |
+| `teleport(target, location)`                      | `teleport <target> to <location>`                                               |
+| `set(variable, value)`                            | `set {var} to <value>`                                                          |
+| `add(variable, value)`                            | `add <value> to {var}`                                                          |
+| `ifElse(cond, then, else?)`                       | `if <cond>:` … `else:`                                                          |
+| `loopPlayers(body)`                               | `loop all players:`                                                             |
+| `listAdd(list, value)`                            | `add <value> to {list::*}`                                                      |
+| `listRemove(list, value)`                         | `remove <value> from {list::*}`                                                 |
+| `deleteVar(target)`                               | `delete {var}` / `delete {list::*}`                                             |
+| `loopList(list, body)`                            | `loop {list::*}:`                                                               |
+| `loopTimes(count, body)`                          | `loop <n> times:`                                                               |
+| `loopRange(from, to, body)`                       | `loop numbers from <a> to <b>:`                                                 |
+| `whileLoop(cond, body)`                           | `while <cond>:`（葉条件のみ、下記）                                             |
+| `wait(amount, unit)`                              | `wait <n> ticks` / `seconds` / `minutes`                                        |
+| `returnValue(value)`                              | `return <value>`（`defineFunction` 内）                                         |
+| `stopTrigger()`                                   | `stop`（トリガー／関数からの早期終了）                                          |
+| `callStmt(name, ...args)`                         | `<name>(<args>)` を単独の文として                                               |
+| `cancelEvent()`                                   | `cancel event`（キャンセル可能なイベントのハンドラ内）                          |
+| `uncancelEvent()`                                 | `uncancel event`                                                                |
+| `setDamage(value)`                                | `set damage to <value>`（`onDamage` 内）                                        |
+| `replaceAllIn(var, find, repl, caseSensitive?)`   | `replace all <find> in {var} with <repl>`（指定時は `with case sensitivity`）   |
+| `replaceFirstIn(var, find, repl, caseSensitive?)` | `replace first <find> in {var} with <repl>`                                     |
 
 ## 式
-| TypeScript | 値の位置 | 文字列の中 |
-| --- | --- | --- |
-| `player()` | `player` | `%player%` |
-| `eventPlayer()` | `event-player` | `%event-player%` |
-| `loopPlayer()` | `loop-player` | `%loop-player%` |
-| `victim()` | `victim` | `%victim%` |
-| `argument(n)`（1始まり） | `arg-<n>` | `%arg-<n>%` |
-| `chatMessage()` | `message` | `%message%` |
-| `variable(name)` | `{name}` | `%{name}%` |
-| `variable(name, index)` | `{name::%<index>%}` | `%{name::%<index>%}%` |
-| `listVar(name)` | `{name::*}` | `%{name::*}%` |
-| `localVar(name)` / `localVar(name, index)` | `{_name}` / `{_name::%<index>%}` | `%{_name}%` |
-| `localList(name)` | `{_name::*}` | `%{_name::*}%` |
-| `call(name, ...args)` | `<name>(<args>)` | `%<name>(<args>)%` |
-| `listSize(list)` | `size of {name::*}` | `%size of {name::*}%` |
-| `loopValue()` | `loop-value` | `%loop-value%` |
-| `loopIndex()` | `loop-index` | `%loop-index%` |
-| `str(s)` | `"<s>"` | 素のテキスト |
-| `num(n)` / `bool(b)` | `42` / `true` | 同じ |
-| `item(name)` | `diamond sword` | 同じ |
-| `locationOf(e)` | `location of <e>` | `%location of <e>%` |
-| `eventBlock()` | `event-block` | `%event-block%` |
-| `eventItem()` | `event-item` | `%event-item%` |
-| `attacker()` | `attacker` | `%attacker%` |
-| `damageAmount()` | `damage` | `%damage%` |
-| `damageCause()` | `damage cause` | `%damage cause%` |
-| `typeOf(e)` | `type of <e>` | `%type of <e>%` |
-| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` など | `%(<a> + <b>)%` など |
-| `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可） | `mod(<a>, <b>)` | `%mod(<a>, <b>)%` |
-| `fmt(...parts)` | `"<parts>"` | 外側の文字列に平坦化 |
-| `textLength(t)` | `length of <t>` | `%length of <t>%` |
-| `substring(t, from, to)` | `substring of <t> from <a> to <b>` | `%substring of <t> from <a> to <b>%` |
-| `firstChars(t, n)` / `lastChars(t, n)` | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` など |
-| `charAt(t, i)` | `character at <i> in <t>` | `%character at <i> in <t>%` |
-| `upperCase(t)` / `lowerCase(t)` | `<t> in uppercase` / `<t> in lowercase` | `%<t> in uppercase%` など |
-| `splitText(t, delim, caseSensitive?)` | `split <t> at <d>`（指定時は `with case sensitivity`） | `%split <t> at <d>%` |
-| `joinText(list, delim?)` | `join <list>` / `join <list> with <d>` | `%join <list> with <d>%` |
-| `colored(t)` / `formatted(t)` | `colored <t>` / `formatted <t>` | `%colored <t>%` など |
-| `uncolored(t)` / `unformatted(t)` | `uncolored <t>` / `unformatted <t>` | `%uncolored <t>%` など |
+
+| TypeScript                                                       | 値の位置                                                     | 文字列の中                           |
+| ---------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------ |
+| `player()`                                                       | `player`                                                     | `%player%`                           |
+| `eventPlayer()`                                                  | `event-player`                                               | `%event-player%`                     |
+| `loopPlayer()`                                                   | `loop-player`                                                | `%loop-player%`                      |
+| `victim()`                                                       | `victim`                                                     | `%victim%`                           |
+| `argument(n)`（1始まり）                                         | `arg-<n>`                                                    | `%arg-<n>%`                          |
+| `chatMessage()`                                                  | `message`                                                    | `%message%`                          |
+| `variable(name)`                                                 | `{name}`                                                     | `%{name}%`                           |
+| `variable(name, index)`                                          | `{name::%<index>%}`                                          | `%{name::%<index>%}%`                |
+| `listVar(name)`                                                  | `{name::*}`                                                  | `%{name::*}%`                        |
+| `localVar(name)` / `localVar(name, index)`                       | `{_name}` / `{_name::%<index>%}`                             | `%{_name}%`                          |
+| `localList(name)`                                                | `{_name::*}`                                                 | `%{_name::*}%`                       |
+| `call(name, ...args)`                                            | `<name>(<args>)`                                             | `%<name>(<args>)%`                   |
+| `listSize(list)`                                                 | `size of {name::*}`                                          | `%size of {name::*}%`                |
+| `loopValue()`                                                    | `loop-value`                                                 | `%loop-value%`                       |
+| `loopIndex()`                                                    | `loop-index`                                                 | `%loop-index%`                       |
+| `str(s)`                                                         | `"<s>"`                                                      | 素のテキスト                         |
+| `num(n)` / `bool(b)`                                             | `42` / `true`                                                | 同じ                                 |
+| `item(name)`                                                     | `diamond sword`                                              | 同じ                                 |
+| `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                  |
+| `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                      |
+| `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                       |
+| `attacker()`                                                     | `attacker`                                                   | `%attacker%`                         |
+| `damageAmount()`                                                 | `damage`                                                     | `%damage%`                           |
+| `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                     |
+| `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                      |
+| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` など                                           | `%(<a> + <b>)%` など                 |
+| `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可）          | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                    |
+| `fmt(...parts)`                                                  | `"<parts>"`                                                  | 外側の文字列に平坦化                 |
+| `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                    |
+| `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%` |
+| `firstChars(t, n)` / `lastChars(t, n)`                           | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` など |
+| `charAt(t, i)`                                                   | `character at <i> in <t>`                                    | `%character at <i> in <t>%`          |
+| `upperCase(t)` / `lowerCase(t)`                                  | `<t> in uppercase` / `<t> in lowercase`                      | `%<t> in uppercase%` など            |
+| `splitText(t, delim, caseSensitive?)`                            | `split <t> at <d>`（指定時は `with case sensitivity`）       | `%split <t> at <d>%`                 |
+| `joinText(list, delim?)`                                         | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`             |
+| `colored(t)` / `formatted(t)`                                    | `colored <t>` / `formatted <t>`                              | `%colored <t>%` など                 |
+| `uncolored(t)` / `unformatted(t)`                                | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` など               |
 
 算術の意味論（本家 Skript 2.17.1 の実挙動で裏取り済み）: 被演算子は
 原則として両方とも数値です。例外は `+` で、両方が文字列なら連結に
@@ -131,20 +135,21 @@
 テストで検出されました。
 
 ## 条件
-| TypeScript | Skript |
-| --- | --- |
-| `hasPermission(target, "node")` | `<target> has permission "node"` |
-| `isOp(target)` | `<target> is op` |
-| `equals(a, b)` | `<a> is <b>` |
-| `notEquals(a, b)` | `<a> is not <b>` |
-| `greaterThan(a, b)` | `<a> is greater than <b>` |
-| `greaterOrEqual(a, b)` | `<a> is greater than or equal to <b>` |
-| `lessThan(a, b)` | `<a> is less than <b>` |
-| `lessOrEqual(a, b)` | `<a> is less than or equal to <b>` |
-| `contains(a, b)` | `<a> contains <b>` |
-| `startsWith(t, prefix)` | `<t> starts with <prefix>` |
-| `endsWith(t, suffix)` | `<t> ends with <suffix>` |
-| `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | 入れ子の `if`/`else` へ展開（下記） |
+
+| TypeScript                                        | Skript                                |
+| ------------------------------------------------- | ------------------------------------- |
+| `hasPermission(target, "node")`                   | `<target> has permission "node"`      |
+| `isOp(target)`                                    | `<target> is op`                      |
+| `equals(a, b)`                                    | `<a> is <b>`                          |
+| `notEquals(a, b)`                                 | `<a> is not <b>`                      |
+| `greaterThan(a, b)`                               | `<a> is greater than <b>`             |
+| `greaterOrEqual(a, b)`                            | `<a> is greater than or equal to <b>` |
+| `lessThan(a, b)`                                  | `<a> is less than <b>`                |
+| `lessOrEqual(a, b)`                               | `<a> is less than or equal to <b>`    |
+| `contains(a, b)`                                  | `<a> contains <b>`                    |
+| `startsWith(t, prefix)`                           | `<t> starts with <prefix>`            |
+| `endsWith(t, suffix)`                             | `<t> ends with <suffix>`              |
+| `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | 入れ子の `if`/`else` へ展開（下記）   |
 
 比較の意味論（推測ではなく本家 Skript 2.17.1 の実挙動で裏取り済み）:
 文字列の等値は **大文字小文字を区別しません**。異なる型の値は決して
@@ -1042,17 +1047,17 @@ egg:`）で、第16弾の `{ item }` フィルタ付きです。新値
 （パースエラー）。Bukkit の釣り状態ごとにサブイベント
 があり、全状態で発火する状態変化イベントが1つあります。
 
-| ビルダ | ヘッダ | 状態名 |
-|---|---|---|
-| `onFishCast` | `on fishing line cast:` | `fishing line cast` |
-| `onFishApproach` | `on fish approaching:` | `lured` |
-| `onFishBite` | `on fish bite:` | `bite` |
-| `onFishCaught` | `on fish caught:` | `fish caught` |
-| `onEntityHooked` | `on entity hooked:` | `entity caught` |
-| `onHookInGround` | `on bobber in ground:` | `bobber in ground` |
-| `onFishEscape` | `on fish escape:` | `fish escape` |
-| `onFishReelIn` | `on fishing rod reel in:` | `reel in` |
-| `onFishingStateChange` | `on fishing state change:` | （全て） |
+| ビルダ                 | ヘッダ                     | 状態名              |
+| ---------------------- | -------------------------- | ------------------- |
+| `onFishCast`           | `on fishing line cast:`    | `fishing line cast` |
+| `onFishApproach`       | `on fish approaching:`     | `lured`             |
+| `onFishBite`           | `on fish bite:`            | `bite`              |
+| `onFishCaught`         | `on fish caught:`          | `fish caught`       |
+| `onEntityHooked`       | `on entity hooked:`        | `entity caught`     |
+| `onHookInGround`       | `on bobber in ground:`     | `bobber in ground`  |
+| `onFishEscape`         | `on fish escape:`          | `fish escape`       |
+| `onFishReelIn`         | `on fishing rod reel in:`  | `reel in`           |
+| `onFishingStateChange` | `on fishing state change:` | （全て）            |
 
 状態名は `eventFishingState()` が表示する文字列で、
 `fishingState("bite")` が対応リテラルを作ります
@@ -1121,7 +1126,7 @@ fishing 系の式 `fishingWaitTime("min" | "max")`、`fishingBiteTime()`、`fish
 ロードチェックで、3つの文法上のエッジケースが見つかった。裸のタイムスパンリテラルは文字列補間として使えない。リテラル数は `%{...}%` のリストインデックスとして使えない。静的に型付けされたタイムスパンと数の比較条件はロード時エラーとなる(変数を介する場合は、意味論が要求する通り false と評価される)。
 
 ## 文字列のエスケープ
+
 リテラルテキストは Skript の規則に従います。`"` は `""` に、リテラルな `%` は `%%` に
 二重化します。対象は `str()` の値、`fmt()` のリテラル部分、権限文字列で、
 出力済みプレースホルダには適用しません。
-

@@ -111,30 +111,16 @@ export const functionsScript: Script = script(
     wait(num(1), "seconds"),
     broadcast(str("slow tail")),
   ]),
-  defineFunction("ov", [param("a", "number")], "text", [
-    returnValue(fmt("num:", localVar("a"))),
-  ]),
-  defineFunction("ov", [param("a", "text")], "text", [
-    returnValue(fmt("text:", localVar("a"))),
-  ]),
-  command("greet", "text", [
-    send(player(), call("greet", argument(1))),
-  ]),
-  command("greetlit", null, [
-    send(player(), fmt("lit=", call("greet", str("World")))),
-  ]),
-  command("greet2", "text", [
-    send(player(), fmt("greet2=", call("greetTimes", argument(1)))),
-  ]),
+  defineFunction("ov", [param("a", "number")], "text", [returnValue(fmt("num:", localVar("a")))]),
+  defineFunction("ov", [param("a", "text")], "text", [returnValue(fmt("text:", localVar("a")))]),
+  command("greet", "text", [send(player(), call("greet", argument(1)))]),
+  command("greetlit", null, [send(player(), fmt("lit=", call("greet", str("World"))))]),
+  command("greet2", "text", [send(player(), fmt("greet2=", call("greetTimes", argument(1))))]),
   command("greet3", "text", [
     send(player(), fmt("greet3=", call("greetTimes", argument(1), num(3)))),
   ]),
-  command("fact", "integer", [
-    send(player(), fmt("fact=", call("fact", argument(1)))),
-  ]),
-  command("double", "integer", [
-    send(player(), fmt("double=", call("doubleIt", argument(1)))),
-  ]),
+  command("fact", "integer", [send(player(), fmt("fact=", call("fact", argument(1))))]),
+  command("double", "integer", [send(player(), fmt("double=", call("doubleIt", argument(1))))]),
   command("badcall", null, [
     set(localVar("r"), call("doubleIt", variable("mismatch"))),
     send(player(), fmt("badcall=[", localVar("r"), "]")),
@@ -144,9 +130,7 @@ export const functionsScript: Script = script(
     set(localVar("s"), call("sumAll", localList("r"))),
     send(player(), fmt("sumto=", localVar("s"))),
   ]),
-  command("sum3", null, [
-    send(player(), fmt("sum3=", call("sumAll", num(1), num(2), num(3)))),
-  ]),
+  command("sum3", null, [send(player(), fmt("sum3=", call("sumAll", num(1), num(2), num(3))))]),
   command("scope", "text", [
     set(localVar("v"), argument(1)),
     callStmt("scopeProbe"),
@@ -160,10 +144,6 @@ export const functionsScript: Script = script(
     set(localVar("r"), call("slowFn")),
     send(player(), fmt("slow=[", localVar("r"), "]")),
   ]),
-  command("ov", "integer", [
-    send(player(), fmt("ov=", call("ov", argument(1)))),
-  ]),
-  command("ovt", "text", [
-    send(player(), fmt("ov=", call("ov", argument(1)))),
-  ]),
+  command("ov", "integer", [send(player(), fmt("ov=", call("ov", argument(1))))]),
+  command("ovt", "text", [send(player(), fmt("ov=", call("ov", argument(1))))]),
 );

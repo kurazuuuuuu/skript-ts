@@ -13,7 +13,9 @@ describe("MundoSK builtin slice (phase 6, engine-only)", () => {
     const ir = JSON.parse(emitIr(mundoskScript)) as {
       body: { kind: string; event?: string; body: { kind: string }[] }[];
     };
-    const kinds = ir.body.map((t) => (t.kind === "event" ? `event:${t.event ?? ""}` : `command:${t.kind}`));
+    const kinds = ir.body.map((t) =>
+      t.kind === "event" ? `event:${t.event ?? ""}` : `command:${t.kind}`,
+    );
     expect(kinds).toEqual([
       "command:command",
       "event:wsOpen",
@@ -33,6 +35,8 @@ describe("MundoSK builtin slice (phase 6, engine-only)", () => {
 
   it("websocket ids must be non-empty", () => {
     expect(() => wsConnect("", { kind: "string", value: "ws://127.0.0.1:1" })).toThrow(RangeError);
-    expect(() => wsConnect("   ", { kind: "string", value: "ws://127.0.0.1:1" })).toThrow(RangeError);
+    expect(() => wsConnect("   ", { kind: "string", value: "ws://127.0.0.1:1" })).toThrow(
+      RangeError,
+    );
   });
 });

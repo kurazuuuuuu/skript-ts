@@ -53,8 +53,18 @@ behavior tests.
 
 ```ts
 import {
-  script, onJoin, onFirstJoin, broadcast, send, give, set,
-  player, fmt, variable, bool, emit,
+  script,
+  onJoin,
+  onFirstJoin,
+  broadcast,
+  send,
+  give,
+  set,
+  player,
+  fmt,
+  variable,
+  bool,
+  emit,
 } from "skript-ts";
 
 const prog = script(
@@ -63,9 +73,7 @@ const prog = script(
     give(player(), "wooden sword", 1),
     set(variable("welcomed", player()), bool(true)),
   ]),
-  onJoin([
-    send(player(), fmt("Welcome back, ", player())),
-  ]),
+  onJoin([send(player(), fmt("Welcome back, ", player()))]),
 );
 
 console.log(emit(prog));

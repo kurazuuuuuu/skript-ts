@@ -105,9 +105,7 @@ export const textScript: Script = script(
   command("csv", "text", [
     set(localList("parts"), splitText(argument(1), str(","))),
     send(player(), fmt("parts=", listSize(localList("parts")))),
-    loopList(localList("parts"), [
-      send(player(), fmt("part ", loopIndex(), "=", loopValue())),
-    ]),
+    loopList(localList("parts"), [send(player(), fmt("part ", loopIndex(), "=", loopValue()))]),
     set(localVar("j"), joinText(localList("parts"), str(" | "))),
     send(player(), fmt("joined=", localVar("j"))),
     set(localVar("n"), joinText(splitText(argument(1), str(",")), str("+"))),

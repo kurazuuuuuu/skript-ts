@@ -10,25 +10,27 @@ the supported subset. Moved out of the README; see the
 Anything not listed here is outside the supported subset.
 
 ## Events
-| TypeScript | Skript |
-| --- | --- |
-| `onJoin` | `on join:` |
-| `onFirstJoin` | `on first join:` |
-| `onQuit` | `on quit:` |
-| `onChat` | `on chat:` |
-| `onDeath` | `on death:` |
+
+| TypeScript     | Skript            |
+| -------------- | ----------------- |
+| `onJoin`       | `on join:`        |
+| `onFirstJoin`  | `on first join:`  |
+| `onQuit`       | `on quit:`        |
+| `onChat`       | `on chat:`        |
+| `onDeath`      | `on death:`       |
 | `onBlockBreak` | `on block break:` |
 | `onBlockPlace` | `on block place:` |
 | `onRightClick` | `on right click:` |
-| `onLeftClick` | `on left click:` |
-| `onDamage` | `on damage:` |
-| `onPickup` | `on pick up:` |
-| `onDrop` | `on drop:` |
-| `onRespawn` | `on respawn:` |
-| `onBedEnter` | `on bed enter:` |
-| `onBedLeave` | `on bed leave:` |
+| `onLeftClick`  | `on left click:`  |
+| `onDamage`     | `on damage:`      |
+| `onPickup`     | `on pick up:`     |
+| `onDrop`       | `on drop:`        |
+| `onRespawn`    | `on respawn:`     |
+| `onBedEnter`   | `on bed enter:`   |
+| `onBedLeave`   | `on bed leave:`   |
 
 ## Commands
+
 `command(name, args, body, options?)` — any number of typed
 arguments (see **Command definitions** below for the full
 semantics). `args` is either one legacy argument type
@@ -39,80 +41,82 @@ required ones as `<type>`. The body becomes the `trigger:`
 section.
 
 ## Effects (statements)
-| TypeScript | Skript |
-| --- | --- |
-| `send(target, message)` | `send "<text>" to <target>` (any expression; text emits quoted, other expressions bare) |
-| `broadcast(message)` | `broadcast "<text>"` (any expression) |
-| `give(target, itemName, amount)` | `give <amount> <item> to <target>` |
-| `teleport(target, location)` | `teleport <target> to <location>` |
-| `set(variable, value)` | `set {var} to <value>` |
-| `add(variable, value)` | `add <value> to {var}` |
-| `ifElse(cond, then, else?)` | `if <cond>:` … `else:` |
-| `loopPlayers(body)` | `loop all players:` |
-| `listAdd(list, value)` | `add <value> to {list::*}` |
-| `listRemove(list, value)` | `remove <value> from {list::*}` |
-| `deleteVar(target)` | `delete {var}` / `delete {list::*}` |
-| `loopList(list, body)` | `loop {list::*}:` |
-| `loopTimes(count, body)` | `loop <n> times:` |
-| `loopRange(from, to, body)` | `loop numbers from <a> to <b>:` |
-| `whileLoop(cond, body)` | `while <cond>:` (leaf conditions only, see below) |
-| `wait(amount, unit)` | `wait <n> ticks` / `seconds` / `minutes` |
-| `returnValue(value)` | `return <value>` (inside `defineFunction`) |
-| `stopTrigger()` | `stop` (early exit from a trigger or function) |
-| `callStmt(name, ...args)` | `<name>(<args>)` as a bare statement |
-| `cancelEvent()` | `cancel event` (in a cancellable event handler) |
-| `uncancelEvent()` | `uncancel event` |
-| `setDamage(value)` | `set damage to <value>` (inside `onDamage`) |
-| `replaceAllIn(var, find, repl, caseSensitive?)` | `replace all <find> in {var} with <repl>` (`with case sensitivity` when asked) |
-| `replaceFirstIn(var, find, repl, caseSensitive?)` | `replace first <find> in {var} with <repl>` |
+
+| TypeScript                                        | Skript                                                                                  |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `send(target, message)`                           | `send "<text>" to <target>` (any expression; text emits quoted, other expressions bare) |
+| `broadcast(message)`                              | `broadcast "<text>"` (any expression)                                                   |
+| `give(target, itemName, amount)`                  | `give <amount> <item> to <target>`                                                      |
+| `teleport(target, location)`                      | `teleport <target> to <location>`                                                       |
+| `set(variable, value)`                            | `set {var} to <value>`                                                                  |
+| `add(variable, value)`                            | `add <value> to {var}`                                                                  |
+| `ifElse(cond, then, else?)`                       | `if <cond>:` … `else:`                                                                  |
+| `loopPlayers(body)`                               | `loop all players:`                                                                     |
+| `listAdd(list, value)`                            | `add <value> to {list::*}`                                                              |
+| `listRemove(list, value)`                         | `remove <value> from {list::*}`                                                         |
+| `deleteVar(target)`                               | `delete {var}` / `delete {list::*}`                                                     |
+| `loopList(list, body)`                            | `loop {list::*}:`                                                                       |
+| `loopTimes(count, body)`                          | `loop <n> times:`                                                                       |
+| `loopRange(from, to, body)`                       | `loop numbers from <a> to <b>:`                                                         |
+| `whileLoop(cond, body)`                           | `while <cond>:` (leaf conditions only, see below)                                       |
+| `wait(amount, unit)`                              | `wait <n> ticks` / `seconds` / `minutes`                                                |
+| `returnValue(value)`                              | `return <value>` (inside `defineFunction`)                                              |
+| `stopTrigger()`                                   | `stop` (early exit from a trigger or function)                                          |
+| `callStmt(name, ...args)`                         | `<name>(<args>)` as a bare statement                                                    |
+| `cancelEvent()`                                   | `cancel event` (in a cancellable event handler)                                         |
+| `uncancelEvent()`                                 | `uncancel event`                                                                        |
+| `setDamage(value)`                                | `set damage to <value>` (inside `onDamage`)                                             |
+| `replaceAllIn(var, find, repl, caseSensitive?)`   | `replace all <find> in {var} with <repl>` (`with case sensitivity` when asked)          |
+| `replaceFirstIn(var, find, repl, caseSensitive?)` | `replace first <find> in {var} with <repl>`                                             |
 
 ## Expressions
-| TypeScript | value position | inside a string |
-| --- | --- | --- |
-| `player()` | `player` | `%player%` |
-| `eventPlayer()` | `event-player` | `%event-player%` |
-| `loopPlayer()` | `loop-player` | `%loop-player%` |
-| `victim()` | `victim` | `%victim%` |
-| `argument(n)` (1-based) | `arg-<n>` | `%arg-<n>%` |
-| `chatMessage()` | `message` | `%message%` |
-| `variable(name)` | `{name}` | `%{name}%` |
-| `variable(name, index)` | `{name::%<index>%}` | `%{name::%<index>%}%` |
-| `listVar(name)` | `{name::*}` | `%{name::*}%` |
-| `localVar(name)` / `localVar(name, index)` | `{_name}` / `{_name::%<index>%}` | `%{_name}%` |
-| `localList(name)` | `{_name::*}` | `%{_name::*}%` |
-| `call(name, ...args)` | `<name>(<args>)` | `%<name>(<args>)%` |
-| `listSize(list)` | `size of {name::*}` | `%size of {name::*}%` |
-| `loopValue()` | `loop-value` | `%loop-value%` |
-| `loopIndex()` | `loop-index` | `%loop-index%` |
-| `str(s)` | `"<s>"` | raw text |
-| `num(n)` / `bool(b)` | `42` / `true` | same |
-| `item(name)` | `diamond sword` | same |
-| `locationOf(e)` | `location of <e>` | `%location of <e>%` |
-| `eventBlock()` | `event-block` | `%event-block%` |
-| `eventItem()` | `event-item` | `%event-item%` |
-| `attacker()` | `attacker` | `%attacker%` |
-| `damageAmount()` | `damage` | `%damage%` |
-| `damageCause()` | `damage cause` | `%damage cause%` |
-| `typeOf(e)` | `type of <e>` | `%type of <e>%` |
-| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc. | `%(<a> + <b>)%` etc. |
-| `remainder(a, b)` (or `arith(op, a, b)` for any of the five) | `mod(<a>, <b>)` | `%mod(<a>, <b>)%` |
-| `fmt(...parts)` | `"<parts>"` | flattened into the enclosing string |
-| `textLength(t)` | `length of <t>` | `%length of <t>%` |
-| `substring(t, from, to)` | `substring of <t> from <a> to <b>` | `%substring of <t> from <a> to <b>%` |
-| `firstChars(t, n)` / `lastChars(t, n)` | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` etc. |
-| `charAt(t, i)` | `character at <i> in <t>` | `%character at <i> in <t>%` |
-| `upperCase(t)` / `lowerCase(t)` | `<t> in uppercase` / `<t> in lowercase` | `%<t> in uppercase%` etc. |
-| `splitText(t, delim, caseSensitive?)` | `split <t> at <d>` (`with case sensitivity` when asked) | `%split <t> at <d>%` |
-| `joinText(list, delim?)` | `join <list>` / `join <list> with <d>` | `%join <list> with <d>%` |
-| `colored(t)` / `formatted(t)` | `colored <t>` / `formatted <t>` | `%colored <t>%` etc. |
-| `uncolored(t)` / `unformatted(t)` | `uncolored <t>` / `unformatted <t>` | `%uncolored <t>%` etc. |
+
+| TypeScript                                                       | value position                                               | inside a string                      |
+| ---------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------ |
+| `player()`                                                       | `player`                                                     | `%player%`                           |
+| `eventPlayer()`                                                  | `event-player`                                               | `%event-player%`                     |
+| `loopPlayer()`                                                   | `loop-player`                                                | `%loop-player%`                      |
+| `victim()`                                                       | `victim`                                                     | `%victim%`                           |
+| `argument(n)` (1-based)                                          | `arg-<n>`                                                    | `%arg-<n>%`                          |
+| `chatMessage()`                                                  | `message`                                                    | `%message%`                          |
+| `variable(name)`                                                 | `{name}`                                                     | `%{name}%`                           |
+| `variable(name, index)`                                          | `{name::%<index>%}`                                          | `%{name::%<index>%}%`                |
+| `listVar(name)`                                                  | `{name::*}`                                                  | `%{name::*}%`                        |
+| `localVar(name)` / `localVar(name, index)`                       | `{_name}` / `{_name::%<index>%}`                             | `%{_name}%`                          |
+| `localList(name)`                                                | `{_name::*}`                                                 | `%{_name::*}%`                       |
+| `call(name, ...args)`                                            | `<name>(<args>)`                                             | `%<name>(<args>)%`                   |
+| `listSize(list)`                                                 | `size of {name::*}`                                          | `%size of {name::*}%`                |
+| `loopValue()`                                                    | `loop-value`                                                 | `%loop-value%`                       |
+| `loopIndex()`                                                    | `loop-index`                                                 | `%loop-index%`                       |
+| `str(s)`                                                         | `"<s>"`                                                      | raw text                             |
+| `num(n)` / `bool(b)`                                             | `42` / `true`                                                | same                                 |
+| `item(name)`                                                     | `diamond sword`                                              | same                                 |
+| `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                  |
+| `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                      |
+| `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                       |
+| `attacker()`                                                     | `attacker`                                                   | `%attacker%`                         |
+| `damageAmount()`                                                 | `damage`                                                     | `%damage%`                           |
+| `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                     |
+| `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                      |
+| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc.                                           | `%(<a> + <b>)%` etc.                 |
+| `remainder(a, b)` (or `arith(op, a, b)` for any of the five)     | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                    |
+| `fmt(...parts)`                                                  | `"<parts>"`                                                  | flattened into the enclosing string  |
+| `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                    |
+| `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%` |
+| `firstChars(t, n)` / `lastChars(t, n)`                           | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` etc. |
+| `charAt(t, i)`                                                   | `character at <i> in <t>`                                    | `%character at <i> in <t>%`          |
+| `upperCase(t)` / `lowerCase(t)`                                  | `<t> in uppercase` / `<t> in lowercase`                      | `%<t> in uppercase%` etc.            |
+| `splitText(t, delim, caseSensitive?)`                            | `split <t> at <d>` (`with case sensitivity` when asked)      | `%split <t> at <d>%`                 |
+| `joinText(list, delim?)`                                         | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`             |
+| `colored(t)` / `formatted(t)`                                    | `colored <t>` / `formatted <t>`                              | `%colored <t>%` etc.                 |
+| `uncolored(t)` / `unformatted(t)`                                | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` etc.               |
 
 Arithmetic semantics (verified against the real Skript 2.17.1):
 operands must both be numbers, except that `+` over two texts
 concatenates them — `"5" + "6"` is the text `"56"`, never `11`.
 Every other type combination (a text and a number, in either
-order) yields *no value*: not an error, just an absent result.
-A *missing* operand is different from a wrong-typed one (pinned
+order) yields _no value_: not an error, just an absent result.
+A _missing_ operand is different from a wrong-typed one (pinned
 down by the phase-13 probes): for the four infix operators it
 counts as 0 when the other side is a number — an unset variable
 `+ 100` is `100`, `* 2` is `0`, `5 /` unset is Infinity — while
@@ -138,30 +142,31 @@ the wrapping; this was caught by the behavior-test stage described
 below, not by load checks.
 
 ## Conditions
-| TypeScript | Skript |
-| --- | --- |
-| `hasPermission(target, "node")` | `<target> has permission "node"` |
-| `isOp(target)` | `<target> is op` |
-| `equals(a, b)` | `<a> is <b>` |
-| `notEquals(a, b)` | `<a> is not <b>` |
-| `greaterThan(a, b)` | `<a> is greater than <b>` |
-| `greaterOrEqual(a, b)` | `<a> is greater than or equal to <b>` |
-| `lessThan(a, b)` | `<a> is less than <b>` |
-| `lessOrEqual(a, b)` | `<a> is less than or equal to <b>` |
-| `contains(a, b)` | `<a> contains <b>` |
-| `startsWith(t, prefix)` | `<t> starts with <prefix>` |
-| `endsWith(t, suffix)` | `<t> ends with <suffix>` |
+
+| TypeScript                                        | Skript                                    |
+| ------------------------------------------------- | ----------------------------------------- |
+| `hasPermission(target, "node")`                   | `<target> has permission "node"`          |
+| `isOp(target)`                                    | `<target> is op`                          |
+| `equals(a, b)`                                    | `<a> is <b>`                              |
+| `notEquals(a, b)`                                 | `<a> is not <b>`                          |
+| `greaterThan(a, b)`                               | `<a> is greater than <b>`                 |
+| `greaterOrEqual(a, b)`                            | `<a> is greater than or equal to <b>`     |
+| `lessThan(a, b)`                                  | `<a> is less than <b>`                    |
+| `lessOrEqual(a, b)`                               | `<a> is less than or equal to <b>`        |
+| `contains(a, b)`                                  | `<a> contains <b>`                        |
+| `startsWith(t, prefix)`                           | `<t> starts with <prefix>`                |
+| `endsWith(t, suffix)`                             | `<t> ends with <suffix>`                  |
 | `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | lowered to nested `if`/`else` (see below) |
 
 Comparison semantics (verified against the real Skript 2.17.1,
 not assumed): text equality is **case-insensitive**; a value is
 never equal to a value of a different type (the number `1` is not
-equal to the text `"1"`); a *missing* value (an unset variable)
+equal to the text `"1"`); a _missing_ value (an unset variable)
 is not equal to anything — not even to another missing value —
 and inequality is the exact negation of equality, so an unset
-variable *is* "not 0". Ordering compares numbers only: ordering
+variable _is_ "not 0". Ordering compares numbers only: ordering
 a text, or mixing types, is false, and the negated ordering forms
-are exact negations too (an incomparable pair *is* "not greater
+are exact negations too (an incomparable pair _is_ "not greater
 than"). The engine jar implements the same semantics natively.
 
 Logic has no textual form in the `.sk` output: Skript 2.17.1
@@ -185,7 +190,7 @@ store, so lists persist exactly like scalars (in the engine, as
 individual `name::index` keys in `variables.json`).
 
 - **Index identity**: for indices computed by an expression, the
-  number `5` and the text `"5"` are the *same* entry — identity is
+  number `5` and the text `"5"` are the _same_ entry — identity is
   by string form. Variable names and text indices are
   case-insensitive (stored lowercased).
 - **Iteration order**: text indices first (numeric-looking texts
@@ -197,7 +202,7 @@ individual `name::index` keys in `variables.json`).
   index. Deleting an index leaves a **hole** — entries are never
   renumbered. `deleteVar(listVar(name))` clears the whole list;
   deleting the bare `{name}` variable does not.
-- **`listRemove`** deletes only the *first* matching element (in
+- **`listRemove`** deletes only the _first_ matching element (in
   iteration order), using the phase-11 equality rules.
 - A list used as text joins as `a, b and c` (`a and b` for two, the
   element itself for one). A missing value inside a string renders
@@ -232,7 +237,7 @@ function; `param(name, type, default?)` declares a parameter.
 Types are `number`, `text`, `boolean`, `player`, `location`,
 `object` and their plurals (`numbers`, `texts`, ...), plus the
 singular-only gameplay types `block`, `item` and `entity` (see
-*Gameplay events* below). A plural
+_Gameplay events_ below). A plural
 parameter must be last, and at most one is allowed (the builder
 enforces both). `returnType` is one of the same type names, or
 `null` for a void function. Inside the body, parameters and
@@ -266,7 +271,7 @@ scripts, in value and string positions alike):
   value passed explicitly does the same and does **not** trigger
   the parameter's default.
 - **Defaults** apply only to omitted trailing arguments. They
-  are arbitrary expressions, evaluated at call time *before* any
+  are arbitrary expressions, evaluated at call time _before_ any
   parameter is bound: they can read globals, but they cannot see
   the arguments.
 - **Locals are a fresh frame per call**, isolated in both
@@ -279,7 +284,7 @@ scripts, in value and string positions alike):
 - **Return discipline.** `return` requires a value (a bare
   `return` is a parse error under Skript; use `stopTrigger()`).
   A returned value whose runtime type mismatches the declared
-  return type makes the call yield *no value*. A value function
+  return type makes the call yield _no value_. A value function
   that never returns also yields no value. A plural return type
   wraps a single value into a one-element list and drops
   mismatched elements; assigning a multi-value result to a
@@ -310,7 +315,7 @@ asserts the identical expectations under both runtimes.
 The gameplay events are core language: the same script runs
 under Skript (as emitted `.sk`) and under the engine jar (which
 fires them from its own Bukkit listeners). This slice is the
-*unfiltered* forms; the filtered variants (`on break of
+_unfiltered_ forms; the filtered variants (`on break of
 stone:`, `on damage of player by zombie:`) and the next batch
 of events are the following section. The generic `on click:`
 (the right/left pair covers it) and the block-damage event
@@ -325,9 +330,9 @@ scripts and the behavior test):
   location.
 - `eventItem()` is the item in hand for **click** events and the
   item being placed for **place** events. In **break** events it
-  is the broken block *in item form*, **not** the tool in hand
+  is the broken block _in item form_, **not** the tool in hand
   (pinned live: digging grass with a sword in hand reported
-  `grass block`). An empty hand means the value is *absent* —
+  `grass block`). An empty hand means the value is _absent_ —
   inside a string it reads `<none>`, not `air`.
 - In damage events, `victim()` is the entity taking damage and
   `attacker()` the entity that caused it; `attacker()` has no
@@ -336,7 +341,7 @@ scripts and the behavior test):
   events — Skript rejects them at parse time ("There's no
   player in an on damage event"), and the engine mirrors that by
   leaving both unset there.
-- `damageAmount()` is the event's *current* amount: it reflects
+- `damageAmount()` is the event's _current_ amount: it reflects
   `setDamage()` writes made earlier in the same handler. The
   amount itself is the server's computation (a fist hit is `1`
   only at full attack charge), identical under both runtimes
@@ -361,7 +366,7 @@ or item is. A block or item used as text reads as that name.
 Function parameters and return types accept the singular types
 `block`, `item` and `entity` (no plurals in this slice). One
 typing quirk, pinned by a load error on the real Skript:
-`typeOf(...)` yields a *type value*, not a text — a function
+`typeOf(...)` yields a _type value_, not a text — a function
 returning it must declare the `object` return type; it still
 prints as the type's name inside strings.
 
@@ -385,8 +390,8 @@ hurt each other, and the full set by a mineflayer behavior
 test under both runtimes.
 
 **Filters.** A filter is a trailing options object on the
-event builders. Skript's filtered headers are *literal type
-lists* in the script text, not runtime expressions, so the
+event builders. Skript's filtered headers are _literal type
+lists_ in the script text, not runtime expressions, so the
 filter values are the type **names** as plain strings — one
 name or an array — never expressions (an expression would
 falsely promise that variables work in a header). The slots
@@ -400,7 +405,7 @@ are named after the header positions:
   parses and works, which the probe pinned before the API
   allowed it.
 - `onRightClick` / `onLeftClick(body, { block, entity, item })`
-  — `on` (clicked block *or* clicked entity; both together
+  — `on` (clicked block _or_ clicked entity; both together
   are rejected) and `with` (the item in hand):
   `on right click on villager:`, `on left click with stick:`.
 - `onPickup` / `onDrop(body, { item })` — `on pick up of
@@ -420,7 +425,7 @@ click interacted with (`clicked entity` in Skript), with no
 value for block or air clicks. Right-clicking an entity has
 no clicked block; the hand item is still `eventItem()`.
 
-**The new events** are the *player* forms, like Skript's bare
+**The new events** are the _player_ forms, like Skript's bare
 headers — verified live that the bare `on pick up` /
 `on drop` do **not** fire for mobs (a zombie taking wheat
 fired only Skript's explicit `entity pick up` variant, which
@@ -467,7 +472,7 @@ development log) — several differ from the "obvious" behavior:
   2), like Java strings. A missing text yields no value; an
   empty text has length 0.
 - `substring(t, from, to)` is 1-based and inclusive at both
-  ends. The range is *fitted*: `from` is clamped up to 1 and
+  ends. The range is _fitted_: `from` is clamped up to 1 and
   `to` down to the length, and when the fitted `from` exceeds
   the fitted `to` the result is **no value** (not an empty
   text, never swapped). `firstChars(t, n)` / `lastChars(t, n)`
@@ -530,7 +535,7 @@ development log) — several differ from the "obvious" behavior:
   formatting a player sees agree, and a parsed value
   compares equal to the equivalent § literal in both
   runtimes (the `/paeq` and `/fmteq` commands of the sample
-  pin this), but an expression that *counts* § characters —
+  pin this), but an expression that _counts_ § characters —
   the length of a color-coded chat message, say — can
   differ, because a component has no § characters to count.
 
@@ -565,7 +570,7 @@ clicking through a live GUI; see the development log):
   equals a plain one, two differently named stacks
   differ, names compare case-**sensitively**, and lore
   compares line by line. A stack compared against an
-  item *literal* (or a type name) still compares by type
+  item _literal_ (or a type name) still compares by type
   only, so `eventItem() is item("stone")` ignores meta.
 - **Meta reads**: `nameOf(item)` is the custom name — no
   value when the item is unnamed (for an inventory it is
@@ -721,7 +726,7 @@ through the whole flow under both runtimes, including
 measuring the heartbeat's cadence.
 
 Out of scope for this slice (recorded, not
-forgotten): facing-relative offsets from *entities*
+forgotten): facing-relative offsets from _entities_
 (the location form is probed and included; an
 entity's facing needs a live-facing probe design),
 and world time arithmetic.
@@ -1027,11 +1032,11 @@ on the sandbox server.
 
 **Death covers every living entity now.** `onDeath(body)`
 fires for any entity's death, and takes the victim filter
-from the *Event filters* section's family:
+from the _Event filters_ section's family:
 `onDeath(body, { victim })` — `on death of zombie or
 skeleton:`. Inside, `victim()` is the dead entity and
 `attacker()` is the damager of its **last damage cause**
-when that cause was an entity attack — *any* entity, probed:
+when that cause was an entity attack — _any_ entity, probed:
 a zombie killed by an iron golem reads attacker
 `iron golem`, a command kill reads no attacker, a player's
 sword kill reads `player`. Three honest limits, all probed:
@@ -1051,7 +1056,7 @@ egg:`), with the phase-16 `{ item }` filter. The new value
 `eventEntity()` is the entity the event is about. The forms
 differ in who they cover, exactly as probed: entity pickup
 fires for **every** picker, players included (a player
-pickup fires the bare form *and* this one, with
+pickup fires the bare form _and_ this one, with
 `eventEntity()` = the player), while entity drop never
 fires for a player (a player's toss is only the bare form —
 the two are different Bukkit events underneath). In an
@@ -1065,17 +1070,17 @@ the original has no generic `on fishing:` at all (a parse
 error). Each Bukkit fishing state has its sub-event, plus
 one state-change event that fires for all of them:
 
-| builder | header | state name |
-|---|---|---|
-| `onFishCast` | `on fishing line cast:` | `fishing line cast` |
-| `onFishApproach` | `on fish approaching:` | `lured` |
-| `onFishBite` | `on fish bite:` | `bite` |
-| `onFishCaught` | `on fish caught:` | `fish caught` |
-| `onEntityHooked` | `on entity hooked:` | `entity caught` |
-| `onHookInGround` | `on bobber in ground:` | `bobber in ground` |
-| `onFishEscape` | `on fish escape:` | `fish escape` |
-| `onFishReelIn` | `on fishing rod reel in:` | `reel in` |
-| `onFishingStateChange` | `on fishing state change:` | (any) |
+| builder                | header                     | state name          |
+| ---------------------- | -------------------------- | ------------------- |
+| `onFishCast`           | `on fishing line cast:`    | `fishing line cast` |
+| `onFishApproach`       | `on fish approaching:`     | `lured`             |
+| `onFishBite`           | `on fish bite:`            | `bite`              |
+| `onFishCaught`         | `on fish caught:`          | `fish caught`       |
+| `onEntityHooked`       | `on entity hooked:`        | `entity caught`     |
+| `onHookInGround`       | `on bobber in ground:`     | `bobber in ground`  |
+| `onFishEscape`         | `on fish escape:`          | `fish escape`       |
+| `onFishReelIn`         | `on fishing rod reel in:`  | `reel in`           |
+| `onFishingStateChange` | `on fishing state change:` | (any)               |
 
 The state names are what `eventFishingState()` prints;
 `fishingState("bite")` builds the matching literal (unknown
@@ -1141,7 +1146,7 @@ The "minecraft" unit family (1 minecraft day measured at 20 minutes) is a separa
 Three grammar edges were found by load-checking: a bare timespan literal cannot be a string interpolation, a literal number cannot be a `%{...}%` list index, and a statically typed timespan-versus-number condition is a load-time error (through variables it evaluates to false, as the semantics require).
 
 ## String escaping
+
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal
 `%` is doubled (`%%`). This applies to `str()` values, the literal parts of
 `fmt()`, and permission strings — never to emitted placeholders.
-

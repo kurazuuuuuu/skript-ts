@@ -45,7 +45,13 @@ import { installEngine, uninstallEngine } from "./cli/engine.js";
 import { readProbeState, runProbeRound, startProbeServer, stopProbeServer } from "./cli/probe.js";
 import { runWatch } from "./cli/watch.js";
 import { createProgress, type ProgressReporter, type StageHandle } from "./cli/progress.js";
-import { buildProject, deployEngineScripts, deployScripts, runTypecheck, type BuildResult } from "./cli/project.js";
+import {
+  buildProject,
+  deployEngineScripts,
+  deployScripts,
+  runTypecheck,
+  type BuildResult,
+} from "./cli/project.js";
 import { SandboxServer } from "./cli/server.js";
 import { SkriptLogParser, mapError, type MappedError } from "./cli/skript-log.js";
 
@@ -129,13 +135,27 @@ function parseProbeArgs(rest: string[], opts: CliOptions): void {
       return v;
     };
     switch (arg) {
-      case "--server-dir": opts.serverDir = value(); break;
-      case "--java": opts.java = value(); break;
-      case "--commands": opts.commandsFile = value(); break;
-      case "--out": opts.probeOutFile = value(); break;
-      case "--pace-ms": opts.paceMs = parseNonNegativeNumber(arg, value()); break;
-      case "--settle-ms": opts.settleMs = parseNonNegativeNumber(arg, value()); break;
-      case "--json": opts.json = true; break;
+      case "--server-dir":
+        opts.serverDir = value();
+        break;
+      case "--java":
+        opts.java = value();
+        break;
+      case "--commands":
+        opts.commandsFile = value();
+        break;
+      case "--out":
+        opts.probeOutFile = value();
+        break;
+      case "--pace-ms":
+        opts.paceMs = parseNonNegativeNumber(arg, value());
+        break;
+      case "--settle-ms":
+        opts.settleMs = parseNonNegativeNumber(arg, value());
+        break;
+      case "--json":
+        opts.json = true;
+        break;
       case "--help":
       case "-h":
         console.log(USAGE);
@@ -163,12 +183,25 @@ function parseWatchArgs(rest: string[], opts: CliOptions): void {
       return v;
     };
     switch (arg) {
-      case "--src": opts.srcDir = value(); break;
-      case "--out": opts.outDir = value(); break;
-      case "--server-dir": opts.serverDir = value(); opts.serverDirExplicit = true; break;
-      case "--json": opts.json = true; break;
-      case "--yes": opts.yes = true; break;
-      case "--debounce-ms": opts.debounceMs = parseNonNegativeNumber(arg, value()); break;
+      case "--src":
+        opts.srcDir = value();
+        break;
+      case "--out":
+        opts.outDir = value();
+        break;
+      case "--server-dir":
+        opts.serverDir = value();
+        opts.serverDirExplicit = true;
+        break;
+      case "--json":
+        opts.json = true;
+        break;
+      case "--yes":
+        opts.yes = true;
+        break;
+      case "--debounce-ms":
+        opts.debounceMs = parseNonNegativeNumber(arg, value());
+        break;
       case "--help":
       case "-h":
         console.log(USAGE);
@@ -182,12 +215,7 @@ function parseWatchArgs(rest: string[], opts: CliOptions): void {
 
 function parseArgs(argv: string[]): CliOptions {
   const [command, ...rest] = argv;
-  if (
-    command !== "build" &&
-    command !== "verify" &&
-    command !== "probe" &&
-    command !== "watch"
-  ) {
+  if (command !== "build" && command !== "verify" && command !== "probe" && command !== "watch") {
     throw new Error(`unknown command: ${command ?? "(none)"}\n${USAGE}`);
   }
   const opts: CliOptions = {
@@ -227,15 +255,34 @@ function parseArgs(argv: string[]): CliOptions {
       return v;
     };
     switch (arg) {
-      case "--src": opts.srcDir = value(); break;
-      case "--out": opts.outDir = value(); break;
-      case "--server-dir": opts.serverDir = value(); opts.serverDirExplicit = true; break;
-      case "--java": opts.java = value(); break;
-      case "--json": opts.json = true; break;
-      case "--deploy": opts.deploy = true; break;
-      case "--engine": opts.engine = true; break;
-      case "--no-behavior": opts.behavior = false; break;
-      case "--no-fresh": opts.fresh = false; break;
+      case "--src":
+        opts.srcDir = value();
+        break;
+      case "--out":
+        opts.outDir = value();
+        break;
+      case "--server-dir":
+        opts.serverDir = value();
+        opts.serverDirExplicit = true;
+        break;
+      case "--java":
+        opts.java = value();
+        break;
+      case "--json":
+        opts.json = true;
+        break;
+      case "--deploy":
+        opts.deploy = true;
+        break;
+      case "--engine":
+        opts.engine = true;
+        break;
+      case "--no-behavior":
+        opts.behavior = false;
+        break;
+      case "--no-fresh":
+        opts.fresh = false;
+        break;
       case "--help":
       case "-h":
         console.log(USAGE);
@@ -311,7 +358,13 @@ async function runProbeCommand(
     if (opts.json) {
       console.log(
         JSON.stringify(
-          { command: "probe", action, ok: false, durationMs: Date.now() - ctx.startedAt, error: message },
+          {
+            command: "probe",
+            action,
+            ok: false,
+            durationMs: Date.now() - ctx.startedAt,
+            error: message,
+          },
           null,
           2,
         ),
@@ -383,13 +436,18 @@ async function runProbeCommand(
       const res = await runProbeRound({
         serverDir: ctx.serverDir,
         probeDir: resolve(ctx.rootDir, opts.probeDir as string),
-        ...(opts.commandsFile !== null ? { commandsFile: resolve(ctx.rootDir, opts.commandsFile) } : {}),
+        ...(opts.commandsFile !== null
+          ? { commandsFile: resolve(ctx.rootDir, opts.commandsFile) }
+          : {}),
         ...(opts.probeOutFile !== null ? { outFile: resolve(ctx.rootDir, opts.probeOutFile) } : {}),
         paceMs: opts.paceMs,
         settleMs: opts.settleMs,
         onUpdate: (d) => handle.update(d),
       });
-      handle.finish("passed", `リロード ${(res.reloadMs / 1000).toFixed(1)}s、エラー ${res.errors.length} 件`);
+      handle.finish(
+        "passed",
+        `リロード ${(res.reloadMs / 1000).toFixed(1)}s、エラー ${res.errors.length} 件`,
+      );
       if (opts.json) {
         console.log(
           JSON.stringify(
@@ -521,7 +579,12 @@ async function main(): Promise<number> {
     }
   };
   const skipStage = (name: string, note?: string): void => {
-    stages.push({ name, status: "skipped", durationMs: 0, ...(note !== undefined ? { note } : {}) });
+    stages.push({
+      name,
+      status: "skipped",
+      durationMs: 0,
+      ...(note !== undefined ? { note } : {}),
+    });
   };
 
   // 1. Typecheck
@@ -567,7 +630,10 @@ async function main(): Promise<number> {
       // Deterministic plugin set: a previous engine run must not leak
       // skript-ts.jar (or a disabled Skript.jar) into Skript mode.
       uninstallEngine(rootDir, serverDir);
-      const res = deployScripts({ scripts: build.scripts, serverScriptsDir: join(serverDir, "plugins", "Skript", "scripts") });
+      const res = deployScripts({
+        scripts: build.scripts,
+        serverScriptsDir: join(serverDir, "plugins", "Skript", "scripts"),
+      });
       const removedNote = res.removed.length > 0 ? `、${res.removed.length} 件削除` : "";
       return { note: `${res.deployed.length} ファイル${removedNote}` };
     });
@@ -622,12 +688,17 @@ async function main(): Promise<number> {
       h.update("skript reload all 実行");
       const mark = server.mark();
       server.sendCommand("skript reload all");
-      await server.waitForLine(/Successfully reloaded the config|Encountered \d+ errors? while reloading/, 180_000, mark);
+      await server.waitForLine(
+        /Successfully reloaded the config|Encountered \d+ errors? while reloading/,
+        180_000,
+        mark,
+      );
       skriptErrors = parser.errors.map((e) => mapError(e, (build as BuildResult).maps));
       if (skriptErrors.length > 0) {
         throw new Error(`Skript エラー ${skriptErrors.length} 件（詳細は結果を参照）`);
       }
-      if (!parser.allLoadedOk) throw new Error("起動時に 'All scripts loaded without errors' を確認できませんでした");
+      if (!parser.allLoadedOk)
+        throw new Error("起動時に 'All scripts loaded without errors' を確認できませんでした");
       if (!parser.reloadOk) throw new Error("リロード成功を確認できませんでした");
       return { note: "エラー 0 件" };
     });
@@ -640,7 +711,9 @@ async function main(): Promise<number> {
         if (build === null) throw new Error("build result missing");
         const behaviorDir = join(srcDir, "behavior");
         const files = existsSync(behaviorDir)
-          ? readdirSync(behaviorDir).filter((f) => f.endsWith(".behavior.ts")).sort()
+          ? readdirSync(behaviorDir)
+              .filter((f) => f.endsWith(".behavior.ts"))
+              .sort()
           : [];
         if (files.length === 0) return { note: "テストなし（スキップ扱い）" };
         const ctx = createBehaviorContext({
@@ -655,13 +728,19 @@ async function main(): Promise<number> {
           const name = basename(file, ".behavior.ts");
           h.update(name);
           try {
-            const mod = (await import(pathToFileURL(join(behaviorDir, file)).href)) as Record<string, unknown>;
+            const mod = (await import(pathToFileURL(join(behaviorDir, file)).href)) as Record<
+              string,
+              unknown
+            >;
             const fn = (mod["default"] ?? mod["behavior"]) as BehaviorTest | undefined;
             if (typeof fn !== "function") throw new Error("default export に関数がありません");
             await Promise.race([
               fn(ctx),
               new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("テスト全体のタイムアウト (120s)")), 120_000).unref(),
+                setTimeout(
+                  () => reject(new Error("テスト全体のタイムアウト (120s)")),
+                  120_000,
+                ).unref(),
               ),
             ]);
             behaviorResults.push({ name, status: "passed" });
@@ -692,7 +771,12 @@ async function main(): Promise<number> {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         handle.finish("failed", message);
-        stages.push({ name: "停止", status: "failed", durationMs: Date.now() - t0, errors: [message] });
+        stages.push({
+          name: "停止",
+          status: "failed",
+          durationMs: Date.now() - t0,
+          errors: [message],
+        });
       }
     } else {
       skipStage("停止", "サーバー未起動");
@@ -717,7 +801,9 @@ async function main(): Promise<number> {
       console.log("\nSkript エラー（TS 位置つき）:");
       for (const e of skriptErrors) {
         const loc =
-          e.ts !== undefined ? ` → ${e.ts.file}:${e.ts.line}:${e.ts.column}${e.node !== undefined ? ` (${e.node})` : ""}` : "";
+          e.ts !== undefined
+            ? ` → ${e.ts.file}:${e.ts.line}:${e.ts.column}${e.node !== undefined ? ` (${e.node})` : ""}`
+            : "";
         console.log(`  ${e.file}:${e.skLine}${loc}`);
         console.log(`    ${e.message}`);
         if (e.sourceLine !== undefined) console.log(`    Line: ${e.sourceLine}`);

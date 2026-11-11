@@ -102,9 +102,7 @@ describe("http/env builtin slice (phase 26, engine-only)", () => {
     expect(sendStmt?.kind).toBe("send");
     expect(sendStmt?.message?.kind).toBe("httpBody");
 
-    const envScript = script(
-      command("env", null, [set(variable("tok"), env(str("MY_TOKEN")))]),
-    );
+    const envScript = script(command("env", null, [set(variable("tok"), env(str("MY_TOKEN")))]));
     const envIr = JSON.parse(emitIr(envScript)) as {
       body: {
         body?: {
@@ -158,11 +156,7 @@ describe("http/env builtin slice (phase 26, engine-only)", () => {
         RangeError,
       );
     }
-    expect(() =>
-      httpFetch("a", str("https://example.com"), { timeoutSeconds: 1 }),
-    ).not.toThrow();
-    expect(() =>
-      httpFetch("a", str("https://example.com"), { timeoutSeconds: 120 }),
-    ).not.toThrow();
+    expect(() => httpFetch("a", str("https://example.com"), { timeoutSeconds: 1 })).not.toThrow();
+    expect(() => httpFetch("a", str("https://example.com"), { timeoutSeconds: 120 })).not.toThrow();
   });
 });

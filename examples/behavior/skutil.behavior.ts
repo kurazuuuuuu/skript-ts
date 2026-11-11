@@ -68,7 +68,9 @@ export default defineBehavior(async (t) => {
     bot.chat("/filecount");
     await waitCount("lines:", 2);
     if (count("lines: 2") !== 1) {
-      throw new Error(`expected the post-wipe count report to have no value; messages: ${bot.messages.slice(-8).join(" | ")}`);
+      throw new Error(
+        `expected the post-wipe count report to have no value; messages: ${bot.messages.slice(-8).join(" | ")}`,
+      );
     }
   } finally {
     bot.disconnect();

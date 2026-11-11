@@ -56,13 +56,15 @@ export const httpScript: Script = script(
   command("httpmissing", null, [httpFetch("missing", str("http://127.0.0.1:8792/status/404"))]),
   command("httpredirect", null, [httpFetch("redir", str("http://127.0.0.1:8792/redirect"))]),
   command("httpbig", null, [httpFetch("big", str("http://127.0.0.1:8792/big"))]),
-  command("httpslow", null, [httpFetch("slow", str("http://127.0.0.1:8792/slow"), { timeoutSeconds: 2 })]),
+  command("httpslow", null, [
+    httpFetch("slow", str("http://127.0.0.1:8792/slow"), { timeoutSeconds: 2 }),
+  ]),
   command("httppolicy", null, [httpFetch("pol", str("file:///etc/passwd"))]),
   command("httpuserinfo", null, [httpFetch("ui", str("http://user:pass@127.0.0.1:8792/hello"))]),
-  command("httpdl", null, [httpDownload("dl", str("http://127.0.0.1:8792/hello"), str("dl/hello.txt"))]),
-  command("httpread", null, [
-    send(player(), fmt("dl text ", fileContents(str("dl/hello.txt")))),
+  command("httpdl", null, [
+    httpDownload("dl", str("http://127.0.0.1:8792/hello"), str("dl/hello.txt")),
   ]),
+  command("httpread", null, [send(player(), fmt("dl text ", fileContents(str("dl/hello.txt"))))]),
   onHttpResponse([
     ifElse(
       equals(httpId(), str("hello")),

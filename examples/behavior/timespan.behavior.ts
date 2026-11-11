@@ -1,4 +1,3 @@
-
 import { defineBehavior, type BehaviorBot } from "../../src/behavior.js";
 
 // timespans (phase 23): the value battery of the timespan

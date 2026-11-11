@@ -33,7 +33,9 @@ async function waitNew(
 function expectBlock(bot: BehaviorBot, x: number, y: number, z: number, name: string | null): void {
   const actual = bot.blockNameAt(x, y, z);
   if (actual !== name) {
-    throw new Error(`block at ${x}, ${y}, ${z}: expected ${name ?? "(air)"}, got ${actual ?? "(air)"}`);
+    throw new Error(
+      `block at ${x}, ${y}, ${z}: expected ${name ?? "(air)"}, got ${actual ?? "(air)"}`,
+    );
   }
 }
 
@@ -161,10 +163,7 @@ export default defineBehavior(async (t) => {
     // runs to completion server-side but the block stays.
     await t.console(`setblock ${cx - 1} ${cy - 1} ${cz} dirt`);
     m = bot.messages.length;
-    await Promise.race([
-      bot.digAt(cx - 1, cy - 1, cz).catch(() => undefined),
-      t.sleep(6000),
-    ]);
+    await Promise.race([bot.digAt(cx - 1, cy - 1, cz).catch(() => undefined), t.sleep(6000)]);
     bot.stopDigging();
     await waitNew(bot, m, "break blocked for GameBot", 8000);
     await t.sleep(300);

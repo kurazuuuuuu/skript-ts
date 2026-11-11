@@ -24,8 +24,7 @@ import type { Expr, Stmt } from "../src/index.js";
  * crashing inside emitText with a TypeError.
  */
 describe("emitter validation of hand-built ASTs (phase 27)", () => {
-  const emitStmt = (stmt: Stmt): string =>
-    emit(script(command("rfixprobe", null, [stmt])));
+  const emitStmt = (stmt: Stmt): string => emit(script(command("rfixprobe", null, [stmt])));
 
   it("rejects a sendTitle statement with neither title nor subtitle", () => {
     const stmt = { kind: "sendTitle", target: player() } as unknown as Stmt;
@@ -113,7 +112,7 @@ describe("emitter validation of hand-built ASTs (phase 27)", () => {
         ]),
       ),
     );
-    expect(created).toContain("a blue bossbar with title \"T\"");
-    expect(created).toContain("a keyed green boss bar with key \"k\"");
+    expect(created).toContain('a blue bossbar with title "T"');
+    expect(created).toContain('a keyed green boss bar with key "k"');
   });
 });

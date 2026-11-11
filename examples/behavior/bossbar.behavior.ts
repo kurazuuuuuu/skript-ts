@@ -9,7 +9,12 @@ import { defineBehavior, type BehaviorBot } from "../../src/behavior.js";
 // are core language: this test runs under BOTH runtimes with
 // identical expectations.
 
-async function waitNew(bot: BehaviorBot, mark: number, pattern: string, timeoutMs = 15_000): Promise<string> {
+async function waitNew(
+  bot: BehaviorBot,
+  mark: number,
+  pattern: string,
+  timeoutMs = 15_000,
+): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const fresh = bot.messages.slice(mark);
@@ -56,7 +61,12 @@ export default defineBehavior(async (t) => {
     // title and progress set before the viewer was added
     // (color 6 is white on the wire, 0 dividers is solid).
     const added = await bot.waitForBossBarAction(0, 10_000, bossMark);
-    if (added.title !== "Alpha" || added.health !== 0.25 || added.color !== 6 || added.dividers !== 0) {
+    if (
+      added.title !== "Alpha" ||
+      added.health !== 0.25 ||
+      added.color !== 6 ||
+      added.dividers !== 0
+    ) {
       throw new Error(`unexpected keyed boss bar add packet: ${JSON.stringify(added)}`);
     }
 

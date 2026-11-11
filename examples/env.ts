@@ -1,11 +1,4 @@
-import {
-  argument,
-  broadcast,
-  command,
-  env,
-  fmt,
-  script,
-} from "../src/index.js";
+import { argument, broadcast, command, env, fmt, script } from "../src/index.js";
 import type { Script } from "../src/index.js";
 
 // env() builtin slice (phase 26). This script is engine-only: the
@@ -22,7 +15,5 @@ import type { Script } from "../src/index.js";
 //   /envshow <name>   broadcast the value of the named
 //                     environment variable ("envval <value>")
 export const envScript: Script = script(
-  command("envshow", "text", [
-    broadcast(fmt("envval ", env(fmt(argument(1))))),
-  ]),
+  command("envshow", "text", [broadcast(fmt("envval ", env(fmt(argument(1)))))]),
 );

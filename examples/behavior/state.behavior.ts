@@ -37,7 +37,9 @@ export default defineBehavior(async (t) => {
         }
         if (Date.now() >= deadline) {
           const recent = bot.messages.slice(mark).slice(-6).join(" | ") || "(none)";
-          throw new Error(`timed out after ${timeoutMs}ms waiting for ${pattern}; recent: ${recent}`);
+          throw new Error(
+            `timed out after ${timeoutMs}ms waiting for ${pattern}; recent: ${recent}`,
+          );
         }
         await t.sleep(100);
       }
@@ -50,7 +52,8 @@ export default defineBehavior(async (t) => {
       const deadline = Date.now() + timeoutMs;
       for (;;) {
         if (fn()) return;
-        if (Date.now() >= deadline) throw new Error(`timed out after ${timeoutMs}ms waiting for ${label}`);
+        if (Date.now() >= deadline)
+          throw new Error(`timed out after ${timeoutMs}ms waiting for ${label}`);
         await t.sleep(150);
       }
     };

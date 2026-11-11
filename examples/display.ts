@@ -54,9 +54,7 @@ const joinDisplay = onJoin([
 
 // /dtplain: a title with no timings — the client keeps its
 // previous timings (no times packet is sent).
-const dtplain = command("dtplain", null, [
-  sendTitle(player(), str("Plain Title")),
-]);
+const dtplain = command("dtplain", null, [sendTitle(player(), str("Plain Title"))]);
 
 // /dtstay: only the stay is given — the fade-in / fade-out
 // are filled with the defaults (10 / 20 ticks).
@@ -82,9 +80,7 @@ const dtreset = command("dtreset", null, [
 ]);
 
 // /dbar: a standalone action bar message.
-const dbar = command("dbar", null, [
-  sendActionBar(player(), str("Action Two")),
-]);
+const dbar = command("dbar", null, [sendActionBar(player(), str("Action Two"))]);
 
 // /dbshow: the whole boss bar lifecycle in one trigger —
 // bars cannot be saved, so the bar lives in a local (the
@@ -95,7 +91,9 @@ const dbar = command("dbar", null, [
 const dbshow = command("dbshow", null, [
   set(localVar("bar"), bossBar({ title: str("Display Boss"), color: "red" })),
   addBossBarViewer(localVar("bar"), player()),
-  broadcast(fmt("boss=", bossBarTitleOf(localVar("bar")), " p=", bossBarProgressOf(localVar("bar")))),
+  broadcast(
+    fmt("boss=", bossBarTitleOf(localVar("bar")), " p=", bossBarProgressOf(localVar("bar"))),
+  ),
   setBossBarTitle(localVar("bar"), str("Boss Renamed")),
   broadcast(fmt("boss=", bossBarTitleOf(localVar("bar")))),
   setBossBarProgress(localVar("bar"), num(0.5)),
@@ -118,9 +116,7 @@ const dbfresh = command("dbfresh", null, [
 // /dbcast: a colored broadcast (phase 27, review item R-8).
 // The text carries a color code; both runtimes must deliver
 // it as formatting, never as a literal "§a" in the chat.
-const dbcast = command("dbcast", null, [
-  broadcast(str("&aColored News")),
-]);
+const dbcast = command("dbcast", null, [broadcast(str("&aColored News"))]);
 
 // /dtnum: a title whose stay is a NUMBER variable (phase 27,
 // review item R-9 re-derived). A number does not count as a

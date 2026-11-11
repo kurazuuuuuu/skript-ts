@@ -46,15 +46,17 @@ export const skutilScript: Script = script(
     fileDelete(log),
     dirCreate(dir),
     fileCreate(log),
-    ifElse(fileExists(log), [send(player(), str("exists: true"))], [send(player(), str("exists: false"))]),
+    ifElse(
+      fileExists(log),
+      [send(player(), str("exists: true"))],
+      [send(player(), str("exists: false"))],
+    ),
   ]),
   command("filelog", "text", [
     fileAppend(log, fmt(argument(1))),
     send(player(), fmt("count ", fileLineCount(log))),
   ]),
-  command("fileread", null, [
-    send(player(), fmt("contents: ", fileContents(log))),
-  ]),
+  command("fileread", null, [send(player(), fmt("contents: ", fileContents(log)))]),
   command("fileline", "integer", [
     ifElse(
       fileExists(log),
@@ -62,12 +64,14 @@ export const skutilScript: Script = script(
       [send(player(), str("line: (none)"))],
     ),
   ]),
-  command("filecount", null, [
-    send(player(), fmt("lines: ", fileLineCount(log))),
-  ]),
+  command("filecount", null, [send(player(), fmt("lines: ", fileLineCount(log)))]),
   command("filewipe", null, [
     fileDelete(log),
-    ifElse(fileExists(log), [send(player(), str("exists after wipe: true"))], [send(player(), str("exists after wipe: false"))]),
+    ifElse(
+      fileExists(log),
+      [send(player(), str("exists after wipe: true"))],
+      [send(player(), str("exists after wipe: false"))],
+    ),
   ]),
   command("fileescape", null, [
     fileWrite(str("../escape.txt"), str("pwned")),

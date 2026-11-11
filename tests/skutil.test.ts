@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { emit, emitIr, fileAppend, fileContents, isEngineOnlyScript, str, variable } from "../src/index.js";
+import {
+  emit,
+  emitIr,
+  fileAppend,
+  fileContents,
+  isEngineOnlyScript,
+  str,
+  variable,
+} from "../src/index.js";
 import { skutilScript } from "../examples/skutil.js";
 import { welcomeScript } from "../examples/welcome.js";
 
@@ -24,7 +32,12 @@ describe("skUtilities builtin slice (phase 9, engine-only)", () => {
     ]);
     // /filecreate: delete, create the directory, create the file,
     // then branch on the exists condition.
-    expect(ir.body[0]?.body.map((s) => s.kind)).toEqual(["fileDelete", "dirCreate", "fileCreate", "if"]);
+    expect(ir.body[0]?.body.map((s) => s.kind)).toEqual([
+      "fileDelete",
+      "dirCreate",
+      "fileCreate",
+      "if",
+    ]);
     expect(ir.body[0]?.body[3]?.cond?.kind).toBe("fileExists");
     // /filelog: append the argument, then report the line count.
     expect(ir.body[1]?.body.map((s) => s.kind)).toEqual(["fileAppend", "send"]);

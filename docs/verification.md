@@ -73,7 +73,7 @@ start from a clean slate; pass `--no-fresh` to keep it.
 
 ### Behavior tests
 
-Load checks prove a script parses; behavior tests prove it *works*.
+Load checks prove a script parses; behavior tests prove it _works_.
 Tests are TypeScript modules in `<src>/behavior/*.behavior.ts` whose
 default export receives a context (`src/behavior.ts`): connect a
 [mineflayer](https://github.com/PrismarineJS/mineflayer) bot over a
@@ -85,7 +85,6 @@ chat-log relay, the death counter, and every later area (logic, lists,
 functions, gameplay, events, text, GUIs, world, player state, display,
 timespans, boss bars, command definitions, HTTP) plus the engine
 builtins.
-
 
 ## CI and releases
 

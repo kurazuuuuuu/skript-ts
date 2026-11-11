@@ -105,7 +105,9 @@ export default defineBehavior(async (t) => {
       for (;;) {
         if (bot.messages.slice(m).some((msg) => msg === "mob death zombie by player")) break;
         if (Date.now() >= deadline) {
-          throw new Error("timed out waiting for the bot's sword kill to register as attacker=player");
+          throw new Error(
+            "timed out waiting for the bot's sword kill to register as attacker=player",
+          );
         }
         await bot.attackEntityByName("zombie");
         await t.sleep(650);
@@ -122,9 +124,7 @@ export default defineBehavior(async (t) => {
     await t.console("summon zombie 217.5 -60 219.5 {CanPickUpLoot:1b,NoAI:1b}");
     await t.sleep(500);
     m = bot.messages.length;
-    await t.console(
-      `summon item 217 -60 219 {Item:{id:"minecraft:wheat",count:1},PickupDelay:0}`,
-    );
+    await t.console(`summon item 217 -60 219 {Item:{id:"minecraft:wheat",count:1},PickupDelay:0}`);
     await waitNew(bot, m, "entity picked wheat by zombie", 15_000);
     await expectAbsent(bot, m, "picked filtered wheat");
     await t.console("kill @e[type=minecraft:zombie]");
@@ -139,9 +139,7 @@ export default defineBehavior(async (t) => {
     await t.console("tp Ev3Bot 218.5 -60 218.5");
     await t.sleep(600);
     m = bot.messages.length;
-    await t.console(
-      `summon item 218 -60 218 {Item:{id:"minecraft:wheat",count:1},PickupDelay:0}`,
-    );
+    await t.console(`summon item 218 -60 218 {Item:{id:"minecraft:wheat",count:1},PickupDelay:0}`);
     await waitNew(bot, m, "entity picked wheat by player", 15_000);
     await waitNew(bot, m, "picked filtered wheat", 15_000);
 

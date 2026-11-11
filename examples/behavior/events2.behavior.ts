@@ -71,7 +71,9 @@ async function waitCount(
 function expectBlock(bot: BehaviorBot, x: number, y: number, z: number, name: string | null): void {
   const actual = bot.blockNameAt(x, y, z);
   if (actual !== name) {
-    throw new Error(`block at ${x}, ${y}, ${z}: expected ${name ?? "(air)"}, got ${actual ?? "(air)"}`);
+    throw new Error(
+      `block at ${x}, ${y}, ${z}: expected ${name ?? "(air)"}, got ${actual ?? "(air)"}`,
+    );
   }
 }
 
@@ -259,7 +261,9 @@ export default defineBehavior(async (t) => {
       .slice(m)
       .filter((msg) => msg.startsWith("picked filtered")).length;
     if (filteredPickups !== 1) {
-      throw new Error(`expected exactly 1 filtered pickup in the pickup section, saw ${filteredPickups}`);
+      throw new Error(
+        `expected exactly 1 filtered pickup in the pickup section, saw ${filteredPickups}`,
+      );
     }
 
     // ---------------------------------------------------------

@@ -17,7 +17,15 @@
  * always stops the server before exiting (console stop, then signals),
  * so a dead host never leaves a Java process holding the world lock.
  */
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { SandboxServer } from "./server.js";
 
@@ -28,10 +36,17 @@ function parseArgs(argv: string[]): { stateDir: string; serverDir: string; javaP
     const value = argv[++i];
     if (value === undefined) throw new Error(`missing value for ${arg}`);
     switch (arg) {
-      case "--state-dir": out.stateDir = value; break;
-      case "--server-dir": out.serverDir = value; break;
-      case "--java": out.javaPath = value; break;
-      default: throw new Error(`unknown option: ${arg}`);
+      case "--state-dir":
+        out.stateDir = value;
+        break;
+      case "--server-dir":
+        out.serverDir = value;
+        break;
+      case "--java":
+        out.javaPath = value;
+        break;
+      default:
+        throw new Error(`unknown option: ${arg}`);
     }
   }
   if (out.stateDir === "" || out.serverDir === "" || out.javaPath === "") {
@@ -108,7 +123,10 @@ async function main(): Promise<void> {
         shuttingDown = true;
         clearInterval(timer);
         await server.stop(30_000);
-        writeStopped({ unexpected: true, reason: err instanceof Error ? err.message : String(err) });
+        writeStopped({
+          unexpected: true,
+          reason: err instanceof Error ? err.message : String(err),
+        });
         removePidFiles();
         logStream.end();
         process.exit(1);
@@ -160,7 +178,9 @@ async function main(): Promise<void> {
     }
     let names: string[];
     try {
-      names = readdirSync(requestsDir).filter((f) => f.endsWith(".json")).sort();
+      names = readdirSync(requestsDir)
+        .filter((f) => f.endsWith(".json"))
+        .sort();
     } catch {
       return;
     }

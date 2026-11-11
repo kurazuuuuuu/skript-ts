@@ -35,25 +35,31 @@ import {
 //   /calias, /ca2, /ca3
 //                     one command under three names
 export const commandsScript: Script = script(
-  command("cpoke", [cmdArg("player"), cmdArg("integer", true)], [
-    broadcast(fmt("cpoke target=", argument(1), " n=", argument(2))),
-    send(argument(1), fmt("cpoke: poked by ", player())),
-  ]),
-  command("croll", [cmdArg("number"), cmdArg("boolean")], [
-    broadcast(fmt("croll num=", argument(1), " bool=", argument(2))),
-  ]),
-  command("citem", [cmdArg("item")], [
-    broadcast(fmt("citem item=", argument(1))),
-  ]),
-  command("ctell", [cmdArg("player"), cmdArg("text")], [
-    broadcast(fmt("ctell to=", argument(1), " text=", argument(2))),
-  ]),
-  command("cmix", [cmdArg("integer", true), cmdArg("text")], [
-    broadcast(fmt("cmix n=", argument(1), " text=", argument(2))),
-  ]),
-  command("coff", [cmdArg("offlinePlayer")], [
-    broadcast(fmt("coff p=", argument(1))),
-  ]),
+  command(
+    "cpoke",
+    [cmdArg("player"), cmdArg("integer", true)],
+    [
+      broadcast(fmt("cpoke target=", argument(1), " n=", argument(2))),
+      send(argument(1), fmt("cpoke: poked by ", player())),
+    ],
+  ),
+  command(
+    "croll",
+    [cmdArg("number"), cmdArg("boolean")],
+    [broadcast(fmt("croll num=", argument(1), " bool=", argument(2)))],
+  ),
+  command("citem", [cmdArg("item")], [broadcast(fmt("citem item=", argument(1)))]),
+  command(
+    "ctell",
+    [cmdArg("player"), cmdArg("text")],
+    [broadcast(fmt("ctell to=", argument(1), " text=", argument(2)))],
+  ),
+  command(
+    "cmix",
+    [cmdArg("integer", true), cmdArg("text")],
+    [broadcast(fmt("cmix n=", argument(1), " text=", argument(2)))],
+  ),
+  command("coff", [cmdArg("offlinePlayer")], [broadcast(fmt("coff p=", argument(1)))]),
   command("cadmin", [], [broadcast(fmt("cadmin ran by ", player()))], {
     permission: "skriptts.test.admin",
   }),

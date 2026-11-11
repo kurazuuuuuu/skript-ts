@@ -44,15 +44,13 @@ import {
 // fishing-state literal by singling out the bite.
 export const events3Script: Script = script(
   // Filtered death: only zombie and skeleton deaths.
-  onDeath(
-    [broadcast(fmt("mob death ", typeOf(victim()), " by ", typeOf(attacker())))],
-    { victim: ["zombie", "skeleton"] },
-  ),
+  onDeath([broadcast(fmt("mob death ", typeOf(victim()), " by ", typeOf(attacker())))], {
+    victim: ["zombie", "skeleton"],
+  }),
   // Filtered death: players, with the attacker kind read back.
-  onDeath(
-    [broadcast(fmt("player died (attacker: ", typeOf(attacker()), ")"))],
-    { victim: "player" },
-  ),
+  onDeath([broadcast(fmt("player died (attacker: ", typeOf(attacker()), ")"))], {
+    victim: "player",
+  }),
   // Entity pickup, item-filtered: fires for mobs and players.
   onEntityPickup(
     [broadcast(fmt("entity picked ", typeOf(eventItem()), " by ", typeOf(eventEntity())))],
@@ -74,9 +72,7 @@ export const events3Script: Script = script(
   onFishCast([broadcast(fmt("fish cast (hook: ", typeOf(fishingHook()), ")"))]),
   onFishApproach([broadcast(str("fish approaching"))]),
   onFishBite([broadcast(str("fish bite"))]),
-  onFishCaught([
-    broadcast(fmt("fish caught: ", typeOf(itemOfEntity(eventEntity())))),
-  ]),
+  onFishCaught([broadcast(fmt("fish caught: ", typeOf(itemOfEntity(eventEntity()))))]),
   onEntityHooked([broadcast(fmt("hooked ", typeOf(hookedEntity())))]),
   onHookInGround([broadcast(str("hook in ground"))]),
   onFishEscape([broadcast(str("fish escaped"))]),

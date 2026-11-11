@@ -48,11 +48,25 @@ export const bossbarScript: Script = script(
     setBossBarProgress(localVar("bar"), num(0.25)),
     set(localVar("fetched"), keyedBossBarOf(str("sktest:main"))),
     addBossBarViewer(localVar("fetched"), player()),
-    broadcast(fmt("BB1 title=", bossBarTitleOf(localVar("fetched")), " progress=", bossBarProgressOf(localVar("fetched")))),
+    broadcast(
+      fmt(
+        "BB1 title=",
+        bossBarTitleOf(localVar("fetched")),
+        " progress=",
+        bossBarProgressOf(localVar("fetched")),
+      ),
+    ),
     // create again to check the storage reset rule
     set(localVar("bar"), keyedBossBar(str("sktest:main"))),
     set(localVar("fetched"), keyedBossBarOf(str("sktest:main"))),
-    broadcast(fmt("BB2 title=", bossBarTitleOf(localVar("fetched")), " progress=", bossBarProgressOf(localVar("fetched")))),
+    broadcast(
+      fmt(
+        "BB2 title=",
+        bossBarTitleOf(localVar("fetched")),
+        " progress=",
+        bossBarProgressOf(localVar("fetched")),
+      ),
+    ),
     // style write and read
     setBossBarStyle(localVar("fetched"), "6 notches"),
     broadcast(fmt("BB3 style=", bossBarStyleOf(localVar("fetched")))),
@@ -64,18 +78,27 @@ export const bossbarScript: Script = script(
     // key read
     broadcast(fmt("BB5 key=", bossBarKeyOf(localVar("fetched")))),
     // keyed section creation
-    createBossBarSection(localVar("sec"), [
-      setBossBarTitle(eventBossBar(), str("SecT")),
-      setBossBarProgress(eventBossBar(), num(0.3)),
-      setBossBarFlag(eventBossBar(), "darkenSky", true),
-    ], { key: str("sktest:sec") }),
+    createBossBarSection(
+      localVar("sec"),
+      [
+        setBossBarTitle(eventBossBar(), str("SecT")),
+        setBossBarProgress(eventBossBar(), num(0.3)),
+        setBossBarFlag(eventBossBar(), "darkenSky", true),
+      ],
+      { key: str("sktest:sec") },
+    ),
     set(localVar("secFetched"), keyedBossBarOf(str("sktest:sec"))),
-    broadcast(fmt("BB6 title=", bossBarTitleOf(localVar("secFetched")), " progress=", bossBarProgressOf(localVar("secFetched")))),
+    broadcast(
+      fmt(
+        "BB6 title=",
+        bossBarTitleOf(localVar("secFetched")),
+        " progress=",
+        bossBarProgressOf(localVar("secFetched")),
+      ),
+    ),
     ifElse(bossBarDarkensSky(localVar("secFetched")), [broadcast(str("BB6 sky=on"))]),
     // plain section creation
-    createBossBarSection(localVar("plain"), [
-      setBossBarTitle(eventBossBar(), str("PlainT")),
-    ]),
+    createBossBarSection(localVar("plain"), [setBossBarTitle(eventBossBar(), str("PlainT"))]),
     broadcast(fmt("BB7 title=", bossBarTitleOf(localVar("plain")))),
     // save keyed bar in a persistent variable
     set(variable("bb24"), keyedBossBarOf(str("sktest:sec"))),
@@ -84,6 +107,10 @@ export const bossbarScript: Script = script(
     deleteKeyedBossBar(str("sktest:main")),
     set(localVar("gone"), keyedBossBarOf(str("sktest:main"))),
     broadcast(fmt("BB9 title=", bossBarTitleOf(localVar("gone")))),
-    ifElse(bossBarCreatesFog(localVar("gone")), [broadcast(str("BB9 present"))], [broadcast(str("BB9 deleted"))]),
+    ifElse(
+      bossBarCreatesFog(localVar("gone")),
+      [broadcast(str("BB9 present"))],
+      [broadcast(str("BB9 deleted"))],
+    ),
   ]),
 );

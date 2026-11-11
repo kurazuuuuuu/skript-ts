@@ -495,21 +495,30 @@ export type VarTarget = ScalarVarExpr | AnyListExpr;
  * value and "objects" any list.
  */
 export type FunctionTypeName =
-  | "number" | "numbers"
-  | "text" | "texts"
-  | "boolean" | "booleans"
-  | "player" | "players"
-  | "location" | "locations"
-  | "object" | "objects"
+  | "number"
+  | "numbers"
+  | "text"
+  | "texts"
+  | "boolean"
+  | "booleans"
+  | "player"
+  | "players"
+  | "location"
+  | "locations"
+  | "object"
+  | "objects"
   // Gameplay value types (phase 14): a block, an item, an entity.
   // Singular only — the plural forms are not part of this slice.
   // All three parse as Skript declaration types (probed against
   // the real Skript 2.17.1); the engine matches them against its
   // Block / ItemStack / Entity values.
-  | "block" | "item" | "entity"
+  | "block"
+  | "item"
+  | "entity"
   // Both "timespan" and "timespans" parse as Skript declaration types
   // (probed); the engine matches them against its timespan values.
-  | "timespan" | "timespans";
+  | "timespan"
+  | "timespans";
 
 /**
  * One declared parameter of a custom function. The parameter is a
@@ -532,9 +541,7 @@ export type TimeUnit = "ticks" | "seconds" | "minutes";
  * 365 days (the original's fixed lengths, probed through its printed
  * forms).
  */
-export type TimespanUnit =
-  | TimeUnit
-  | "hours" | "days" | "weeks" | "months" | "years";
+export type TimespanUnit = TimeUnit | "hours" | "days" | "weeks" | "months" | "years";
 
 /**
  * A direction for relativeBlock (phase 18): the absolute
@@ -543,7 +550,14 @@ export type TimespanUnit =
  * location's direction.
  */
 export type RelativeDirection =
-  | "above" | "below" | "north" | "south" | "east" | "west" | "front" | "behind";
+  | "above"
+  | "below"
+  | "north"
+  | "south"
+  | "east"
+  | "west"
+  | "front"
+  | "behind";
 
 /** A weather name (phase 18): the three states of Skript's weather type. */
 export type WeatherName = "clear" | "rain" | "thunder";
@@ -559,8 +573,14 @@ export type GameModeName = "survival" | "creative" | "adventure" | "spectator";
  * fires on (see the fishing builders in api.ts).
  */
 export type FishingStateName =
-  | "fishing line cast" | "lured" | "bite" | "fish caught"
-  | "entity caught" | "bobber in ground" | "fish escape" | "reel in";
+  | "fishing line cast"
+  | "lured"
+  | "bite"
+  | "fish caught"
+  | "entity caught"
+  | "bobber in ground"
+  | "fish escape"
+  | "reel in";
 
 /**
  * A title timing in literal form (phase 21): a literal timespan for
@@ -571,15 +591,17 @@ export type FishingStateName =
  * parses there — probed); a TitleTiming is normalized to a timespan
  * literal expression by the builders.
  */
-export interface TitleTiming { amount: number; unit: TimespanUnit }
+export interface TitleTiming {
+  amount: number;
+  unit: TimespanUnit;
+}
 
 /**
  * A boss bar color name (phase 21): the seven colors of the
  * original's boss bar create / set forms. The name is a literal
  * in the .sk text, like a weather or game mode name.
  */
-export type BossBarColorName =
-  | "pink" | "blue" | "red" | "green" | "yellow" | "purple" | "white";
+export type BossBarColorName = "pink" | "blue" | "red" | "green" | "yellow" | "purple" | "white";
 
 /**
  * A boss bar style literal (phase 24), spelled the way the subset
@@ -589,8 +611,7 @@ export type BossBarColorName =
  * style. Note the read form is asymmetric in the original:
  * `style of %bar%` prints "solid" or "N segments" (probed).
  */
-export type BossBarStyleName =
-  | "solid" | "6 notches" | "10 notches" | "12 notches" | "20 notches";
+export type BossBarStyleName = "solid" | "6 notches" | "10 notches" | "12 notches" | "20 notches";
 
 /**
  * A boss bar flag (phase 24), the subset's names for Bukkit's
@@ -600,7 +621,11 @@ export type BossBarStyleName =
 export type BossBarFlagName = "darkenSky" | "createFog" | "playBossMusic";
 
 /** Source position in the TypeScript file where a builder call was made. */
-export interface SourceLoc { file: string; line: number; column: number }
+export interface SourceLoc {
+  file: string;
+  line: number;
+  column: number;
+}
 
 /** Represents a Skript statement. */
 export type Stmt =
@@ -647,7 +672,15 @@ export type Stmt =
   // the first; an empty search text inserts the replacement at
   // every gap (all) or at the start (first); a missing or
   // non-text target is left untouched.
-  | { kind: "textReplace"; target: ScalarVarExpr; find: Expr; replacement: Expr; firstOnly: boolean; caseSensitive: boolean; loc?: SourceLoc }
+  | {
+      kind: "textReplace";
+      target: ScalarVarExpr;
+      find: Expr;
+      replacement: Expr;
+      firstOnly: boolean;
+      caseSensitive: boolean;
+      loc?: SourceLoc;
+    }
   // Core-language inventory and GUI statements (phase 17),
   // mirroring the change / effect forms probed against the real
   // Skript 2.17.1:
@@ -746,7 +779,14 @@ export type Stmt =
   | { kind: "heal"; target: Expr; amount?: Expr; loc?: SourceLoc }
   | { kind: "addToExpr"; expr: Expr; value: Expr; loc?: SourceLoc }
   | { kind: "removeFromExpr"; expr: Expr; value: Expr; loc?: SourceLoc }
-  | { kind: "applyPotion"; target: Expr; potion: string; level?: number; durationSeconds?: number; loc?: SourceLoc }
+  | {
+      kind: "applyPotion";
+      target: Expr;
+      potion: string;
+      level?: number;
+      durationSeconds?: number;
+      loc?: SourceLoc;
+    }
   | { kind: "removePotion"; target: Expr; potion: string; loc?: SourceLoc }
   | { kind: "spawnEntity"; entityType: string; at: Expr; count?: number; loc?: SourceLoc }
   | { kind: "dropItem"; item: Expr; at: Expr; loc?: SourceLoc }
@@ -790,7 +830,16 @@ export type Stmt =
   //   %bossbar%`. (Style (notches) and the sky/fog/music
   //   flags were deferred in this phase and are covered in
   //   phase 24 — see setBossBarStyle / setBossBarFlag below.)
-  | { kind: "sendTitle"; target: Expr; title?: Expr; subtitle?: Expr; fadeIn?: Expr; stay?: Expr; fadeOut?: Expr; loc?: SourceLoc }
+  | {
+      kind: "sendTitle";
+      target: Expr;
+      title?: Expr;
+      subtitle?: Expr;
+      fadeIn?: Expr;
+      stay?: Expr;
+      fadeOut?: Expr;
+      loc?: SourceLoc;
+    }
   | { kind: "sendActionBar"; target: Expr; message: Expr; loc?: SourceLoc }
   | { kind: "clearTitle"; target: Expr; reset: boolean; loc?: SourceLoc }
   | { kind: "setBossBarTitle"; bar: Expr; title: Expr; loc?: SourceLoc }
@@ -825,7 +874,14 @@ export type Stmt =
   // statements on event-bossbar do that work. With `key` present
   // the bar is keyed (and the create resets any stored bar under
   // the key, like keyedBossBar); without it, a plain bar.
-  | { kind: "createBossBarSection"; target: VarTarget; key?: Expr; color?: BossBarColorName; body: Stmt[]; loc?: SourceLoc }
+  | {
+      kind: "createBossBarSection";
+      target: VarTarget;
+      key?: Expr;
+      color?: BossBarColorName;
+      body: Stmt[];
+      loc?: SourceLoc;
+    }
   // Core-language list statements and control flow (phase 12).
   // listAdd appends at the smallest unused positive integer index;
   // listRemove deletes the first matching entry (in iteration
@@ -886,20 +942,50 @@ export type Stmt =
   // an asynchronous HTTP fetch / download. The statement returns at
   // once; the outcome arrives later as an httpResponse event.
   | { kind: "httpFetch"; id: string; url: TextExpr; timeoutSeconds?: number; loc?: SourceLoc }
-  | { kind: "httpDownload"; id: string; url: TextExpr; path: TextExpr; timeoutSeconds?: number; loc?: SourceLoc };
+  | {
+      kind: "httpDownload";
+      id: string;
+      url: TextExpr;
+      path: TextExpr;
+      timeoutSeconds?: number;
+      loc?: SourceLoc;
+    };
 
 /** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. Phase 22 generalized death (any entity, victim filter), added the entity pickup / drop forms, and split fishing into its state sub-events. */
 export type EventKind =
-  | "join" | "firstJoin" | "quit" | "chat" | "death"
-  | "blockBreak" | "blockPlace" | "rightClick" | "leftClick" | "damage"
-  | "pickup" | "drop" | "respawn" | "bedEnter" | "bedLeave"
-  | "inventoryClick" | "inventoryClose"
-  | "entityPickup" | "entityDrop"
-  | "fishCast" | "fishApproach" | "fishBite" | "fishCaught"
-  | "entityHooked" | "hookInGround" | "fishEscape" | "fishReelIn"
+  | "join"
+  | "firstJoin"
+  | "quit"
+  | "chat"
+  | "death"
+  | "blockBreak"
+  | "blockPlace"
+  | "rightClick"
+  | "leftClick"
+  | "damage"
+  | "pickup"
+  | "drop"
+  | "respawn"
+  | "bedEnter"
+  | "bedLeave"
+  | "inventoryClick"
+  | "inventoryClose"
+  | "entityPickup"
+  | "entityDrop"
+  | "fishCast"
+  | "fishApproach"
+  | "fishBite"
+  | "fishCaught"
+  | "entityHooked"
+  | "hookInGround"
+  | "fishEscape"
+  | "fishReelIn"
   | "fishingStateChange"
-  | "wsOpen" | "wsMessage" | "wsClose"
-  | "timerTick" | "timerComplete"
+  | "wsOpen"
+  | "wsMessage"
+  | "wsClose"
+  | "timerTick"
+  | "timerComplete"
   | "papiRequest"
   | "httpResponse";
 
@@ -949,7 +1035,13 @@ export interface EventFilter {
  *   "minecraft:diamond_sword").
  */
 export type CommandArgType =
-  | "text" | "player" | "offlinePlayer" | "integer" | "number" | "boolean" | "item";
+  | "text"
+  | "player"
+  | "offlinePlayer"
+  | "integer"
+  | "number"
+  | "boolean"
+  | "item";
 
 /**
  * One declared command argument (phase 20). There is deliberately
@@ -970,7 +1062,14 @@ export type TopLevel =
   // `prefixes` is set only for the papiRequest event (phase 10): the
   // PlaceholderAPI expansion identifiers this handler serves.
   // `filter` is set only for filtered gameplay events (phase 16).
-  | { kind: "event"; event: EventKind; body: readonly Stmt[]; prefixes?: readonly string[]; filter?: EventFilter; loc?: SourceLoc }
+  | {
+      kind: "event";
+      event: EventKind;
+      body: readonly Stmt[];
+      prefixes?: readonly string[];
+      filter?: EventFilter;
+      loc?: SourceLoc;
+    }
   // A command (generalized in phase 20): a list of typed arguments
   // plus the section entries the original supports — permission,
   // usage, aliases. The legacy single-argument builder maps onto
@@ -979,12 +1078,28 @@ export type TopLevel =
   // and never delivers the message — a sender without permission
   // cannot address the command at all and gets the same
   // "Unknown or incomplete command" failure as an unknown command.
-  | { kind: "command"; name: string; args: readonly CommandArgSpec[]; permission?: string; usage?: string; aliases?: readonly string[]; body: readonly Stmt[]; loc?: SourceLoc }
+  | {
+      kind: "command";
+      name: string;
+      args: readonly CommandArgSpec[];
+      permission?: string;
+      usage?: string;
+      aliases?: readonly string[];
+      body: readonly Stmt[];
+      loc?: SourceLoc;
+    }
   // A custom function (phase 13). `returnType` is null for a void
   // function (no `:: type` in the .sk form). Functions are global:
   // they can be called from any script, before or after their
   // definition in file order (verified against the real Skript).
-  | { kind: "function"; name: string; params: readonly FunctionParam[]; returnType: FunctionTypeName | null; body: readonly Stmt[]; loc?: SourceLoc }
+  | {
+      kind: "function";
+      name: string;
+      params: readonly FunctionParam[];
+      returnType: FunctionTypeName | null;
+      body: readonly Stmt[];
+      loc?: SourceLoc;
+    }
   // A periodical trigger (phase 18): `every <amount> <unit>:`,
   // Skript's periodical event. The amount is a NUMBER LITERAL —
   // the original rejects expression periods at parse time
@@ -1000,4 +1115,7 @@ export type TopLevel =
   | { kind: "periodical"; amount: number; unit: TimeUnit; body: readonly Stmt[]; loc?: SourceLoc };
 
 /** Represents a Skript script. */
-export interface Script { kind: "script"; body: readonly TopLevel[] }
+export interface Script {
+  kind: "script";
+  body: readonly TopLevel[];
+}

@@ -40,11 +40,11 @@ import type { Script } from "../src/index.js";
 //                                literal ("%nope_missing%").
 export const ersatzScript: Script = script(
   onPlaceholderRequest("skriptts", [
-    ifElse(equals(placeholderIdentifier(), str("name")), [
-      setPlaceholderResult(fmt(player())),
-    ], [
-      setPlaceholderResult(fmt("echo-", placeholderIdentifier())),
-    ]),
+    ifElse(
+      equals(placeholderIdentifier(), str("name")),
+      [setPlaceholderResult(fmt(player()))],
+      [setPlaceholderResult(fmt("echo-", placeholderIdentifier()))],
+    ),
   ]),
   onPlaceholderRequest("skripttswho", [
     setPlaceholderResult(fmt(placeholderPrefix(), " for ", player())),

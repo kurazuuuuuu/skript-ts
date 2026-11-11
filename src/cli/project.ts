@@ -100,7 +100,9 @@ export async function buildProject(opts: {
       continue;
     }
     if (found.length > 1) {
-      throw new Error(`${relSource}: exports ${found.length} Script values; exactly one is required (1 TS file = 1 .sk file)`);
+      throw new Error(
+        `${relSource}: exports ${found.length} Script values; exactly one is required (1 TS file = 1 .sk file)`,
+      );
     }
     const prog = found[0] as Script;
     const relSk = toPosix(relative(srcDir, absFile)).replace(/\.ts$/, ".sk");
@@ -114,7 +116,15 @@ export async function buildProject(opts: {
       // Engine-builtin features have no .sk form: emit IR only. The
       // script still counts as built (the engine load check expects
       // every built script), but Skript deployment skips it.
-      scripts.push({ rel: relSk, engineOnly: true, skPath: null, mapPath: null, map: null, irRel, irPath });
+      scripts.push({
+        rel: relSk,
+        engineOnly: true,
+        skPath: null,
+        mapPath: null,
+        map: null,
+        irRel,
+        irPath,
+      });
       continue;
     }
     const { code, lines } = emitWithMap(prog);
@@ -146,11 +156,15 @@ export async function buildProject(opts: {
 export function runTypecheck(rootDir: string): { ok: boolean; output: string } {
   const require = createRequire(join(rootDir, "package.json"));
   const tscBin = require.resolve("typescript/bin/tsc");
-  const res = spawnSync(process.execPath, [tscBin, "--noEmit", "-p", join(rootDir, "tsconfig.json")], {
-    cwd: rootDir,
-    encoding: "utf8",
-    timeout: 300_000,
-  });
+  const res = spawnSync(
+    process.execPath,
+    [tscBin, "--noEmit", "-p", join(rootDir, "tsconfig.json")],
+    {
+      cwd: rootDir,
+      encoding: "utf8",
+      timeout: 300_000,
+    },
+  );
   const output = `${res.stdout ?? ""}${res.stderr ?? ""}`.trim();
   return { ok: res.status === 0, output };
 }
@@ -203,7 +217,8 @@ export function deployScripts(opts: {
   if (existsSync(manifestPath)) {
     try {
       const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
-      if (Array.isArray(parsed)) previous = parsed.filter((x): x is string => typeof x === "string");
+      if (Array.isArray(parsed))
+        previous = parsed.filter((x): x is string => typeof x === "string");
     } catch {
       previous = [];
     }
@@ -254,7 +269,8 @@ export function deployEngineScripts(opts: {
   if (existsSync(manifestPath)) {
     try {
       const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
-      if (Array.isArray(parsed)) previous = parsed.filter((x): x is string => typeof x === "string");
+      if (Array.isArray(parsed))
+        previous = parsed.filter((x): x is string => typeof x === "string");
     } catch {
       previous = [];
     }

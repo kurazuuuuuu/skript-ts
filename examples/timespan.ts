@@ -56,7 +56,9 @@ import type { Script } from "../src/index.js";
 //              retunes them, and prints the read-back
 export const timespanScript: Script = script(
   defineFunction("tsId", [param("t", "timespan")], "timespan", [returnValue(localVar("t"))]),
-  defineFunction("tsDefault", [param("t", "timespan", timespan(42, "seconds"))], "timespan", [returnValue(localVar("t"))]),
+  defineFunction("tsDefault", [param("t", "timespan", timespan(42, "seconds"))], "timespan", [
+    returnValue(localVar("t")),
+  ]),
   defineFunction("tsCount", [param("ts", "timespans")], "number", [
     set(localVar("n"), num(0)),
     loopList(localList("ts"), [add(localVar("n"), num(1))]),
@@ -118,11 +120,31 @@ export const timespanScript: Script = script(
     set(localVar("i"), num(2)),
     set(variable("tsl", localVar("i")), timespan(44, "seconds")),
     broadcast(fmt("TS listelem=[", variable("tsl", localVar("i")), "]")),
-    ifElse(equals(localVar("t"), localVar("c100")), [broadcast(str("TS eq=true"))], [broadcast(str("TS eq=false"))]),
-    ifElse(greaterThan(localVar("c2m"), localVar("c90")), [broadcast(str("TS gt=true"))], [broadcast(str("TS gt=false"))]),
-    ifElse(lessThan(localVar("c90"), localVar("c2m")), [broadcast(str("TS lt=true"))], [broadcast(str("TS lt=false"))]),
-    ifElse(equals(localVar("t"), num(5)), [broadcast(str("TS eqnum=true"))], [broadcast(str("TS eqnum=false"))]),
-    ifElse(equals(localVar("big"), localVar("big")), [broadcast(str("TS infeq=true"))], [broadcast(str("TS infeq=false"))]),
+    ifElse(
+      equals(localVar("t"), localVar("c100")),
+      [broadcast(str("TS eq=true"))],
+      [broadcast(str("TS eq=false"))],
+    ),
+    ifElse(
+      greaterThan(localVar("c2m"), localVar("c90")),
+      [broadcast(str("TS gt=true"))],
+      [broadcast(str("TS gt=false"))],
+    ),
+    ifElse(
+      lessThan(localVar("c90"), localVar("c2m")),
+      [broadcast(str("TS lt=true"))],
+      [broadcast(str("TS lt=false"))],
+    ),
+    ifElse(
+      equals(localVar("t"), num(5)),
+      [broadcast(str("TS eqnum=true"))],
+      [broadcast(str("TS eqnum=false"))],
+    ),
+    ifElse(
+      equals(localVar("big"), localVar("big")),
+      [broadcast(str("TS infeq=true"))],
+      [broadcast(str("TS infeq=false"))],
+    ),
     broadcast(fmt("TS fn=[", call("tsId", timespan(7, "seconds")), "]")),
     broadcast(fmt("TS fnvar=[", call("tsId", localVar("t")), "]")),
     broadcast(fmt("TS fndef=[", call("tsDefault"), "]")),
@@ -140,23 +162,52 @@ export const timespanScript: Script = script(
 
   command("tstitle", null, [
     set(localVar("stay"), timespan(3, "seconds")),
-    sendTitle(player(), str("TS Title"), { fadeIn: timespan(1, "seconds"), stay: localVar("stay"), fadeOut: timespan(20, "ticks") }),
+    sendTitle(player(), str("TS Title"), {
+      fadeIn: timespan(1, "seconds"),
+      stay: localVar("stay"),
+      fadeOut: timespan(20, "ticks"),
+    }),
   ]),
 
-  command("tsfish", null, [
-    set(variable("tsfish"), bool(true)),
-    broadcast(str("TS fish armed")),
-  ]),
+  command("tsfish", null, [set(variable("tsfish"), bool(true)), broadcast(str("TS fish armed"))]),
 
   onFishCast([
     ifElse(equals(variable("tsfish"), bool(true)), [
-      broadcast(fmt("TS fish def min=[", fishingWaitTime("min"), "] max=[", fishingWaitTime("max"), "] bite=[", fishingBiteTime(), "] amin=[", fishingApproachAngle("min"), "] amax=[", fishingApproachAngle("max"), "]")),
+      broadcast(
+        fmt(
+          "TS fish def min=[",
+          fishingWaitTime("min"),
+          "] max=[",
+          fishingWaitTime("max"),
+          "] bite=[",
+          fishingBiteTime(),
+          "] amin=[",
+          fishingApproachAngle("min"),
+          "] amax=[",
+          fishingApproachAngle("max"),
+          "]",
+        ),
+      ),
       setFishingWaitTime("min", timespan(10, "seconds")),
       setFishingWaitTime("max", timespan(20, "seconds")),
       setFishingBiteTime(timespan(3, "seconds")),
       setFishingApproachAngle("min", num(45)),
       setFishingApproachAngle("max", num(270)),
-      broadcast(fmt("TS fish set min=[", fishingWaitTime("min"), "] max=[", fishingWaitTime("max"), "] bite=[", fishingBiteTime(), "] amin=[", fishingApproachAngle("min"), "] amax=[", fishingApproachAngle("max"), "]")),
+      broadcast(
+        fmt(
+          "TS fish set min=[",
+          fishingWaitTime("min"),
+          "] max=[",
+          fishingWaitTime("max"),
+          "] bite=[",
+          fishingBiteTime(),
+          "] amin=[",
+          fishingApproachAngle("min"),
+          "] amax=[",
+          fishingApproachAngle("max"),
+          "]",
+        ),
+      ),
       set(variable("tsfish"), bool(false)),
     ]),
   ]),

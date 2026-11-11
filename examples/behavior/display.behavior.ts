@@ -27,7 +27,9 @@ export default defineBehavior(async (t) => {
         }
         if (Date.now() >= deadline) {
           const recent = bot.messages.slice(mark).slice(-6).join(" | ") || "(none)";
-          throw new Error(`timed out after ${timeoutMs}ms waiting for ${pattern}; recent: ${recent}`);
+          throw new Error(
+            `timed out after ${timeoutMs}ms waiting for ${pattern}; recent: ${recent}`,
+          );
         }
         await t.sleep(100);
       }
@@ -109,7 +111,12 @@ export default defineBehavior(async (t) => {
     let mark = bot.messages.length;
     await chat("/dbshow");
     const added = await bot.waitForBossBarAction(0, 10_000, bossMark);
-    if (added.title !== "Display Boss" || added.health !== 1 || added.color !== 2 || added.dividers !== 0) {
+    if (
+      added.title !== "Display Boss" ||
+      added.health !== 1 ||
+      added.color !== 2 ||
+      added.dividers !== 0
+    ) {
       throw new Error(`unexpected boss bar add packet: ${JSON.stringify(added)}`);
     }
     await waitMsg(mark, /boss=Display Boss p=1/);

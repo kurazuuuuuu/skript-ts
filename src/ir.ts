@@ -97,7 +97,11 @@ function containsEngineOnly(value: unknown): boolean {
   if (typeof value === "object" && value !== null) {
     const rec = value as Record<string, unknown>;
     if (typeof rec["kind"] === "string" && ENGINE_ONLY_KINDS.has(rec["kind"])) return true;
-    if (rec["kind"] === "event" && typeof rec["event"] === "string" && ENGINE_ONLY_EVENTS.has(rec["event"])) {
+    if (
+      rec["kind"] === "event" &&
+      typeof rec["event"] === "string" &&
+      ENGINE_ONLY_EVENTS.has(rec["event"])
+    ) {
       return true;
     }
     return Object.values(rec).some(containsEngineOnly);

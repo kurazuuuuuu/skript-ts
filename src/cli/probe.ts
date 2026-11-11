@@ -74,7 +74,11 @@ export function readProbeState(serverDir: string): ProbeState {
   };
 }
 
-async function waitForCondition(fn: () => boolean, timeoutMs: number, pollMs = 200): Promise<boolean> {
+async function waitForCondition(
+  fn: () => boolean,
+  timeoutMs: number,
+  pollMs = 200,
+): Promise<boolean> {
   const t0 = Date.now();
   for (;;) {
     if (fn()) return true;
@@ -213,7 +217,10 @@ export async function startProbeServer(opts: {
     }
     throw new Error(`プローブサーバーの起動を確認できませんでした。host.log 末尾:\n${tail}`);
   }
-  const ready = JSON.parse(readFileSync(readyPath, "utf8")) as { bootMs: number; serverPid: number | null };
+  const ready = JSON.parse(readFileSync(readyPath, "utf8")) as {
+    bootMs: number;
+    serverPid: number | null;
+  };
   return { bootMs: ready.bootMs, hostPid, serverPid: ready.serverPid, reclaimed };
 }
 
@@ -254,7 +261,9 @@ export async function runProbeRound(opts: {
   for (const f of readdirSync(scriptsDir)) {
     if (f.endsWith(".sk")) rmSync(join(scriptsDir, f));
   }
-  const probeFiles = readdirSync(opts.probeDir).filter((f) => f.endsWith(".sk")).sort();
+  const probeFiles = readdirSync(opts.probeDir)
+    .filter((f) => f.endsWith(".sk"))
+    .sort();
   if (probeFiles.length === 0) {
     throw new Error(`プローブファイル (.sk) が ${opts.probeDir} にありません`);
   }
@@ -269,7 +278,10 @@ export async function runProbeRound(opts: {
   const ack = await sendRequest(stateDir, { type: "command", command: "skript reload all" });
   if (!ack.ok) throw new Error(`リロードコマンドの送信に失敗しました: ${ack.error ?? "unknown"}`);
   const reloaded = await waitForCondition(
-    () => readLogLines(stateDir).slice(mark).some((l) => RELOAD_DONE.test(l)),
+    () =>
+      readLogLines(stateDir)
+        .slice(mark)
+        .some((l) => RELOAD_DONE.test(l)),
     opts.reloadTimeoutMs ?? 180_000,
     200,
   );
@@ -288,7 +300,8 @@ export async function runProbeRound(opts: {
     for (const cmd of commands) {
       opts.onUpdate?.(cmd);
       const res = await sendRequest(stateDir, { type: "command", command: cmd });
-      if (!res.ok) throw new Error(`コマンド ${cmd} の送信に失敗しました: ${res.error ?? "unknown"}`);
+      if (!res.ok)
+        throw new Error(`コマンド ${cmd} の送信に失敗しました: ${res.error ?? "unknown"}`);
       commandCount++;
       await sleep(paceMs);
     }

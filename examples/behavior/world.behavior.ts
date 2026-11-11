@@ -36,7 +36,9 @@ export default defineBehavior(async (t) => {
         }
         if (Date.now() >= deadline) {
           const recent = bot.messages.slice(mark).slice(-6).join(" | ") || "(none)";
-          throw new Error(`timed out after ${timeoutMs}ms waiting for ${pattern}; recent: ${recent}`);
+          throw new Error(
+            `timed out after ${timeoutMs}ms waiting for ${pattern}; recent: ${recent}`,
+          );
         }
         await t.sleep(100);
       }
@@ -54,7 +56,9 @@ export default defineBehavior(async (t) => {
       for (;;) {
         if (heartbeats() >= target) return Date.now();
         if (Date.now() >= deadline) {
-          throw new Error(`timed out after ${timeoutMs}ms waiting for heartbeat #${target} (saw ${heartbeats()})`);
+          throw new Error(
+            `timed out after ${timeoutMs}ms waiting for heartbeat #${target} (saw ${heartbeats()})`,
+          );
         }
         await t.sleep(100);
       }
@@ -114,7 +118,12 @@ export default defineBehavior(async (t) => {
     mark = bot.messages.length;
     await chat("/wbuild");
     await waitMsg(mark, /built stone \+ gold block/);
-    const waitBlock = async (x: number, y: number, z: number, name: string | null): Promise<void> => {
+    const waitBlock = async (
+      x: number,
+      y: number,
+      z: number,
+      name: string | null,
+    ): Promise<void> => {
       const deadline = Date.now() + 10_000;
       for (;;) {
         if (bot.blockNameAt(x, y, z) === name) return;

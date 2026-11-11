@@ -56,8 +56,18 @@ skript-ts には、同じ TypeScript プログラムに対する2つの実行系
 
 ```ts
 import {
-  script, onJoin, onFirstJoin, broadcast, send, give, set,
-  player, fmt, variable, bool, emit,
+  script,
+  onJoin,
+  onFirstJoin,
+  broadcast,
+  send,
+  give,
+  set,
+  player,
+  fmt,
+  variable,
+  bool,
+  emit,
 } from "skript-ts";
 
 const prog = script(
@@ -66,9 +76,7 @@ const prog = script(
     give(player(), "wooden sword", 1),
     set(variable("welcomed", player()), bool(true)),
   ]),
-  onJoin([
-    send(player(), fmt("おかえりなさい、", player(), " さん")),
-  ]),
+  onJoin([send(player(), fmt("おかえりなさい、", player(), " さん"))]),
 );
 
 console.log(emit(prog));

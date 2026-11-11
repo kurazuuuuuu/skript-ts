@@ -13,7 +13,9 @@ describe("SharpSK builtin slice (phase 7, engine-only)", () => {
     const ir = JSON.parse(emitIr(sharpskScript)) as {
       body: { kind: string; event?: string; body: { kind: string }[] }[];
     };
-    const kinds = ir.body.map((t) => (t.kind === "event" ? `event:${t.event ?? ""}` : `command:${t.kind}`));
+    const kinds = ir.body.map((t) =>
+      t.kind === "event" ? `event:${t.event ?? ""}` : `command:${t.kind}`,
+    );
     expect(kinds).toEqual([
       "command:command",
       "event:timerTick",

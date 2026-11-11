@@ -41,23 +41,14 @@ export const sharpskScript: Script = script(
   ]),
   onTimerTick([broadcast(fmt("tick ", timerId(), " left ", timerTimeLeft(timerId())))]),
   onTimerComplete([broadcast(fmt("timer ", timerId(), " complete"))]),
-  command("timerpause", null, [
-    timerPause("demo"),
-    send(player(), str("timer demo paused")),
-  ]),
-  command("timerresume", null, [
-    timerResume("demo"),
-    send(player(), str("timer demo resumed")),
-  ]),
-  command("timerstop", null, [
-    timerStop("demo"),
-    send(player(), str("timer demo stopped")),
-  ]),
+  command("timerpause", null, [timerPause("demo"), send(player(), str("timer demo paused"))]),
+  command("timerresume", null, [timerResume("demo"), send(player(), str("timer demo resumed"))]),
+  command("timerstop", null, [timerStop("demo"), send(player(), str("timer demo stopped"))]),
   command("timerleft", null, [
-    ifElse(timerActive(str("demo")), [
-      send(player(), fmt("timer demo left ", timerTimeLeft(str("demo")))),
-    ], [
-      send(player(), str("timer demo is not active")),
-    ]),
+    ifElse(
+      timerActive(str("demo")),
+      [send(player(), fmt("timer demo left ", timerTimeLeft(str("demo"))))],
+      [send(player(), str("timer demo is not active"))],
+    ),
   ]),
 );

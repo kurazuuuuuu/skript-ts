@@ -48,19 +48,12 @@ export const gameplayScript: Script = script(
   defineFunction("blockLabel", [param("b", "block")], "object", [
     returnValue(typeOf(localVar("b"))),
   ]),
-  defineFunction("itemLabel", [param("i", "item")], "object", [
-    returnValue(typeOf(localVar("i"))),
-  ]),
-  defineFunction("entityLabel", [param("e", "entity")], "text", [
-    returnValue(fmt(localVar("e"))),
-  ]),
+  defineFunction("itemLabel", [param("i", "item")], "object", [returnValue(typeOf(localVar("i")))]),
+  defineFunction("entityLabel", [param("e", "entity")], "text", [returnValue(fmt(localVar("e")))]),
   onBlockBreak([
     ifElse(
       equals(typeOf(eventBlock()), item("dirt")),
-      [
-        broadcast(fmt("break blocked for ", player())),
-        cancelEvent(),
-      ],
+      [broadcast(fmt("break blocked for ", player())), cancelEvent()],
       [
         broadcast(
           fmt(
@@ -78,10 +71,7 @@ export const gameplayScript: Script = script(
   onBlockPlace([
     ifElse(
       equals(typeOf(eventItem()), item("stone")),
-      [
-        broadcast(fmt("place blocked for ", player())),
-        cancelEvent(),
-      ],
+      [broadcast(fmt("place blocked for ", player())), cancelEvent()],
       [
         broadcast(
           fmt(

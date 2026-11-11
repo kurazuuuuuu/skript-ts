@@ -51,9 +51,7 @@ import type { Script } from "../src/index.js";
 //   /delayloop         two 1-second waits inside a times loop,
 //                      sending "tick 1" and "tick 2"
 export const listsScript: Script = script(
-  onJoin([
-    set(variable("labels", str("color")), str("red")),
-  ]),
+  onJoin([set(variable("labels", str("color")), str("red"))]),
   command("listadd", "text", [
     listAdd(listVar("groceries"), argument(1)),
     send(player(), fmt("added ", argument(1), "; size=", listSize(listVar("groceries")))),
@@ -69,9 +67,7 @@ export const listsScript: Script = script(
       ],
     ),
   ]),
-  command("listall", null, [
-    send(player(), fmt("all: ", listVar("groceries"))),
-  ]),
+  command("listall", null, [send(player(), fmt("all: ", listVar("groceries")))]),
   command("listremove", "text", [
     listRemove(listVar("groceries"), argument(1)),
     send(player(), fmt("removed ", argument(1), "; size=", listSize(listVar("groceries")))),
@@ -80,14 +76,9 @@ export const listsScript: Script = script(
     deleteVar(variable("groceries", argument(1))),
     send(player(), fmt("size=", listSize(listVar("groceries")))),
   ]),
-  command("listclear", null, [
-    deleteVar(listVar("groceries")),
-    send(player(), str("cleared")),
-  ]),
+  command("listclear", null, [deleteVar(listVar("groceries")), send(player(), str("cleared"))]),
   command("tagshow", null, [
-    loopList(listVar("labels"), [
-      send(player(), fmt("tag ", loopIndex(), ": ", loopValue())),
-    ]),
+    loopList(listVar("labels"), [send(player(), fmt("tag ", loopIndex(), ": ", loopValue()))]),
   ]),
   command("tagadd", null, [
     listAdd(listVar("labels"), str("misc")),
@@ -118,9 +109,6 @@ export const listsScript: Script = script(
     send(player(), str("done")),
   ]),
   command("delayloop", null, [
-    loopTimes(num(2), [
-      wait(num(1), "seconds"),
-      send(player(), fmt("tick ", loopValue())),
-    ]),
+    loopTimes(num(2), [wait(num(1), "seconds"), send(player(), fmt("tick ", loopValue()))]),
   ]),
 );

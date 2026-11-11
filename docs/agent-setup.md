@@ -10,12 +10,12 @@ Japanese version: [agent-setup.ja.md](agent-setup.ja.md)
 
 ## 0. Prerequisites
 
-| Tool | Requirement | Check |
-|---|---|---|
-| Git | any recent version | `git --version` |
-| Node.js | 20 or newer | `node --version` |
-| pnpm | 12.15.0 (pinned by `packageManager` in `package.json`; Corepack will provide it) | `pnpm --version` |
-| JDK | 21 (Temurin or any distribution) — needed by the sandbox server, the engine build, and `verify` | `java -version` |
+| Tool    | Requirement                                                                                     | Check            |
+| ------- | ----------------------------------------------------------------------------------------------- | ---------------- |
+| Git     | any recent version                                                                              | `git --version`  |
+| Node.js | 20 or newer                                                                                     | `node --version` |
+| pnpm    | 12.15.0 (pinned by `packageManager` in `package.json`; Corepack will provide it)                | `pnpm --version` |
+| JDK     | 21 (Temurin or any distribution) — needed by the sandbox server, the engine build, and `verify` | `java -version`  |
 
 If pnpm is missing, enable Corepack: `corepack enable` (it reads
 the pinned version from `package.json`).
@@ -179,14 +179,14 @@ Rules:
 
 ## Troubleshooting
 
-| Symptom | Likely cause and fix |
-|---|---|
-| `java` not found / wrong version during `verify` | JDK 21 is not the default. Pass `--java /path/to/jdk21/bin/java` or set `SKRIPT_TS_JAVA`. |
-| `javac not found` in `engine/build.sh` | Set `SKRIPT_TS_JDK=/path/to/jdk21` and re-run. |
-| SHA-512 mismatch in `engine/fetch-libs.sh` | The downloaded jar is corrupt or from a different version. Delete the file in `engine/libs/` and re-run the script. |
-| Server fails to start / EULA message in the log | `server/eula.txt` is missing or does not contain `eula=true`. See step 3. |
-| Address already in use (port 25565) | Another server (or a leftover sandbox) holds the port. Stop it; if a previous `probe` is still running, `bin/skript-ts.mjs probe stop` shuts it down and verifies no process or `session.lock` remains. |
+| Symptom                                            | Likely cause and fix                                                                                                                                                                                                                       |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `java` not found / wrong version during `verify`   | JDK 21 is not the default. Pass `--java /path/to/jdk21/bin/java` or set `SKRIPT_TS_JAVA`.                                                                                                                                                  |
+| `javac not found` in `engine/build.sh`             | Set `SKRIPT_TS_JDK=/path/to/jdk21` and re-run.                                                                                                                                                                                             |
+| SHA-512 mismatch in `engine/fetch-libs.sh`         | The downloaded jar is corrupt or from a different version. Delete the file in `engine/libs/` and re-run the script.                                                                                                                        |
+| Server fails to start / EULA message in the log    | `server/eula.txt` is missing or does not contain `eula=true`. See step 3.                                                                                                                                                                  |
+| Address already in use (port 25565)                | Another server (or a leftover sandbox) holds the port. Stop it; if a previous `probe` is still running, `bin/skript-ts.mjs probe stop` shuts it down and verifies no process or `session.lock` remains.                                    |
 | Skript reports a parse error for a generated `.sk` | The JSON result maps it back to a TypeScript position. Fix the `.ts` source; never edit generated `.sk` files (they are regenerated). If the construct itself is unsupported, it is outside the subset — see [reference.md](reference.md). |
-| A script using engine builtins produces no `.sk` | Expected: builtin constructs have no `.sk` form. The build writes IR only; run it with `verify --engine`. |
-| Both Skript and engine seem to run scripts | A previous `--engine` run left the sandbox in engine mode (or vice versa). Run a plain `bin/skript-ts.mjs verify` to restore Skript mode, or `verify --engine` for engine mode — each run sets the mode exclusively. |
-| Behavior tests time out on chat messages | The sandbox world persists between runs; ambient activity can bury expected messages. Re-run `verify` (it wipes per-player state first) and check the failing suite's expectations before changing code. |
+| A script using engine builtins produces no `.sk`   | Expected: builtin constructs have no `.sk` form. The build writes IR only; run it with `verify --engine`.                                                                                                                                  |
+| Both Skript and engine seem to run scripts         | A previous `--engine` run left the sandbox in engine mode (or vice versa). Run a plain `bin/skript-ts.mjs verify` to restore Skript mode, or `verify --engine` for engine mode — each run sets the mode exclusively.                       |
+| Behavior tests time out on chat messages           | The sandbox world persists between runs; ambient activity can bury expected messages. Re-run `verify` (it wipes per-player state first) and check the failing suite's expectations before changing code.                                   |

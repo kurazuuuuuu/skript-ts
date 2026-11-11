@@ -21,8 +21,17 @@ triggers). In the repository, examples import from
 
 ```ts
 import {
-  script, onJoin, onFirstJoin, broadcast, send, give, set,
-  player, fmt, variable, bool,
+  script,
+  onJoin,
+  onFirstJoin,
+  broadcast,
+  send,
+  give,
+  set,
+  player,
+  fmt,
+  variable,
+  bool,
 } from "skript-ts";
 import type { Script } from "skript-ts";
 
@@ -32,9 +41,7 @@ export const welcomeScript: Script = script(
     give(player(), "wooden sword", 1),
     set(variable("welcomed", player()), bool(true)),
   ]),
-  onJoin([
-    send(player(), fmt("Welcome back, ", player())),
-  ]),
+  onJoin([send(player(), fmt("Welcome back, ", player()))]),
 );
 ```
 
@@ -143,27 +150,27 @@ slot, item)`, and guard with `onInventoryClick` /
 The writing side is typed (literal names below are checked by
 `tsc`; function and command types are string-literal unions),
 while values coming back from the variable store stay dynamic by
-design. To predict what an expression *holds*, map it to the
+design. To predict what an expression _holds_, map it to the
 Bukkit class it wraps at runtime — the same hierarchy you know
 from Paper plugin development:
 
-| Expression | Runtime value (Bukkit) |
-|---|---|
-| `player()`, `eventPlayer()`, `loopPlayer()` | `org.bukkit.entity.Player` (Entity → LivingEntity → Player) |
-| `victim()`, `attacker()`, `clickedEntity()`, `eventEntity()`, `hookedEntity()`, `lastSpawnedEntity()` | `org.bukkit.entity.Entity` (may be absent — "no value") |
-| `fishingHook()` | `org.bukkit.entity.FishHook` (an Entity, not a LivingEntity) |
-| `droppedItemEntity()` | `org.bukkit.entity.Item` |
-| `eventBlock()`, `blockAt(loc)`, `relativeBlock(...)` | `org.bukkit.block.Block` |
-| `location(...)`, `locationOf(target)` | `org.bukkit.Location` |
-| `world(name)`, `worldOf(target)` | `org.bukkit.World` |
-| `eventItem()`, `item(name)`, `itemOfEntity(e)`, `slotItem(inv, n)` | `org.bukkit.inventory.ItemStack` |
-| `chestInventory(...)`, `currentInventoryOf(p)`, `eventInventory()` | `org.bukkit.inventory.Inventory` |
-| `bossBar(...)`, `eventBossBar()` | `org.bukkit.boss.BossBar` |
-| `keyedBossBar(...)`, `keyedBossBarOf(key)` | `org.bukkit.boss.KeyedBossBar` |
-| `timespan(n, unit)` | a timespan value (integer milliseconds inside; no Bukkit counterpart) |
-| `damageAmount()` | number |
-| `damageCause()`, `typeOf(x)`, `chatMessage()` | text |
-| `argument(n)`, `loopValue()`, `loopIndex()`, `variable(...)`, `localVar(...)` | dynamic — depends on the command definition, the loop target, or what was stored |
+| Expression                                                                                            | Runtime value (Bukkit)                                                           |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `player()`, `eventPlayer()`, `loopPlayer()`                                                           | `org.bukkit.entity.Player` (Entity → LivingEntity → Player)                      |
+| `victim()`, `attacker()`, `clickedEntity()`, `eventEntity()`, `hookedEntity()`, `lastSpawnedEntity()` | `org.bukkit.entity.Entity` (may be absent — "no value")                          |
+| `fishingHook()`                                                                                       | `org.bukkit.entity.FishHook` (an Entity, not a LivingEntity)                     |
+| `droppedItemEntity()`                                                                                 | `org.bukkit.entity.Item`                                                         |
+| `eventBlock()`, `blockAt(loc)`, `relativeBlock(...)`                                                  | `org.bukkit.block.Block`                                                         |
+| `location(...)`, `locationOf(target)`                                                                 | `org.bukkit.Location`                                                            |
+| `world(name)`, `worldOf(target)`                                                                      | `org.bukkit.World`                                                               |
+| `eventItem()`, `item(name)`, `itemOfEntity(e)`, `slotItem(inv, n)`                                    | `org.bukkit.inventory.ItemStack`                                                 |
+| `chestInventory(...)`, `currentInventoryOf(p)`, `eventInventory()`                                    | `org.bukkit.inventory.Inventory`                                                 |
+| `bossBar(...)`, `eventBossBar()`                                                                      | `org.bukkit.boss.BossBar`                                                        |
+| `keyedBossBar(...)`, `keyedBossBarOf(key)`                                                            | `org.bukkit.boss.KeyedBossBar`                                                   |
+| `timespan(n, unit)`                                                                                   | a timespan value (integer milliseconds inside; no Bukkit counterpart)            |
+| `damageAmount()`                                                                                      | number                                                                           |
+| `damageCause()`, `typeOf(x)`, `chatMessage()`                                                         | text                                                                             |
+| `argument(n)`, `loopValue()`, `loopIndex()`, `variable(...)`, `localVar(...)`                         | dynamic — depends on the command definition, the loop target, or what was stored |
 
 Notes that matter when writing:
 
@@ -186,20 +193,20 @@ Notes that matter when writing:
 The repository's `examples/` are the recipe book — each file is
 a complete program that doubles as a golden-test fixture:
 
-| Want | Read |
-|---|---|
-| Join / first-join flow | `examples/welcome.ts` |
-| Kit, spawn, simple commands | `examples/kit.ts`, `examples/spawn.ts` |
-| Typed commands (options, aliases, permissions) | `examples/commands.ts` |
-| Lists, loops, while, wait | `examples/lists.ts` |
-| Custom functions | `examples/functions.ts` |
-| Comparisons / logic / arithmetic | `examples/logic.ts` |
-| Text operations and colors | `examples/text.ts` |
-| Gameplay events and filters | `examples/gameplay.ts`, `examples/events2.ts`, `examples/events3.ts` |
-| Items and chest GUIs | `examples/gui.ts` |
-| World operations, periodical triggers | `examples/world.ts` |
-| Player state (health, food, XP, potions) | `examples/state.ts` |
-| Titles, action bars, boss bars | `examples/display.ts`, `examples/bossbar.ts` |
-| Timespans | `examples/timespan.ts` |
-| HTTP requests and `env()` (engine builtins) | `examples/http.ts`, `examples/env.ts` |
-| One sample per engine builtin | `examples/mundosk.ts`, `sharpsk.ts`, `skriptdb.ts`, `skutil.ts`, `ersatz.ts` |
+| Want                                           | Read                                                                         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| Join / first-join flow                         | `examples/welcome.ts`                                                        |
+| Kit, spawn, simple commands                    | `examples/kit.ts`, `examples/spawn.ts`                                       |
+| Typed commands (options, aliases, permissions) | `examples/commands.ts`                                                       |
+| Lists, loops, while, wait                      | `examples/lists.ts`                                                          |
+| Custom functions                               | `examples/functions.ts`                                                      |
+| Comparisons / logic / arithmetic               | `examples/logic.ts`                                                          |
+| Text operations and colors                     | `examples/text.ts`                                                           |
+| Gameplay events and filters                    | `examples/gameplay.ts`, `examples/events2.ts`, `examples/events3.ts`         |
+| Items and chest GUIs                           | `examples/gui.ts`                                                            |
+| World operations, periodical triggers          | `examples/world.ts`                                                          |
+| Player state (health, food, XP, potions)       | `examples/state.ts`                                                          |
+| Titles, action bars, boss bars                 | `examples/display.ts`, `examples/bossbar.ts`                                 |
+| Timespans                                      | `examples/timespan.ts`                                                       |
+| HTTP requests and `env()` (engine builtins)    | `examples/http.ts`, `examples/env.ts`                                        |
+| One sample per engine builtin                  | `examples/mundosk.ts`, `sharpsk.ts`, `skriptdb.ts`, `skutil.ts`, `ersatz.ts` |

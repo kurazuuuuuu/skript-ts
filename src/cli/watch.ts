@@ -161,11 +161,7 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
     }
     humanStream.write(`古いロックを引き継ぎます (pid ${existing.pid} は停止済み)\n`);
   }
-  await fs.writeFile(
-    lockPath,
-    JSON.stringify({ pid: process.pid, startedAt: Date.now() }),
-    "utf8",
-  );
+  await fs.writeFile(lockPath, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), "utf8");
 
   // --- mutable loop state -------------------------------------------------
   let stopped = false;
@@ -509,11 +505,7 @@ async function confirmReload(
   isAborted: () => boolean,
 ): Promise<{ ok: true } | { ok: false; note: string }> {
   const tmpPath = `${requestPath}.tmp`;
-  await fs.writeFile(
-    tmpPath,
-    JSON.stringify({ buildId, requestedAt: Date.now() }),
-    "utf8",
-  );
+  await fs.writeFile(tmpPath, JSON.stringify({ buildId, requestedAt: Date.now() }), "utf8");
   await fs.rename(tmpPath, requestPath);
 
   const startedAt = Date.now();
@@ -541,9 +533,7 @@ async function confirmReload(
 
     if (status.ok) return { ok: true };
     const note =
-      status.failed.length > 0
-        ? `読み込み失敗: ${status.failed.join(", ")}`
-        : "読み込み失敗";
+      status.failed.length > 0 ? `読み込み失敗: ${status.failed.join(", ")}` : "読み込み失敗";
     return { ok: false, note };
   }
 }

@@ -81,7 +81,9 @@ export class SandboxServer {
       for (const w of waiters) w(this.exitInfo);
       for (const w of this.waiters.splice(0)) {
         clearTimeout(w.timer);
-        w.reject(new Error(`server exited (code=${code}, signal=${signal}) while waiting for ${w.re}`));
+        w.reject(
+          new Error(`server exited (code=${code}, signal=${signal}) while waiting for ${w.re}`),
+        );
       }
     });
     proc.on("error", (err) => {

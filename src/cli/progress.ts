@@ -9,7 +9,10 @@ export interface ProgressReporter {
   begin(name: string): StageHandle;
 }
 
-export function createProgress(opts: { stream: NodeJS.WriteStream; tty: boolean }): ProgressReporter {
+export function createProgress(opts: {
+  stream: NodeJS.WriteStream;
+  tty: boolean;
+}): ProgressReporter {
   let active: {
     name: string;
     start: number;

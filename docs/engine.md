@@ -70,7 +70,7 @@ Major addons are not separate plugins here: their features are being
 reimplemented natively inside the engine, one addon at a time, from
 documented behavior only (clean-room, same rule as the engine
 itself). Builtin constructs have **no `.sk` form**: a script using
-any of them is *engine-only* — the build writes its IR but no `.sk`,
+any of them is _engine-only_ — the build writes its IR but no `.sk`,
 Skript-mode deployment skips it, and calling `emit()` on it throws.
 Behavior tests for builtins run only under `verify --engine` (the
 test context exposes `t.mode`; under Skript mode they pass without
@@ -83,21 +83,21 @@ the engine (backed by the JDK's `java.net.http.WebSocket`). Messages
 sent before the socket finishes opening are queued and flushed in
 order; the close event fires whoever closed the connection.
 
-| TypeScript | Meaning |
-| --- | --- |
-| `wsConnect(id, url)` | open a WebSocket client connection |
-| `wsSend(id, text)` | send a text message |
-| `wsDisconnect(id)` | close the connection |
-| `onWsOpen(body)` | event: a connection opened |
-| `onWsMessage(body)` | event: a text message arrived |
-| `onWsClose(body)` | event: a connection closed |
-| `wsMessage()` | the received text (inside `onWsMessage`) |
-| `wsId()` | the connection id (inside websocket events) |
-| `worldOf(target)` | the world of a player / location (promoted to core language in phase 18 — see *World operations and periodical events*; it stays listed here as this slice's origin) |
-| `borderSize(world)` | current size of the world's border |
-| `borderCenter(world)` | center location of the world's border |
-| `setBorderSize(world, size)` | set the border size |
-| `setBorderCenter(world, location)` | set the border center |
+| TypeScript                         | Meaning                                                                                                                                                              |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wsConnect(id, url)`               | open a WebSocket client connection                                                                                                                                   |
+| `wsSend(id, text)`                 | send a text message                                                                                                                                                  |
+| `wsDisconnect(id)`                 | close the connection                                                                                                                                                 |
+| `onWsOpen(body)`                   | event: a connection opened                                                                                                                                           |
+| `onWsMessage(body)`                | event: a text message arrived                                                                                                                                        |
+| `onWsClose(body)`                  | event: a connection closed                                                                                                                                           |
+| `wsMessage()`                      | the received text (inside `onWsMessage`)                                                                                                                             |
+| `wsId()`                           | the connection id (inside websocket events)                                                                                                                          |
+| `worldOf(target)`                  | the world of a player / location (promoted to core language in phase 18 — see _World operations and periodical events_; it stays listed here as this slice's origin) |
+| `borderSize(world)`                | current size of the world's border                                                                                                                                   |
+| `borderCenter(world)`              | center location of the world's border                                                                                                                                |
+| `setBorderSize(world, size)`       | set the border size                                                                                                                                                  |
+| `setBorderCenter(world, location)` | set the border center                                                                                                                                                |
 
 Verified by `examples/behavior/mundosk.behavior.ts` (connect → echo
 → broadcast → close against a local RFC 6455 echo server) and
@@ -119,17 +119,17 @@ active, no ticks); creating a timer under an existing name restarts
 it. Script reloads drop all timers. `examples/sharpsk.ts` is the
 sample program.
 
-| TypeScript | Meaning |
-| --- | --- |
-| `timerCreate(id, seconds)` | start (or restart) a named countdown |
-| `timerStop(id)` | remove a timer without firing complete |
-| `timerPause(id)` | freeze a timer's countdown |
-| `timerResume(id)` | continue a paused timer |
-| `onTimerTick(body)` | event: a timer ticked (once per second) |
-| `onTimerComplete(body)` | event: a timer's countdown reached zero |
-| `timerId()` | the timer's name (inside timer events) |
-| `timerTimeLeft(name)` | seconds remaining on the named timer |
-| `timerActive(name)` | condition: the named timer exists (running or paused) |
+| TypeScript                 | Meaning                                               |
+| -------------------------- | ----------------------------------------------------- |
+| `timerCreate(id, seconds)` | start (or restart) a named countdown                  |
+| `timerStop(id)`            | remove a timer without firing complete                |
+| `timerPause(id)`           | freeze a timer's countdown                            |
+| `timerResume(id)`          | continue a paused timer                               |
+| `onTimerTick(body)`        | event: a timer ticked (once per second)               |
+| `onTimerComplete(body)`    | event: a timer's countdown reached zero               |
+| `timerId()`                | the timer's name (inside timer events)                |
+| `timerTimeLeft(name)`      | seconds remaining on the named timer                  |
+| `timerActive(name)`        | condition: the named timer exists (running or paused) |
 
 Verified by `examples/behavior/sharpsk.behavior.ts` (full countdown
 to completion, pause freezing the countdown, silent stop).
@@ -140,8 +140,7 @@ A data source is a value: build one from a documented URL and keep
 it in a variable (`set(variable("sql"), dataSource(str("sqlite:data.db")))`),
 the pattern skript-db documents. Supported URL forms are
 `sqlite:<path>` (relative paths resolve under `plugins/skript-ts/data/`),
-`mysql://host[:port]/db?user=..&password=<redacted> `mariadb://...` and
-`postgresql://...`; credentials travel as query parameters. Data
+`mysql://host[:port]/db?user=..&password=<redacted> `mariadb://...`and`postgresql://...`; credentials travel as query parameters. Data
 sources are runtime-only values — they are never written to
 `variables.json`, so credentials stay out of that file — and creating
 one opens no connection.
@@ -163,12 +162,12 @@ the engine jar bundles none; a data source whose driver the server
 does not provide fails cleanly through the last-error expression.
 `examples/skriptdb.ts` is the sample program.
 
-| TypeScript | Meaning |
-| --- | --- |
-| `dataSource(url)` | a data source value from a documented URL |
-| `dbExecute(ds, query)` | execute one SQL statement |
+| TypeScript                  | Meaning                                                         |
+| --------------------------- | --------------------------------------------------------------- |
+| `dataSource(url)`           | a data source value from a documented URL                       |
+| `dbExecute(ds, query)`      | execute one SQL statement                                       |
 | `dbExecute(ds, query, var)` | execute and store the result / affected-row count in a variable |
-| `dbLastError()` | the last failed execution's message (no value after a success) |
+| `dbLastError()`             | the last failed execution's message (no value after a success)  |
 
 Verified by `examples/behavior/skriptdb.behavior.ts` against a
 local SQLite file (DDL, parameterized inserts, stored result
@@ -198,24 +197,24 @@ not a documented behavior. `fileCreate` makes parent directories
 and an empty file and leaves an existing file's contents
 untouched; `fileWrite` replaces the whole file (UTF-8);
 `fileAppend` adds the text plus a newline; `fileDelete` removes a
-regular file or an *empty* directory (there is no recursive
+regular file or an _empty_ directory (there is no recursive
 delete). `fileContents` returns the whole file as one string,
 `fileLine` is 1-based, and `fileLineCount` counts lines (an empty
 file is 0); all three yield no value for a missing file. Failures
 never throw: they log a warning engine side. `examples/skutil.ts`
 is the sample program.
 
-| TypeScript | Meaning |
-| --- | --- |
-| `fileCreate(path)` | create an empty file (and parents), leaving an existing file untouched |
-| `dirCreate(path)` | create a directory including parents |
-| `fileDelete(path)` | delete a regular file or an empty directory |
-| `fileWrite(path, text)` | replace a file's whole contents with the text |
-| `fileAppend(path, text)` | append the text plus a newline to a file |
-| `fileContents(path)` | the whole text of a file (no value when missing) |
-| `fileLine(path, n)` | the 1-based line `n` of a file (no value when out of range / missing) |
-| `fileLineCount(path)` | the number of lines in a file (no value when missing) |
-| `fileExists(path)` | condition: a file or directory exists at the path |
+| TypeScript               | Meaning                                                                |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `fileCreate(path)`       | create an empty file (and parents), leaving an existing file untouched |
+| `dirCreate(path)`        | create a directory including parents                                   |
+| `fileDelete(path)`       | delete a regular file or an empty directory                            |
+| `fileWrite(path, text)`  | replace a file's whole contents with the text                          |
+| `fileAppend(path, text)` | append the text plus a newline to a file                               |
+| `fileContents(path)`     | the whole text of a file (no value when missing)                       |
+| `fileLine(path, n)`      | the 1-based line `n` of a file (no value when out of range / missing)  |
+| `fileLineCount(path)`    | the number of lines in a file (no value when missing)                  |
+| `fileExists(path)`       | condition: a file or directory exists at the path                      |
 
 Verified by `examples/behavior/skutil.behavior.ts` (create →
 append → contents read-back → per-line read-back → line count →
@@ -260,13 +259,13 @@ every script reload. Requests that arrive off the main thread
 are hopped onto it with a bounded wait. `examples/ersatz.ts` is
 the sample program.
 
-| TypeScript | Meaning |
-| --- | --- |
-| `placeholderValue(player, text)` | evaluate PAPI placeholders in a text for a player (bare name or whole-string form) |
-| `onPlaceholderRequest(prefix, body)` | event: a placeholder under this prefix was requested |
-| `placeholderIdentifier()` | the parameter part of the request (inside the event) |
-| `placeholderPrefix()` | the prefix that matched (inside the event) |
-| `setPlaceholderResult(text)` | answer the placeholder request being handled |
+| TypeScript                           | Meaning                                                                            |
+| ------------------------------------ | ---------------------------------------------------------------------------------- |
+| `placeholderValue(player, text)`     | evaluate PAPI placeholders in a text for a player (bare name or whole-string form) |
+| `onPlaceholderRequest(prefix, body)` | event: a placeholder under this prefix was requested                               |
+| `placeholderIdentifier()`            | the parameter part of the request (inside the event)                               |
+| `placeholderPrefix()`                | the prefix that matched (inside the event)                                         |
+| `setPlaceholderResult(text)`         | answer the placeholder request being handled                                       |
 
 Verified by `examples/behavior/ersatz.behavior.ts` as a full
 round trip through the real PlaceholderAPI plugin: the script
@@ -288,17 +287,17 @@ extension of skript-ts, shaped to fit the existing event and
 continuation model: a request is fired asynchronously and its
 completion re-enters the script as an event.
 
-| TypeScript | Meaning |
-| --- | --- |
-| `httpFetch(id, url, opts?)` | statement: start an async GET; the body returns as text |
+| TypeScript                           | Meaning                                                                |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| `httpFetch(id, url, opts?)`          | statement: start an async GET; the body returns as text                |
 | `httpDownload(id, url, path, opts?)` | statement: start an async GET that saves the body under the files root |
-| `onHttpResponse(body)` | event: a request completed (successfully or not) |
-| `httpId()` | the completion's id (event only) |
-| `httpStatus()` | the HTTP status code (event only) |
-| `httpBody()` | the response body of a fetch (event only) |
-| `httpError()` | the failure kind, or no value on success (event only) |
-| `httpSavedPath()` | where a download was saved, relative to the files root (event only) |
-| `httpOk()` | condition: the completion carries no error |
+| `onHttpResponse(body)`               | event: a request completed (successfully or not)                       |
+| `httpId()`                           | the completion's id (event only)                                       |
+| `httpStatus()`                       | the HTTP status code (event only)                                      |
+| `httpBody()`                         | the response body of a fetch (event only)                              |
+| `httpError()`                        | the failure kind, or no value on success (event only)                  |
+| `httpSavedPath()`                    | where a download was saved, relative to the files root (event only)    |
+| `httpOk()`                           | condition: the completion carries no error                             |
 
 `id` is a non-empty literal the script chooses to tell its own
 requests apart; `opts.timeoutSeconds` bounds the whole request
@@ -348,4 +347,3 @@ driver class before connecting, because such a driver registers
 with `DriverManager` only once its class is loaded. The
 `mariadb://` URL form fails cleanly through `dbLastError()` when
 no MariaDB driver is present.
-

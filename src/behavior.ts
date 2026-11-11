@@ -67,7 +67,14 @@ export interface BehaviorBot {
   /** Sound-effect packets the bot has received, oldest first (positions in block coordinates). */
   soundPackets(): readonly SoundPacket[];
   /** Poll until a sound-effect packet arrives near the point, considering only packets from index `fromIndex` of soundPackets() on (snapshot it before triggering the sound). Throws on timeout. */
-  waitForSoundNear(x: number, y: number, z: number, radius?: number, timeoutMs?: number, fromIndex?: number): Promise<SoundPacket>;
+  waitForSoundNear(
+    x: number,
+    y: number,
+    z: number,
+    radius?: number,
+    timeoutMs?: number,
+    fromIndex?: number,
+  ): Promise<SoundPacket>;
   // Phase 16 controls: entity interaction, item tossing and
   // sleeping — enough to exercise the pickup / drop / bed events.
   /** Right-click the nearest visible entity with this Minecraft name (e.g. "villager"). */
@@ -110,13 +117,23 @@ export interface BehaviorBot {
   /** Poll until a title text packet with exactly this plain text arrives, considering only packets from index `fromIndex` of titleTexts() on. Throws on timeout. */
   waitForTitleText(text: string, timeoutMs?: number, fromIndex?: number): Promise<void>;
   /** Poll until a title times packet with exactly these tick values arrives, considering only packets from index `fromIndex` of titleTimes() on. Throws on timeout. */
-  waitForTitleTimes(fadeIn: number, stay: number, fadeOut: number, timeoutMs?: number, fromIndex?: number): Promise<void>;
+  waitForTitleTimes(
+    fadeIn: number,
+    stay: number,
+    fadeOut: number,
+    timeoutMs?: number,
+    fromIndex?: number,
+  ): Promise<void>;
   /** Poll until a clear_titles packet with this reset flag arrives, considering only packets from index `fromIndex` of titleClears() on. Throws on timeout. */
   waitForTitleClear(reset: boolean, timeoutMs?: number, fromIndex?: number): Promise<void>;
   /** Poll until an action bar packet with exactly this plain text arrives, considering only packets from index `fromIndex` of actionBarTexts() on. Throws on timeout. */
   waitForActionBarText(text: string, timeoutMs?: number, fromIndex?: number): Promise<void>;
   /** Poll until a boss_bar packet with this action arrives, considering only packets from index `fromIndex` of bossBarPackets() on; resolves with the packet. Throws on timeout. */
-  waitForBossBarAction(action: number, timeoutMs?: number, fromIndex?: number): Promise<BossBarPacket>;
+  waitForBossBarAction(
+    action: number,
+    timeoutMs?: number,
+    fromIndex?: number,
+  ): Promise<BossBarPacket>;
   // Phase 22 controls: fishing and generic entity combat —
   // enough to exercise the fishing sub-events (cast / bite /
   // catch / escape / reel by hand) and a mob kill for the
@@ -304,9 +321,11 @@ class MineflayerBehaviorBot implements BehaviorBot {
     // soundEffectHeard event drops packets whose registry id
     // the client's data tables cannot name, so capture the wire
     // form directly.
-    const client = (this.bot as unknown as {
-      _client: { on(ev: string, fn: (p: RawSoundPacket) => void): void };
-    })._client;
+    const client = (
+      this.bot as unknown as {
+        _client: { on(ev: string, fn: (p: RawSoundPacket) => void): void };
+      }
+    )._client;
     client.on("sound_effect", (p) => {
       this.sounds.push({
         soundId: typeof p.sound?.soundId === "number" ? p.sound.soundId : null,
@@ -321,9 +340,11 @@ class MineflayerBehaviorBot implements BehaviorBot {
     // Raw display packets (phase 21): titles, the action bar
     // and boss bars have no high-level mineflayer events, so
     // capture the wire forms directly, like the sound packets.
-    const displayClient = (this.bot as unknown as {
-      _client: { on<T>(ev: string, fn: (p: T) => void): void };
-    })._client;
+    const displayClient = (
+      this.bot as unknown as {
+        _client: { on<T>(ev: string, fn: (p: T) => void): void };
+      }
+    )._client;
     displayClient.on<RawTextPacket>("set_title_text", (p) => {
       this.titleTextLog.push(componentPlainText(p.text));
     });
@@ -331,7 +352,11 @@ class MineflayerBehaviorBot implements BehaviorBot {
       this.titleSubtitleLog.push(componentPlainText(p.text));
     });
     displayClient.on<RawTitleTimePacket>("set_title_time", (p) => {
-      this.titleTimeLog.push({ fadeIn: p.fadeIn ?? -1, stay: p.stay ?? -1, fadeOut: p.fadeOut ?? -1 });
+      this.titleTimeLog.push({
+        fadeIn: p.fadeIn ?? -1,
+        stay: p.stay ?? -1,
+        fadeOut: p.fadeOut ?? -1,
+      });
     });
     displayClient.on<RawClearTitlesPacket>("clear_titles", (p) => {
       this.titleClearLog.push(p.reset === true);
@@ -403,7 +428,11 @@ class MineflayerBehaviorBot implements BehaviorBot {
         const idx = this.waiters.findIndex((w) => w.timer === timer);
         if (idx >= 0) this.waiters.splice(idx, 1);
         const recent = this.messages.slice(-10).join(" | ") || "(none)";
-        reject(new Error(`timed out after ${timeoutMs}ms waiting for message ${String(pattern)}; recent messages: ${recent}`));
+        reject(
+          new Error(
+            `timed out after ${timeoutMs}ms waiting for message ${String(pattern)}; recent messages: ${recent}`,
+          ),
+        );
       }, timeoutMs);
       timer.unref();
       this.waiters.push({ pattern, resolve, reject, timer });
@@ -421,7 +450,9 @@ class MineflayerBehaviorBot implements BehaviorBot {
       if (items.some((it) => it.name === itemName)) return;
       if (Date.now() >= deadline) {
         const names = items.map((it) => `${it.name} x${it.count}`).join(", ") || "(empty)";
-        throw new Error(`timed out after ${timeoutMs}ms waiting for inventory item "${itemName}"; inventory: ${names}`);
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for inventory item "${itemName}"; inventory: ${names}`,
+        );
       }
       await sleep(250);
     }
@@ -477,8 +508,11 @@ class MineflayerBehaviorBot implements BehaviorBot {
         return;
       }
       if (Date.now() >= deadline) {
-        const names = (this.bot.inventory?.items() ?? []).map((it) => it.name).join(", ") || "(empty)";
-        throw new Error(`timed out after ${timeoutMs}ms waiting to equip "${itemName}"; inventory: ${names}`);
+        const names =
+          (this.bot.inventory?.items() ?? []).map((it) => it.name).join(", ") || "(empty)";
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting to equip "${itemName}"; inventory: ${names}`,
+        );
       }
       await sleep(250);
     }
@@ -536,12 +570,24 @@ class MineflayerBehaviorBot implements BehaviorBot {
     return this.sounds;
   }
 
-  async waitForSoundNear(x: number, y: number, z: number, radius = 3, timeoutMs = 10_000, fromIndex = 0): Promise<SoundPacket> {
+  async waitForSoundNear(
+    x: number,
+    y: number,
+    z: number,
+    radius = 3,
+    timeoutMs = 10_000,
+    fromIndex = 0,
+  ): Promise<SoundPacket> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const hit = this.sounds.slice(fromIndex).find(
-        (s) => Math.abs(s.x - x) <= radius && Math.abs(s.y - y) <= radius && Math.abs(s.z - z) <= radius,
-      );
+      const hit = this.sounds
+        .slice(fromIndex)
+        .find(
+          (s) =>
+            Math.abs(s.x - x) <= radius &&
+            Math.abs(s.y - y) <= radius &&
+            Math.abs(s.z - z) <= radius,
+        );
       if (hit !== undefined) return hit;
       if (Date.now() >= deadline) {
         throw new Error(
@@ -589,7 +635,13 @@ class MineflayerBehaviorBot implements BehaviorBot {
     }
   }
 
-  async waitForTitleTimes(fadeIn: number, stay: number, fadeOut: number, timeoutMs = 10_000, fromIndex = 0): Promise<void> {
+  async waitForTitleTimes(
+    fadeIn: number,
+    stay: number,
+    fadeOut: number,
+    timeoutMs = 10_000,
+    fromIndex = 0,
+  ): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const hit = this.titleTimeLog
@@ -631,7 +683,11 @@ class MineflayerBehaviorBot implements BehaviorBot {
     }
   }
 
-  async waitForBossBarAction(action: number, timeoutMs = 10_000, fromIndex = 0): Promise<BossBarPacket> {
+  async waitForBossBarAction(
+    action: number,
+    timeoutMs = 10_000,
+    fromIndex = 0,
+  ): Promise<BossBarPacket> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const hit = this.bossBarLog.slice(fromIndex).find((p) => p.action === action);
@@ -655,7 +711,9 @@ class MineflayerBehaviorBot implements BehaviorBot {
         return;
       }
       if (Date.now() >= deadline) {
-        throw new Error(`timed out after ${timeoutMs}ms waiting for a visible "${entityName}" entity`);
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for a visible "${entityName}" entity`,
+        );
       }
       await sleep(250);
     }
@@ -685,7 +743,10 @@ class MineflayerBehaviorBot implements BehaviorBot {
       await Promise.race([
         this.bot.fish(),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`fishOnce timed out after ${timeoutMs}ms`)), timeoutMs);
+          timer = setTimeout(
+            () => reject(new Error(`fishOnce timed out after ${timeoutMs}ms`)),
+            timeoutMs,
+          );
         }),
       ]);
     } catch (e) {
@@ -709,7 +770,8 @@ class MineflayerBehaviorBot implements BehaviorBot {
       const entities = Object.values(this.bot.entities).filter((e) => e.name === entityName);
       entities.sort(
         (a, b) =>
-          a.position.distanceTo(this.bot.entity.position) - b.position.distanceTo(this.bot.entity.position),
+          a.position.distanceTo(this.bot.entity.position) -
+          b.position.distanceTo(this.bot.entity.position),
       );
       const entity = entities[0];
       if (entity !== undefined) {
@@ -718,7 +780,9 @@ class MineflayerBehaviorBot implements BehaviorBot {
         return;
       }
       if (Date.now() >= deadline) {
-        throw new Error(`timed out after ${timeoutMs}ms waiting for a visible "${entityName}" entity`);
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for a visible "${entityName}" entity`,
+        );
       }
       await sleep(250);
     }
@@ -727,7 +791,8 @@ class MineflayerBehaviorBot implements BehaviorBot {
   async tossItem(itemName: string): Promise<void> {
     const found = (this.bot.inventory?.items() ?? []).find((it) => it.name === itemName);
     if (found === undefined) {
-      const names = (this.bot.inventory?.items() ?? []).map((it) => it.name).join(", ") || "(empty)";
+      const names =
+        (this.bot.inventory?.items() ?? []).map((it) => it.name).join(", ") || "(empty)";
       throw new Error(`cannot toss "${itemName}": not in inventory (${names})`);
     }
     await this.bot.tossStack(found);
@@ -740,7 +805,9 @@ class MineflayerBehaviorBot implements BehaviorBot {
       if (!items.some((it) => it.name === itemName)) return;
       if (Date.now() >= deadline) {
         const names = items.map((it) => `${it.name} x${it.count}`).join(", ") || "(empty)";
-        throw new Error(`timed out after ${timeoutMs}ms waiting for "${itemName}" to leave the inventory; inventory: ${names}`);
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for "${itemName}" to leave the inventory; inventory: ${names}`,
+        );
       }
       await sleep(250);
     }
@@ -860,7 +927,10 @@ export function createBehaviorContext(opts: BehaviorContextOptions): BehaviorCon
       });
       const wrapped = new MineflayerBehaviorBot(bot);
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`bot "${username}" did not spawn within 30s`)), 30_000);
+        const timer = setTimeout(
+          () => reject(new Error(`bot "${username}" did not spawn within 30s`)),
+          30_000,
+        );
         timer.unref();
         bot.once("spawn", () => {
           clearTimeout(timer);
