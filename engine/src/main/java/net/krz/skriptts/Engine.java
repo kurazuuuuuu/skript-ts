@@ -2773,9 +2773,8 @@ final class Engine {
                     && ba.getWorld().equals(bb.getWorld());
         }
         if (a instanceof ItemStack ia && b instanceof ItemStack ib) {
-            // Type + amount, plus the meta both stacks carry
-            // (phase 17; probed: a named stack equals a plain
-            // one, two differently named stacks do not).
+            // Type + amount, plus the directional meta match
+            // (metaCompatible: the right stack is the pattern).
             return ia.getType() == ib.getType() && ia.getAmount() == ib.getAmount()
                     && metaCompatible(ia, ib);
         }
@@ -4336,35 +4335,33 @@ final class Engine {
 
     /**
      * Meta compatibility of two stacks under Skript's item
-     * equality (probed against the real Skript 2.17.1): a meta
-     * field decides only when BOTH stacks carry it — a named
-     * stack equals a plain one, two differently named stacks
-     * differ (names compare case-sensitively, in their §-coded
-     * form), and lore compares line by line when both stacks
-     * have lore. Enchantments follow the separate rule noted
-     * inline (phase 28).
+     * equality (probed against the real Skript 2.17.1): the
+     * comparison is directional — the right stack is a
+     * pattern whose specified fields the left stack must
+     * match exactly, as noted inline (names compare
+     * case-sensitively, in their §-coded form). The phase-17
+     * summary of this rule as symmetric both-carry was
+     * corrected by the phase-28 direction probes (p16/p17).
      */
     private static boolean metaCompatible(ItemStack a, ItemStack b) {
-        String aName = displayNameOf(a);
+        // The comparison is DIRECTIONAL (probed p16/p17,
+        // correcting the phase-17/28 both-carry summary): the
+        // right stack acts as a pattern — every meta field it
+        // specifies must be matched exactly by the left stack,
+        // and a field it does not specify leaves the left stack
+        // free. So an enchanted stack "is" a plain one (the
+        // pattern specifies nothing), a plain stack is NOT an
+        // enchanted one, and when the pattern is enchanted the
+        // left stack's enchantment set must equal it exactly
+        // (extra enchantments on the left fail too). The same
+        // holds for the name and the lore: the pattern's name,
+        // when present, must equal the left stack's.
         String bName = displayNameOf(b);
-        if (aName != null && bName != null && !aName.equals(bName)) return false;
-        Object aLore = loreOf(a);
+        if (bName != null && !bName.equals(displayNameOf(a))) return false;
         Object bLore = loreOf(b);
-        if (aLore instanceof List<?> al && bLore instanceof List<?> bl && !al.equals(bl)) return false;
-        // Enchantments (phase 28, probed — NOT a plain
-        // both-carry field): when both stacks are enchanted
-        // their enchantment maps must be exactly equal; when
-        // exactly one side is enchanted the stacks differ,
-        // UNLESS the enchanted stack also carries a name or
-        // lore, in which case the enchantment difference is
-        // ignored like the both-carry fields above.
-        Map<String, Integer> aEnch = enchantmentMap(a);
+        if (bLore instanceof List<?> bl && !bl.equals(loreOf(a))) return false;
         Map<String, Integer> bEnch = enchantmentMap(b);
-        if (!aEnch.isEmpty() && !bEnch.isEmpty() && !aEnch.equals(bEnch)) return false;
-        if (aEnch.isEmpty() != bEnch.isEmpty()) {
-            ItemStack enchanted = aEnch.isEmpty() ? b : a;
-            if (displayNameOf(enchanted) == null && loreOf(enchanted) == null) return false;
-        }
+        if (!bEnch.isEmpty() && !bEnch.equals(enchantmentMap(a))) return false;
         return true;
     }
 

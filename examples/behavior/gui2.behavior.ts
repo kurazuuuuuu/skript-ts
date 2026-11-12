@@ -93,7 +93,8 @@ async function collectNew(
 //     merges into the named stack and keeps its name, a
 //     differently named add does not merge);
 //   /g2ench and /g2ench2 pin the enchantment reads (an
-//     absent level reads as no value) and the equality rule;
+//     absent level reads as no value) and the directional
+//     equality rule (the right operand is the pattern);
 //   /g2enchslot, /g2persist and /g2readback cover the slot
 //     form and the stored item;
 //   drags distribute over the GUI (left: even split, right:
@@ -187,8 +188,9 @@ export default defineBehavior(async (t) => {
     mark = bot.messages.length;
     await cmd("/g2ench2");
     await waitNew(bot, mark, "eq1=true");
-    await waitNew(bot, mark, "eq2=false");
-    await waitNew(bot, mark, "eq3=true");
+    await waitNew(bot, mark, "eq2=true");
+    await waitNew(bot, mark, "eq3=false");
+    await waitNew(bot, mark, "eq4=true");
 
     mark = bot.messages.length;
     await cmd("/g2enchslot");

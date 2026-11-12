@@ -82,10 +82,14 @@ import type { Script } from "../src/index.js";
 //   /g2ench       enchant a diamond sword via the effect:
 //                 "lvl=5 list=sharpness 5 fire=" (an absent
 //                 enchantment's level reads as no value)
-//   /g2ench2      the equality rule: "eq1=true" (same
-//                 enchantments), "eq2=false" (enchanted vs
-//                 plain, no name or lore), "eq3=true" (the
-//                 enchanted stack also carries a name)
+//   /g2ench2      the directional equality rule (the right
+//                 operand is a pattern whose specified meta
+//                 the left must match exactly): "eq1=true"
+//                 (same enchantments), "eq2=true" (enchanted
+//                 vs a meta-free item type), "eq3=false"
+//                 (a plain named stack is not an enchanted
+//                 one), "eq4=true" (the enchanted named stack
+//                 is the plain named one)
 //   /g2enchslot   enchant slot 20's bow: "s20=bow plvl=3"
 //   /g2persist    store a named, enchanted sword in {g2saved}
 //   /g2readback   "saved=diamond sword named Keepsake lvl=7" —
@@ -245,6 +249,11 @@ export const gui2Script: Script = script(
       equals(localVar("c"), localVar("d")),
       [send(player(), str("eq3=true"))],
       [send(player(), str("eq3=false"))],
+    ),
+    ifElse(
+      equals(localVar("d"), localVar("c")),
+      [send(player(), str("eq4=true"))],
+      [send(player(), str("eq4=false"))],
     ),
   ]),
   command("g2enchslot", null, [

@@ -123,6 +123,10 @@ command /g2ench2:
             send "eq3=true" to player
         else:
             send "eq3=false" to player
+        if {_d} is {_c}:
+            send "eq4=true" to player
+        else:
+            send "eq4=false" to player
 
 command /g2enchslot:
     trigger:
