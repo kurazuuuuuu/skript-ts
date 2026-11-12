@@ -846,7 +846,7 @@ function emitEnchantedItem(e: Extract<Expr, { kind: "itemWithEnchantment" }>): s
   // 7" parses but silently evaluates to no value).
   let amount: Expr | null = null;
   let name: Expr | null = null;
-  let lore: Expr[] | null = null;
+  let lore: readonly Expr[] | null = null;
   let node: Expr = cur;
   while (node.kind !== "item") {
     if (node.kind === "itemWithAmount" && amount === null) {
