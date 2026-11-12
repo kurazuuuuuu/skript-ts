@@ -4,7 +4,7 @@ name: Dependency audit
 # advisory can turn a previously green tree red without any code
 # change. It therefore gates the moments where dependency risk is
 # actually accepted — dependency-file changes, a daily check on
-# master, and (as a step in release.yml) every release — instead of
+# main, and (as a step in release.yml) every release — instead of
 # blocking unrelated pull requests.
 #
 # The audit reads the lockfile only; nothing is installed, so the
@@ -17,7 +17,7 @@ on:
     - cron: "23 4 * * *"
   push:
     branches:
-      - master
+      - main
     paths:
       - package.json
       - pnpm-lock.yaml

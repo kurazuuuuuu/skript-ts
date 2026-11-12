@@ -10,7 +10,6 @@
   "scripts": {
     "check": "vp check",
     "cli": "tsx src/cli.ts",
-    "emit-examples": "tsx examples/print-all.ts",
     "format": "vp fmt",
     "lint": "vp lint",
     "test": "vp test run",

@@ -44,7 +44,7 @@ jobs:
           node-version: 24
 
       # Only tags that follow the project's versioning, match
-      # package.json, and point at a commit on master may release.
+      # package.json, and point at a commit on main may release.
       - name: Validate the release tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,11 +60,11 @@ jobs:
             echo "tag '$tag' does not match package.json version '$pkg_version'" >&2
             exit 1
           fi
-          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/master...${tag}" --jq '.status')"
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${tag}" --jq '.status')"
           case "$status" in
             behind|identical) ;;
             *)
-              echo "tag '$tag' does not point at a commit on master (compare status: $status)" >&2
+              echo "tag '$tag' does not point at a commit on main (compare status: $status)" >&2
               exit 1
               ;;
           esac
