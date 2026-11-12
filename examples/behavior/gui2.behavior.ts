@@ -85,9 +85,10 @@ async function collectNew(
 // language, so this test runs under BOTH runtimes with
 // identical expectations:
 //   the add/remove commands walk the probed merge rules
-//     (merge cap at the material max, the 99-capped empty-slot
-//     set path, type-only removes, an emptied slot reading
-//     back as "0 airs");
+//     (merge cap at the material max, the empty-slot set path
+//     — uncapped in a player inventory, capped at 99 in a
+//     chest inventory —, type-only removes, an emptied slot
+//     reading back as "0 airs");
 //   /g2named pins merge similarity with names (a plain add
 //     merges into the named stack and keeps its name, a
 //     differently named add does not merge);
@@ -137,23 +138,27 @@ export default defineBehavior(async (t) => {
 
     mark = bot.messages.length;
     await cmd("/g2add4");
-    await waitNew(bot, mark, "s11=99 stones");
+    await waitNew(bot, mark, "s11=100 stones");
 
     mark = bot.messages.length;
     await cmd("/g2add5");
-    await waitNew(bot, mark, "s11=99 stones");
+    await waitNew(bot, mark, "s11=100 stones");
 
     mark = bot.messages.length;
     await cmd("/g2rem1");
-    await waitNew(bot, mark, "s11=69 stones");
+    await waitNew(bot, mark, "s11=70 stones");
 
     mark = bot.messages.length;
     await cmd("/g2rem2");
-    await waitNew(bot, mark, "s11=69 stones");
+    await waitNew(bot, mark, "s11=70 stones");
 
     mark = bot.messages.length;
     await cmd("/g2rem3");
     await waitNew(bot, mark, "s11=0 airs");
+
+    mark = bot.messages.length;
+    await cmd("/g2chest");
+    await waitNew(bot, mark, "c5=99 stones");
 
     mark = bot.messages.length;
     await cmd("/g2addinv");

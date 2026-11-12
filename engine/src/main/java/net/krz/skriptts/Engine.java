@@ -34,6 +34,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.potion.PotionEffect;
@@ -1622,11 +1623,15 @@ final class Engine {
             case "addToSlot" -> {
                 // Merge an item into one slot (phase 28; probed
                 // against the original): an empty slot is set
-                // with the incoming amount capped at 99 (the set
-                // path may exceed the material max); an occupied
-                // slot merges when the stacks are similar under
-                // the merge rule, capped at the material max —
-                // which can shrink an over-max stack to the max;
+                // with the incoming amount — capped at 99 for
+                // chest-like inventories, uncapped for a player
+                // inventory (probed p14/p15: the original places
+                // 100, even 200, into an empty player slot but
+                // only 99 into a chest slot); the set path may
+                // exceed the material max. An occupied slot
+                // merges when the stacks are similar under the
+                // merge rule, capped at the material max — which
+                // can shrink an over-max stack to the max;
                 // anything else is silently dropped.
                 Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
                 Object slot = evalExpr(node(stmt.get("slot")), ctx);
@@ -1634,7 +1639,9 @@ final class Engine {
                 if (inv != null && slot instanceof Number n && incoming != null && !incoming.getType().isAir()) {
                     int index = (int) Math.round(n.doubleValue());
                     if (index >= 0 && index < inv.getSize()) {
-                        int addAmount = Math.min(incoming.getAmount(), 99);
+                        int addAmount = inv instanceof PlayerInventory
+                                ? incoming.getAmount()
+                                : Math.min(incoming.getAmount(), 99);
                         ItemStack existing = inv.getItem(index);
                         if (existing == null || existing.getType().isAir()) {
                             ItemStack placed = incoming.clone();

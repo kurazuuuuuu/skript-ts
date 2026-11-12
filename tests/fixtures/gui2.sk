@@ -71,6 +71,12 @@ command /g2rem3:
         remove 100 of stone from slot 11 of player
         send "s11=%slot 11 of player%" to player
 
+command /g2chest:
+    trigger:
+        set {g2chest} to chest inventory with 1 rows named "Box"
+        add 100 of stone to slot 5 of {g2chest}
+        send "c5=%slot 5 of {g2chest}%" to player
+
 command /g2addinv:
     trigger:
         add 100 of stone to player

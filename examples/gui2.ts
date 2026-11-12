@@ -3,6 +3,7 @@ import {
   addToInventory,
   addToSlot,
   cancelEvent,
+  chestInventory,
   clickedClickType,
   command,
   draggedSlots,
@@ -58,14 +59,18 @@ import type { Script } from "../src/index.js";
 //   /g2clear      clear slots 0..35 of the player's inventory
 //   /g2add1..5    slot adds: "s10=5 stones", "s10=6 stones",
 //                 "s10=64 stones" (merge capped at the material
-//                 max), "s11=99 stones" (the empty-slot set path
-//                 caps at 99 instead), then a dirt add onto the
-//                 stone slot is a silent no-op ("s11=99 stones")
-//   /g2rem1..3    slot removes: "s11=69 stones", a dirt remove
+//                 max), "s11=100 stones" (a player inventory's
+//                 empty-slot set path is uncapped), then a dirt
+//                 add onto the stone slot is a silent no-op
+//                 ("s11=100 stones")
+//   /g2rem1..3    slot removes: "s11=70 stones", a dirt remove
 //                 is a no-op (matching is by type only), and
-//                 removing more than present empties the slot
+//                 removing the full amount empties the slot
 //                 ("s11=0 airs" — an empty slot reads as an air
 //                 item of amount 0)
+//   /g2chest      the same empty-slot add into a chest
+//                 inventory caps at 99: "c5=99 stones" (the
+//                 set-path cap depends on the inventory kind)
 //   /g2addinv     add 100 stone to the whole inventory:
 //                 "s0=64 stones s1=36 stones s10=64 stones"
 //   /g2reminv     remove 70 stone from the whole inventory:
@@ -155,6 +160,11 @@ export const gui2Script: Script = script(
   command("g2rem3", null, [
     removeFromSlot(player(), num(11), withAmount(item("stone"), num(100))),
     send(player(), fmt("s11=", slotItem(player(), num(11)))),
+  ]),
+  command("g2chest", null, [
+    set(variable("g2chest"), chestInventory(num(1), str("Box"))),
+    addToSlot(variable("g2chest"), num(5), withAmount(item("stone"), num(100))),
+    send(player(), fmt("c5=", slotItem(variable("g2chest"), num(5)))),
   ]),
   command("g2addinv", null, [
     addToInventory(player(), withAmount(item("stone"), num(100))),
