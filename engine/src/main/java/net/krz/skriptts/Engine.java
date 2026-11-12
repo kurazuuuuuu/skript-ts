@@ -28,8 +28,11 @@ import org.bukkit.entity.FishHook;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -207,6 +210,17 @@ final class Engine {
     }
 
     /** Execution context: the entities and data the running code is attached to. */
+    /** A slot of an inventory (phase 28): the value drag events expose for each affected slot. */
+    static final class SlotRef {
+        final Inventory inventory;
+        final int index;
+
+        SlotRef(Inventory inventory, int index) {
+            this.inventory = inventory;
+            this.index = index;
+        }
+    }
+
     static final class Ctx {
         Player player;      // "player": event player, or the command executor
         Player eventPlayer; // "event-player"
@@ -231,6 +245,9 @@ final class Engine {
         BossBar eventBossBar; // "event-bossbar" inside a boss bar creation section (phase 24); null elsewhere
         Double clickedSlot; // "index of event-slot" in inventory click events; null elsewhere
         Double clickedRawSlot; // "raw index of event-slot" in inventory click events; null elsewhere
+        List<Object> draggedSlots; // "event-slots" in inventory drag events (SlotRef values); null elsewhere
+        ItemStack cursorItem; // the event player's cursor item in inventory click/drag events (engine-only); null when empty
+        String clickType; // "click type" in inventory click events; null elsewhere
         Cancellable cancellable; // the Bukkit event being handled, when it can be cancelled
         EntityDamageEvent damageEvent; // the live damage event (damage get/set); null elsewhere
         String chatMessage; // "message" in chat events
@@ -268,6 +285,9 @@ final class Engine {
             c.eventBossBar = eventBossBar;
             c.clickedSlot = clickedSlot;
             c.clickedRawSlot = clickedRawSlot;
+            c.draggedSlots = draggedSlots;
+            c.cursorItem = cursorItem;
+            c.clickType = clickType;
             c.cancellable = cancellable;
             c.damageEvent = damageEvent;
             c.chatMessage = chatMessage;
@@ -1599,6 +1619,175 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "addToSlot" -> {
+                // Merge an item into one slot (phase 28; probed
+                // against the original): an empty slot is set
+                // with the incoming amount capped at 99 (the set
+                // path may exceed the material max); an occupied
+                // slot merges when the stacks are similar under
+                // the merge rule, capped at the material max —
+                // which can shrink an over-max stack to the max;
+                // anything else is silently dropped.
+                Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
+                Object slot = evalExpr(node(stmt.get("slot")), ctx);
+                ItemStack incoming = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                if (inv != null && slot instanceof Number n && incoming != null && !incoming.getType().isAir()) {
+                    int index = (int) Math.round(n.doubleValue());
+                    if (index >= 0 && index < inv.getSize()) {
+                        int addAmount = Math.min(incoming.getAmount(), 99);
+                        ItemStack existing = inv.getItem(index);
+                        if (existing == null || existing.getType().isAir()) {
+                            ItemStack placed = incoming.clone();
+                            placed.setAmount(addAmount);
+                            inv.setItem(index, placed);
+                        } else if (stacksSimilarForMerge(existing, incoming)) {
+                            ItemStack merged = existing.clone();
+                            merged.setAmount(Math.min(
+                                    merged.getAmount() + addAmount,
+                                    merged.getType().getMaxStackSize()));
+                            inv.setItem(index, merged);
+                        }
+                    }
+                }
+                cont.run();
+            }
+            case "removeFromSlot" -> {
+                // Subtract an item from one slot (phase 28):
+                // matching is by material only (meta is ignored
+                // on both sides); reaching zero clears the slot.
+                Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
+                Object slot = evalExpr(node(stmt.get("slot")), ctx);
+                ItemStack operand = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                if (inv != null && slot instanceof Number n && operand != null && !operand.getType().isAir()) {
+                    int index = (int) Math.round(n.doubleValue());
+                    if (index >= 0 && index < inv.getSize()) {
+                        ItemStack existing = inv.getItem(index);
+                        if (existing != null && !existing.getType().isAir()
+                                && existing.getType() == operand.getType()) {
+                            int remaining = existing.getAmount()
+                                    - Math.min(operand.getAmount(), existing.getAmount());
+                            if (remaining <= 0) {
+                                inv.setItem(index, null);
+                            } else {
+                                ItemStack reduced = existing.clone();
+                                reduced.setAmount(remaining);
+                                inv.setItem(index, reduced);
+                            }
+                        }
+                    }
+                }
+                cont.run();
+            }
+            case "addToInventory" -> {
+                // Add an item to a whole inventory (phase 28):
+                // merge similar partial stacks in slot order,
+                // then fill empty slots at the material max; the
+                // remainder is silently dropped.
+                Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
+                ItemStack incoming = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                if (inv != null && incoming != null && !incoming.getType().isAir()) {
+                    int remaining = incoming.getAmount();
+                    int max = incoming.getType().getMaxStackSize();
+                    for (int i = 0; i < inv.getSize() && remaining > 0; i++) {
+                        ItemStack existing = inv.getItem(i);
+                        if (existing == null || existing.getType().isAir()) continue;
+                        if (!stacksSimilarForMerge(existing, incoming)) continue;
+                        int room = existing.getType().getMaxStackSize() - existing.getAmount();
+                        if (room <= 0) continue;
+                        int moved = Math.min(remaining, room);
+                        ItemStack merged = existing.clone();
+                        merged.setAmount(existing.getAmount() + moved);
+                        inv.setItem(i, merged);
+                        remaining -= moved;
+                    }
+                    for (int i = 0; i < inv.getSize() && remaining > 0; i++) {
+                        ItemStack existing = inv.getItem(i);
+                        if (existing != null && !existing.getType().isAir()) continue;
+                        int moved = Math.min(remaining, max);
+                        ItemStack placed = incoming.clone();
+                        placed.setAmount(moved);
+                        inv.setItem(i, placed);
+                        remaining -= moved;
+                    }
+                }
+                cont.run();
+            }
+            case "removeFromInventory" -> {
+                // Subtract an item from a whole inventory
+                // (phase 28), by material only, in slot order.
+                Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
+                ItemStack operand = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                if (inv != null && operand != null && !operand.getType().isAir()) {
+                    int remaining = operand.getAmount();
+                    for (int i = 0; i < inv.getSize() && remaining > 0; i++) {
+                        ItemStack existing = inv.getItem(i);
+                        if (existing == null || existing.getType().isAir()
+                                || existing.getType() != operand.getType()) continue;
+                        int removed = Math.min(remaining, existing.getAmount());
+                        int left = existing.getAmount() - removed;
+                        if (left <= 0) {
+                            inv.setItem(i, null);
+                        } else {
+                            ItemStack reduced = existing.clone();
+                            reduced.setAmount(left);
+                            inv.setItem(i, reduced);
+                        }
+                        remaining -= removed;
+                    }
+                }
+                cont.run();
+            }
+            case "enchantItem" -> {
+                // The enchant effect on a variable's item
+                // (phase 28), mirroring the setItemName family:
+                // materialize, apply, store back; a variable
+                // with no item value is left untouched.
+                Map<String, Object> target = node(stmt.get("target"));
+                ItemStack stack = toItemStack(evalExpr(target, ctx));
+                if (stack != null
+                        && stmt.get("enchant") instanceof String name
+                        && stmt.get("level") instanceof Number n) {
+                    applyEnchantment(stack, name, n.intValue());
+                    storeFor(target, ctx).set(varKey(target, ctx), stack);
+                }
+                cont.run();
+            }
+            case "enchantSlot" -> {
+                // The enchant effect on a slot's item (phase 28).
+                Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
+                Object slot = evalExpr(node(stmt.get("slot")), ctx);
+                if (inv != null && slot instanceof Number n
+                        && stmt.get("enchant") instanceof String name
+                        && stmt.get("level") instanceof Number lvl) {
+                    int index = (int) Math.round(n.doubleValue());
+                    if (index >= 0 && index < inv.getSize()) {
+                        ItemStack stack = inv.getItem(index);
+                        if (stack != null && !stack.getType().isAir()) {
+                            ItemStack enchanted = stack.clone();
+                            applyEnchantment(enchanted, name, lvl.intValue());
+                            inv.setItem(index, enchanted);
+                        }
+                    }
+                }
+                cont.run();
+            }
+            case "setCursorItem" -> {
+                // Replace a player's cursor item (phase 28,
+                // engine-only: the original has no cursor
+                // syntax). Inside a click / drag event the
+                // event's own cursor setter is the one that
+                // sticks; anywhere else the player's cursor is
+                // set directly. A valueless or air item clears.
+                ItemStack stack = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                if (ctx.cancellable instanceof InventoryClickEvent clickEvent) {
+                    clickEvent.setCursor(stack == null ? new ItemStack(Material.AIR) : stack);
+                } else if (ctx.cancellable instanceof InventoryDragEvent dragEvent) {
+                    dragEvent.setCursor(stack == null ? new ItemStack(Material.AIR) : stack);
+                } else if (evalExpr(node(stmt.get("target")), ctx) instanceof Player player) {
+                    player.setItemOnCursor(stack == null || stack.getType().isAir() ? null : stack);
+                }
+                cont.run();
+            }
             case "openInventory" -> {
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
                     Inventory inv = asInventory(evalExpr(node(stmt.get("inventory")), ctx));
@@ -2900,6 +3089,31 @@ final class Engine {
             case "eventInventory" -> ctx.eventInventory;
             case "clickedSlotIndex" -> ctx.clickedSlot;
             case "clickedRawSlotIndex" -> ctx.clickedRawSlot;
+            case "draggedSlots" -> ctx.draggedSlots;
+            case "slotIndexOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof SlotRef ref ? (double) ref.index : null;
+            }
+            case "clickedClickType" -> ctx.clickType;
+            case "eventCursor" -> ctx.cursorItem;
+            case "itemWithEnchantment" -> {
+                ItemStack stack = toItemStack(evalExpr(node(expr.get("base")), ctx));
+                if (stack == null) yield null;
+                if (expr.get("enchant") instanceof String name && expr.get("level") instanceof Number n) {
+                    applyEnchantment(stack, name, n.intValue());
+                }
+                yield stack;
+            }
+            case "enchantmentLevelOf" -> {
+                ItemStack stack = toItemStack(evalExpr(node(expr.get("target")), ctx));
+                if (stack == null || !(expr.get("enchant") instanceof String name)) yield null;
+                int level = enchantmentLevel(stack, name);
+                yield level <= 0 ? null : (double) level;
+            }
+            case "enchantmentsOf" -> {
+                ItemStack stack = toItemStack(evalExpr(node(expr.get("target")), ctx));
+                yield stack == null ? null : enchantmentsTextList(stack);
+            }
             case "itemWithName" -> {
                 // Materialize the base item and (re)write its
                 // display name (phase 17). The text is this
@@ -2964,7 +3178,13 @@ final class Engine {
                 int index = (int) Math.round(n.doubleValue());
                 if (index < 0 || index >= inv.getSize()) yield null;
                 ItemStack stack = inv.getItem(index);
-                yield stack == null || stack.getType().isAir() ? null : stack.clone();
+                // An in-range empty slot reads as an air item of
+                // amount 0 in the original (phase 28 probe: the
+                // slot expression is set, its type is air, its
+                // amount is 0 — not no value). Slice 1 yielded no
+                // value here, which diverged from the .sk path;
+                // corrected to match the original.
+                yield stack == null ? new ItemStack(Material.AIR, 0) : stack.clone();
             }
             case "textLength" -> mapText(evalExpr(node(expr.get("target")), ctx),
                     s -> (double) s.length());
@@ -3636,15 +3856,25 @@ final class Engine {
                     + formatNumber(block.getZ() + 0.5)
                     + " in world '" + block.getWorld().getName() + "'";
         }
+        if (value instanceof SlotRef ref) {
+            // A drag slot value prints as the item currently in
+            // the slot (phase 28, probed: empty slots print
+            // "0 airs").
+            ItemStack stack = ref.index >= 0 && ref.index < ref.inventory.getSize()
+                    ? ref.inventory.getItem(ref.index)
+                    : null;
+            return stringify(stack == null ? new ItemStack(Material.AIR, 0) : stack);
+        }
         if (value instanceof ItemStack stack) {
             // An item prints as its type name — pluralized with
-            // its amount above 1 ("3 diamond swords") — plus
-            // " named <name>" when it carries a custom name
+            // its amount above 1 ("3 diamond swords"), or "0 "
+            // plus the plural at amount 0 ("0 airs", phase 28) —
+            // plus " named <name>" when it carries a custom name
             // (phase 17; probed against the real Skript 2.17.1).
             // Lore never prints.
-            String base = stack.getAmount() > 1
-                    ? formatNumber(stack.getAmount()) + " " + pluralize(materialName(stack.getType()))
-                    : materialName(stack.getType());
+            String base = stack.getAmount() == 1
+                    ? materialName(stack.getType())
+                    : formatNumber(stack.getAmount()) + " " + pluralize(materialName(stack.getType()));
             String name = displayNameOf(stack);
             return name == null ? base : base + " named " + name;
         }
@@ -4082,7 +4312,8 @@ final class Engine {
      * stack equals a plain one, two differently named stacks
      * differ (names compare case-sensitively, in their §-coded
      * form), and lore compares line by line when both stacks
-     * have lore.
+     * have lore. Enchantments follow the separate rule noted
+     * inline (phase 28).
      */
     private static boolean metaCompatible(ItemStack a, ItemStack b) {
         String aName = displayNameOf(a);
@@ -4091,7 +4322,105 @@ final class Engine {
         Object aLore = loreOf(a);
         Object bLore = loreOf(b);
         if (aLore instanceof List<?> al && bLore instanceof List<?> bl && !al.equals(bl)) return false;
+        // Enchantments (phase 28, probed — NOT a plain
+        // both-carry field): when both stacks are enchanted
+        // their enchantment maps must be exactly equal; when
+        // exactly one side is enchanted the stacks differ,
+        // UNLESS the enchanted stack also carries a name or
+        // lore, in which case the enchantment difference is
+        // ignored like the both-carry fields above.
+        Map<String, Integer> aEnch = enchantmentMap(a);
+        Map<String, Integer> bEnch = enchantmentMap(b);
+        if (!aEnch.isEmpty() && !bEnch.isEmpty() && !aEnch.equals(bEnch)) return false;
+        if (aEnch.isEmpty() != bEnch.isEmpty()) {
+            ItemStack enchanted = aEnch.isEmpty() ? b : a;
+            if (displayNameOf(enchanted) == null && loreOf(enchanted) == null) return false;
+        }
         return true;
+    }
+
+    /**
+     * Merge similarity for the slot / inventory add forms
+     * (phase 28, probed): same material, and each of name, lore
+     * and enchantments decides only when BOTH stacks carry it.
+     * Unlike metaCompatible, a one-sided enchantment never
+     * blocks a merge (the slot stack simply keeps its own meta
+     * and grows).
+     */
+    private static boolean stacksSimilarForMerge(ItemStack slotStack, ItemStack added) {
+        if (slotStack.getType() != added.getType()) return false;
+        String aName = displayNameOf(slotStack);
+        String bName = displayNameOf(added);
+        if (aName != null && bName != null && !aName.equals(bName)) return false;
+        Object aLore = loreOf(slotStack);
+        Object bLore = loreOf(added);
+        if (aLore instanceof List<?> al && bLore instanceof List<?> bl && !al.equals(bl)) return false;
+        Map<String, Integer> aEnch = enchantmentMap(slotStack);
+        Map<String, Integer> bEnch = enchantmentMap(added);
+        return aEnch.isEmpty() || bEnch.isEmpty() || aEnch.equals(bEnch);
+    }
+
+    /** A stack's enchantments as registry key ("sharpness") → level, in meta order. */
+    private static Map<String, Integer> enchantmentMap(ItemStack stack) {
+        Map<String, Integer> map = new LinkedHashMap<>();
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) return map;
+        for (Map.Entry<Enchantment, Integer> e : meta.getEnchants().entrySet()) {
+            map.put(e.getKey().getKey().getKey(), e.getValue());
+        }
+        return map;
+    }
+
+    /** Resolve a space-form enchantment name ("fire aspect") to the registry entry, or null. */
+    private static Enchantment resolveEnchantment(String name) {
+        String key = name.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+        return Registry.ENCHANTMENT.get(NamespacedKey.minecraft(key));
+    }
+
+    /**
+     * Apply an enchantment the way the original does (phase 28):
+     * restrictions ignored (incompatible enchantments and levels
+     * above the vanilla cap apply), and level 0 removes the
+     * enchantment (the original treats it as absent).
+     */
+    private static void applyEnchantment(ItemStack stack, String name, int level) {
+        Enchantment ench = resolveEnchantment(name);
+        if (ench == null) return;
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) return;
+        if (level <= 0) meta.removeEnchant(ench);
+        else meta.addEnchant(ench, level, true);
+        stack.setItemMeta(meta);
+    }
+
+    /** The level of an enchantment on a stack (0 when absent). */
+    private static int enchantmentLevel(ItemStack stack, String name) {
+        Enchantment ench = resolveEnchantment(name);
+        if (ench == null) return 0;
+        ItemMeta meta = stack.getItemMeta();
+        return meta == null ? 0 : meta.getEnchantLevel(ench);
+    }
+
+    /**
+     * An enchantment key's print form (phase 28, probed): the
+     * key in words, except the two curses, which the original
+     * prints as "curse of binding" / "curse of vanishing".
+     */
+    private static String enchantmentPrintName(String key) {
+        if ("binding_curse".equals(key)) return "curse of binding";
+        if ("vanishing_curse".equals(key)) return "curse of vanishing";
+        return key.replace('_', ' ');
+    }
+
+    /** A stack's enchantments as print-form texts ("sharpness 5"), or null when it has none. */
+    private static Object enchantmentsTextList(ItemStack stack) {
+        Map<String, Integer> ench = enchantmentMap(stack);
+        if (ench.isEmpty()) return null;
+        List<Object> lines = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : ench.entrySet()) {
+            lines.add(enchantmentPrintName(e.getKey()) + " " + e.getValue());
+        }
+        return lines;
     }
 
     /**
