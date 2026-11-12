@@ -22,19 +22,25 @@ surprise newcomers, and how to verify changes on a real server.
 
 ## Install
 
-From a clone of the repository, after `pnpm install`, run from
-the repository root:
+With the open agent skills CLI, from any directory:
 
 ```sh
-./bin/skript-ts.mjs skills install
+npx skills add kurazuuuuuu/skript-ts
 ```
 
-This copies `skript-ts/` into `~/.claude/skills/` by default
+The installer discovers this pack in the repository and places
+it in the skills directory of the agent you select (for Claude
+Code: `~/.claude/skills/skript-ts/`).
+
+From a clone of the repository, the bundled subcommand does
+the same job: after `pnpm install`, run
+`./bin/skript-ts.mjs skills install` from the repository root.
+It copies `skript-ts/` into `~/.claude/skills/` by default
 (`--dir <dir>` chooses another skills directory, `--json`
-prints a machine-readable result). Re-running is safe: files
-that already match are left untouched. Copying the `skript-ts/`
-directory into your agent's skills directory manually works
-too.
+prints a machine-readable result). Re-running either route is
+safe: files that already match are left untouched. Copying the
+`skript-ts/` directory into your agent's skills directory
+manually works too.
 
 ## Keeping it in sync
 
