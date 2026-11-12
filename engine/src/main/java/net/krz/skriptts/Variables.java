@@ -4,6 +4,8 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Registry;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -34,7 +36,8 @@ import java.util.logging.Logger;
  * Locations are encoded as tagged objects so they survive restarts.
  * Item stacks (phase 17) are encoded as tagged objects too —
  * material, amount, and the display name / lore in §-coded legacy
- * form — while inventories are runtime-only values and are never
+ * form, plus the enchantments as a key-to-level map (phase 28) —
+ * while inventories are runtime-only values and are never
  * written (like data sources).
  */
 final class Variables {
@@ -186,6 +189,16 @@ final class Variables {
                     m.put("lore", lines);
                 }
             }
+            // Enchantments (phase 28): registry key -> level.
+            // Files written before this field existed simply
+            // have no "ench" entry and decode as unenchanted.
+            if (meta != null && meta.hasEnchants()) {
+                Map<String, Object> ench = new LinkedHashMap<>();
+                for (Map.Entry<Enchantment, Integer> entry : meta.getEnchants().entrySet()) {
+                    ench.put(entry.getKey().getKey().getKey(), (double) entry.getValue());
+                }
+                m.put("ench", ench);
+            }
             return m;
         }
         if (value instanceof Location loc) {
@@ -232,6 +245,20 @@ final class Variables {
                     }
                     meta.lore(lines);
                     touched = true;
+                }
+                // Enchantments (phase 28): applied ignoring
+                // restrictions, as the original stores over-cap
+                // and incompatible enchantments too. A missing
+                // field (pre-phase-28 files) means unenchanted.
+                if (map.get("ench") instanceof Map<?, ?> enchMap) {
+                    for (Map.Entry<?, ?> entry : enchMap.entrySet()) {
+                        Enchantment resolved = Registry.ENCHANTMENT.get(
+                                NamespacedKey.minecraft(String.valueOf(entry.getKey())));
+                        if (resolved != null && entry.getValue() instanceof Number level) {
+                            meta.addEnchant(resolved, level.intValue(), true);
+                            touched = true;
+                        }
+                    }
                 }
                 if (touched) stack.setItemMeta(meta);
             }
