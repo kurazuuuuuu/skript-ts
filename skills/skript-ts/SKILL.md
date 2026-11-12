@@ -19,11 +19,15 @@ clean-room engine jar with no Skript plugin.
 1. [writing-guide.md](writing-guide.md) — how to write: module
    shape, patterns, recipes, and what each expression holds at
    runtime (mapped to the Bukkit classes you already know).
-2. [semantics.md](semantics.md) — the verified semantic facts
+2. [type-map.md](type-map.md) — the complete type
+   correspondence: every value-returning builder mapped to the
+   Bukkit/Paper class it holds at runtime, the closed name
+   sets `tsc` checks, and where the static typing goes next.
+3. [semantics.md](semantics.md) — the verified semantic facts
    that differ from intuition. The full canonical reference is
    the repository's `docs/reference.md`; anything not listed
    there is outside the supported subset.
-3. [verification.md](verification.md) — how to prove a change:
+4. [verification.md](verification.md) — how to prove a change:
    golden gates first, then a real server. A script that merely
    parses is not verified.
 

@@ -12,6 +12,9 @@ surprise newcomers, and how to verify changes on a real server.
 - [`skript-ts/writing-guide.md`](skript-ts/writing-guide.md) —
   layer 1: patterns, recipes, and the mapping from API expressions
   to the Bukkit/Paper classes they hold at runtime.
+- [`skript-ts/type-map.md`](skript-ts/type-map.md) — layer 1:
+  the complete per-builder type correspondence, the closed name
+  sets, and the staged plan for growing the static typing.
 - [`skript-ts/semantics.md`](skript-ts/semantics.md) — layer 2:
   the verified semantic facts most likely to bite, with the full
   reference linked (the repository's `docs/reference.md` is

@@ -152,7 +152,10 @@ The writing side is typed (literal names below are checked by
 while values coming back from the variable store stay dynamic by
 design. To predict what an expression _holds_, map it to the
 Bukkit class it wraps at runtime — the same hierarchy you know
-from Paper plugin development:
+from Paper plugin development. The table below is the summary;
+[type-map.md](type-map.md) carries the complete per-builder
+correspondence, the closed name sets, and how the static typing
+is staged to grow:
 
 | Expression                                                                                            | Runtime value (Bukkit)                                                           |
 | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
