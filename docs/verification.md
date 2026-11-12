@@ -31,7 +31,7 @@ non-TTY output falls back to append-only lines.
 bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--engine] [--server-dir server] [--json]
 
 # full verification against the throwaway sandbox server in server/
-bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--json]
+bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--fast] [--json]
 ```
 
 `verify` runs: typecheck → transpile → deploy → server start → script
@@ -72,6 +72,15 @@ position, e.g. `death.sk:2 → examples/death.ts:5:5 (body[0].body[0])`.
 Before booting, `verify` wipes the sandbox's per-player state
 (playerdata, Skript `variables.csv`, `ops.json`) so behavior tests
 start from a clean slate; pass `--no-fresh` to keep it.
+
+The behavior stage dominates a full run (measured at roughly 90% of
+the total), so for the inner dev loop `verify --fast` runs a
+deterministic one-in-three subsample of the behavior suites instead:
+a suite is in the sample when the FNV-1a hash of its file name is
+divisible by 3, which keeps membership stable as suites are added or
+removed. The JSON result records a per-suite `durationMs` either way,
+and the stage note names the slowest suite. `--fast` is a dev-loop
+signal only — the full run without it remains the gate.
 
 ### Behavior tests
 
