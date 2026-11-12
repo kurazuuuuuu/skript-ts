@@ -1150,3 +1150,65 @@ Three grammar edges were found by load-checking: a bare timespan literal cannot 
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal
 `%` is doubled (`%%`). This applies to `str()` values, the literal parts of
 `fmt()`, and permission strings — never to emitted placeholders.
+
+## Resource packs: generation foundation (RP-1)
+
+Build-time only: a project exports one pack definition and
+`skript-ts build` generates the pack zip plus a manifest next to the
+built scripts. Nothing is deployed or sent to players yet — the zip
+is placed into a client's `resourcepacks` folder by hand.
+
+| TS builder                                                                         | Result in the pack                                                                                          |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `defineTexture({ id, palette, map, size?, transparentChar? })`                     | a PNG rendered from the pixel map at `assets/<ns>/textures/<path>.png`                                      |
+| `defineTexture({ id, source: { kind: "png", path } })`                             | the PNG file copied to the same place (path resolves against the defining file's directory)                 |
+| `defineItem({ id, baseItem, texture?, model?, modelParent?, displayName? })`       | a data-driven item definition at `assets/<ns>/items/<path>.json`, plus a model JSON when a texture is given |
+| `defineFontChar({ id, texture, char, height?, ascent })`                           | one bitmap provider in the pack's own font, `assets/<packNs>/font/default.json`                             |
+| `definePack({ namespace, description, required?, textures?, items?, fontChars? })` | the pack itself: `<namespace>.zip` + `<namespace>.resourcepack.json` in the build output                    |
+
+Semantics, pinned against the real 1.21.11 client jar (the formats
+are Mojang's, so the jar files themselves are the probe):
+
+- **pack.mcmeta** uses the 1.21.9+ form: `min_format` / `max_format`
+  are `[75, 0]`, the resource pack format of 1.21.11 (read from the
+  version metadata of the 1.21.11 jar). The legacy lone
+  `pack_format` number is not emitted.
+- **Item definitions** are the data-driven form:
+  `{ "model": { "type": "minecraft:model", "model": "<id>" } }`.
+  The model id defaults to `<itemNs>:item/<itemPath>`; the model
+  JSON is `{ "parent": "minecraft:item/generated", "textures":
+  { "layer0": "<texId>" } }` (`modelParent` overrides the parent).
+  An item shows in game once a stack carries the matching
+  `minecraft:item_model` component — assigning it from scripts is
+  RP-2, so in RP-1 the check is a vanilla command:
+  `/give @s minecraft:amethyst_shard[item_model="example:gem"]`.
+- **Pixel maps**: one character is one pixel; the palette maps a
+  character to `#RRGGBB`, `#RRGGBBAA`, or `"transparent"` (alpha 0).
+  The transparent character defaults to `.` and must map to
+  `"transparent"` when it appears in the palette. Size defaults to
+  16x16; each side may be 1–256. Rendering is exact — no scaling.
+- **Validation is all at build time**: a map row whose length
+  differs from the width (reported with its line number), a
+  character missing from the palette (line and column), duplicate
+  texture / item / font-char ids after namespace resolution,
+  duplicate font characters, a string texture reference that is not
+  declared, a PNG source that is missing or not a PNG, and an item
+  with neither texture nor model are all build errors. Inline
+  `TextureDef` objects referenced by items or font chars are
+  collected automatically; re-declaring the same resolved id with a
+  different definition object is an error.
+- **The manifest** (`<namespace>.resourcepack.json`) records the
+  namespace, description, the `required` flag (declared now, acted
+  on by the distribution phase), the zip file name, its SHA-1 and
+  size, the pack format, and the sorted entry list. Generation is
+  deterministic — zip entries are sorted and timestamps pinned to
+  1980-01-01 — so an unchanged pack rebuilds to the identical SHA-1.
+- **One pack per project**: exporting two `definePack` results is a
+  build error. Multiple packs, CustomModelData numbering, scripted
+  giving, pack sending and status events are later RP phases.
+
+`examples/resourcepack.ts` exercises all of it — the pixel-map gem,
+a PNG-sourced coin texture, the custom item, and a coin glyph in the
+pack font — and `tests/resourcepack.test.ts` pins the validation,
+the exact generated JSON, the PNG pixels, the zip structure and the
+manifest hash.

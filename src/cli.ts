@@ -736,7 +736,8 @@ async function main(): Promise<number> {
     });
     const n = build.scripts.length;
     const skippedNote = build.skipped.length > 0 ? `、${build.skipped.length} 件スキップ` : "";
-    return { note: `${n} ファイル${skippedNote}` };
+    const packNote = build.packs.length > 0 ? `、パック ${build.packs.length} 件` : "";
+    return { note: `${n} ファイル${skippedNote}${packNote}` };
   });
 
   // 3. Deploy

@@ -14,6 +14,8 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { emitIr, emitWithMap, isEngineOnlyScript, type Script } from "../index.js";
+import { generatePack, type PackManifest } from "../packgen.js";
+import type { PackDef } from "../resourcepack.js";
 import type { SourceMapFile } from "../source-map.js";
 
 export interface BuiltScript {
@@ -36,12 +38,24 @@ export interface BuiltScript {
   irPath: string;
 }
 
+export interface BuiltPack {
+  /** Pack namespace from definePack(). */
+  namespace: string;
+  /** Absolute path of the generated resource pack .zip in the output dir. */
+  zipPath: string;
+  /** Absolute path of the pack manifest JSON next to the zip. */
+  manifestPath: string;
+  manifest: PackManifest;
+}
+
 export interface BuildResult {
   scripts: BuiltScript[];
   /** Source files that exported no Script and were skipped. */
   skipped: string[];
   /** Source maps keyed by .sk rel path, for error mapping. */
   maps: Map<string, SourceMapFile>;
+  /** Resource packs generated from exported PackDef values (at most one). */
+  packs: BuiltPack[];
 }
 
 function isScript(value: unknown): value is Script {
@@ -50,6 +64,15 @@ function isScript(value: unknown): value is Script {
     value !== null &&
     (value as { kind?: unknown }).kind === "script" &&
     Array.isArray((value as { body?: unknown }).body)
+  );
+}
+
+function isPack(value: unknown): value is PackDef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { kind?: unknown }).kind === "resourcepack" &&
+    typeof (value as { namespace?: unknown }).namespace === "string"
   );
 }
 
@@ -88,12 +111,18 @@ export async function buildProject(opts: {
   const scripts: BuiltScript[] = [];
   const skipped: string[] = [];
   const maps = new Map<string, SourceMapFile>();
+  const foundPacks: { pack: PackDef; moduleDir: string; relSource: string }[] = [];
 
   for (const absFile of listTsFiles(srcDir)) {
     if (opts.ignore.includes(basename(absFile))) continue;
     const relSource = toPosix(relative(rootDir, absFile));
     opts.onFile?.(relSource);
     const mod = (await import(pathToFileURL(absFile).href)) as Record<string, unknown>;
+    for (const value of Object.values(mod)) {
+      if (isPack(value)) {
+        foundPacks.push({ pack: value, moduleDir: dirname(absFile), relSource });
+      }
+    }
     const found = Object.values(mod).filter(isScript);
     if (found.length === 0) {
       skipped.push(relSource);
@@ -149,7 +178,50 @@ export async function buildProject(opts: {
     scripts.push({ rel: relSk, engineOnly: false, skPath, mapPath, map, irRel, irPath });
     maps.set(relSk, map);
   }
-  return { scripts, skipped, maps };
+  return { scripts, skipped, maps, packs: buildPacks(foundPacks, outDir) };
+}
+
+/**
+ * Generate the project's resource pack (RP-1). At most one PackDef may
+ * be exported across the whole source tree — multiple packs are a
+ * recorded open question in the design, not silently merged. The zip
+ * and its manifest land in the output dir next to the built scripts;
+ * distribution (deploying / sending the pack) is a later phase, so
+ * nothing here touches the server folders.
+ */
+function buildPacks(
+  foundPacks: { pack: PackDef; moduleDir: string; relSource: string }[],
+  outDir: string,
+): BuiltPack[] {
+  if (foundPacks.length === 0) return [];
+  if (foundPacks.length > 1) {
+    const sources = foundPacks.map((f) => f.relSource).join(", ");
+    throw new Error(
+      `multiple resource packs exported (${sources}); only one pack per project is supported`,
+    );
+  }
+  const { pack, moduleDir, relSource } = foundPacks[0] as {
+    pack: PackDef;
+    moduleDir: string;
+    relSource: string;
+  };
+  // PNG texture sources resolve against the defining file's directory.
+  const generated = generatePack(pack, (pngPath) => {
+    try {
+      return readFileSync(resolve(moduleDir, pngPath));
+    } catch {
+      throw new Error(
+        `${relSource}: cannot read PNG texture file "${pngPath}" ` +
+          `(resolved against the defining file's directory)`,
+      );
+    }
+  });
+  mkdirSync(outDir, { recursive: true });
+  const zipPath = join(outDir, generated.manifest.zipFile);
+  writeFileSync(zipPath, generated.zip);
+  const manifestPath = join(outDir, `${pack.namespace}.resourcepack.json`);
+  writeFileSync(manifestPath, JSON.stringify(generated.manifest, null, 2) + "\n", "utf8");
+  return [{ namespace: pack.namespace, zipPath, manifestPath, manifest: generated.manifest }];
 }
 
 /** Run the project's TypeScript compiler in noEmit mode. */
