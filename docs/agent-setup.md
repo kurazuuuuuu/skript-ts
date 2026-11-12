@@ -121,18 +121,21 @@ and the generated `<name>.ir.json` files into
 
 ## 6. Install the skill pack (for agent-driven development)
 
-Once the `skills` CLI subcommand ships, the skill pack in
-[`skills/`](../skills/) installs into your agent's skills
-directory with:
+The skill pack in [`skills/`](../skills/) installs into your
+agent's skills directory with the CLI's `skills install`
+subcommand. From a clone of this repository, after
+`pnpm install`, run from the repository root:
 
 ```sh
-npx github:kurazuuuuuu/skript-ts skills install
+./bin/skript-ts.mjs skills install
 ```
 
-> **Note:** this command becomes available when the `skills`
-> subcommand is implemented in the CLI; until then, copy the
-> `skills/skript-ts/` directory into your agent's skills directory
-> manually (for Claude Code: `~/.claude/skills/`).
+This copies `skills/skript-ts/` into `~/.claude/skills/` by
+default; `--dir <dir>` chooses a different skills directory and
+`--json` prints a machine-readable result. Re-running is safe:
+files that already match are left untouched. Copying the
+`skills/skript-ts/` directory into your agent's skills directory
+manually works too.
 
 ## Template prompt
 

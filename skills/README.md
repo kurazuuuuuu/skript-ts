@@ -22,14 +22,19 @@ surprise newcomers, and how to verify changes on a real server.
 
 ## Install
 
-Once the `skills` CLI subcommand ships:
+From a clone of the repository, after `pnpm install`, run from
+the repository root:
 
 ```sh
-npx github:kurazuuuuuu/skript-ts skills install
+./bin/skript-ts.mjs skills install
 ```
 
-Until then, copy the `skript-ts/` directory into your agent's
-skills directory manually (for Claude Code: `~/.claude/skills/`).
+This copies `skript-ts/` into `~/.claude/skills/` by default
+(`--dir <dir>` chooses another skills directory, `--json`
+prints a machine-readable result). Re-running is safe: files
+that already match are left untouched. Copying the `skript-ts/`
+directory into your agent's skills directory manually works
+too.
 
 ## Keeping it in sync
 

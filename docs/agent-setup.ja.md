@@ -119,18 +119,20 @@ Skript モードに戻ります。両方のランタイムを同居させない�
 
 ## 6. スキルパックのインストール（エージェント駆動の開発用）
 
-`skills` CLI サブコマンドの提供後は、[`skills/`](../skills/) の
-スキルパックを次のコマンドでエージェントの skills ディレクトリへ
-インストールできます。
+[`skills/`](../skills/) のスキルパックは、CLI の `skills install`
+サブコマンドでエージェントの skills ディレクトリへインストール
+できます。このリポジトリの clone で `pnpm install` を済ませてから、
+リポジトリのルートで実行してください。
 
 ```sh
-npx github:kurazuuuuuu/skript-ts skills install
+./bin/skript-ts.mjs skills install
 ```
 
-> **注記:** このコマンドは CLI に `skills` サブコマンドが実装されて
-> から有効になります。それまでは `skills/skript-ts/` ディレクトリを
-> エージェントの skills ディレクトリへ手動でコピーしてください
-> （Claude Code の場合: `~/.claude/skills/`）。
+既定では `~/.claude/skills/` へ `skills/skript-ts/` をコピーします。
+`--dir <dir>` で別の skills ディレクトリを指定でき、`--json` で
+機械可読な結果を出力します。再実行しても安全で、内容が一致する
+ファイルはそのまま残ります。`skills/skript-ts/` ディレクトリを
+エージェントの skills ディレクトリへ手動でコピーしても構いません。
 
 ## テンプレートプロンプト
 
