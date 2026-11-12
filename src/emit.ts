@@ -826,8 +826,8 @@ function requireEnchantmentName(value: string, loc?: SourceLoc): void {
  * unbreaking 3`. The suffix exists only inside item type
  * literals in the original — applying it to a variable-held
  * item is a load error there (probed) — so the chain's base
- * must be an item literal; anything else is a build error
- * pointing at enchantItem instead.
+ * must be an item literal chain; anything else is a build
+ * error pointing at enchantItem instead.
  */
 function emitEnchantedItem(e: Extract<Expr, { kind: "itemWithEnchantment" }>): string {
   const pairs: Array<[string, number]> = [];
@@ -836,14 +836,41 @@ function emitEnchantedItem(e: Extract<Expr, { kind: "itemWithEnchantment" }>): s
     pairs.push([cur.enchant, cur.level]);
     cur = cur.base;
   }
-  if (cur.kind !== "item") {
-    throw new Error(
-      "withEnchantment requires an item literal base (the original's enchantment suffix exists only in item type literals); apply enchantItem to a variable instead",
-    );
+  // The remaining base must be an item literal chain (item,
+  // counted, named, lored, in any nesting). The wrappers are
+  // re-assembled around the enchantment suffix in the original's
+  // canonical order — count prefix, item, enchantments, name,
+  // lore — because the suffix order matters there (probed:
+  // "diamond sword of sharpness 7 named ""Keepsake""" reads back
+  // fully, while "diamond sword named ""Keepsake"" of sharpness
+  // 7" parses but silently evaluates to no value).
+  let amount: Expr | null = null;
+  let name: Expr | null = null;
+  let lore: Expr[] | null = null;
+  let node: Expr = cur;
+  while (node.kind !== "item") {
+    if (node.kind === "itemWithAmount" && amount === null) {
+      amount = node.amount;
+      node = node.base;
+    } else if (node.kind === "itemWithName" && name === null) {
+      name = node.name;
+      node = node.base;
+    } else if (node.kind === "itemWithLore" && lore === null) {
+      lore = node.lines;
+      node = node.base;
+    } else {
+      throw new Error(
+        "withEnchantment requires an item literal base (the original's enchantment suffix exists only in item type literals); apply enchantItem to a variable instead",
+      );
+    }
   }
-  for (const [name] of pairs) requireEnchantmentName(name);
+  for (const [enchantName] of pairs) requireEnchantmentName(enchantName);
   pairs.reverse();
-  return `${emitValue(cur)} of ${pairs.map(([name, level]) => `${name} ${level}`).join(" and ")}`;
+  let out = `${emitValue(node)} of ${pairs.map(([enchantName, level]) => `${enchantName} ${level}`).join(" and ")}`;
+  if (name !== null) out = `${out} named ${emitValue(name)}`;
+  if (lore !== null) out = `${out} with lore ${andList(lore.map((l) => emitValue(l)))}`;
+  if (amount !== null) out = `${emitValue(amount)} of ${out}`;
+  return out;
 }
 
 /**
