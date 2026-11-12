@@ -49,6 +49,12 @@ export type Expr =
   | { kind: "httpError" }
   | { kind: "httpSavedPath" }
   | { kind: "envVar"; name: TextExpr }
+  // Engine-builtin expressions (Cloudflare, M4 CF-1): the payload
+  // of a Cloudflare completion event. cfError is the error kind
+  // text (the HTTP set plus auth/notfound/quota/api); the detail
+  // stays in the server log, and a success has no cfError value.
+  | { kind: "cfId" }
+  | { kind: "cfError" }
   // Engine-builtin expressions (skUtilities slice, phase 9): reads
   // from text files under the engine's files root. All three yield
   // no value when the file is missing.
@@ -460,6 +466,9 @@ export type Cond =
   // Engine-builtin condition (external connectors, phase 26): the
   // HTTP completion being handled arrived with a response.
   | { kind: "httpOk" }
+  // Engine-builtin condition (Cloudflare, M4 CF-1): the Cloudflare
+  // operation being handled completed without an error.
+  | { kind: "cfOk" }
   // Boss bar flag conditions (phase 24), probed on Skript 2.17.1:
   // `%bar% darkens the sky`, `%bar% creates fog`,
   // `%bar% plays boss music` (with native negative spellings).
@@ -949,6 +958,21 @@ export type Stmt =
       path: TextExpr;
       timeoutSeconds?: number;
       loc?: SourceLoc;
+    }
+  // Engine-builtin statement (Cloudflare, M4 CF-1): start an
+  // asynchronous D1 query against the database bound to a named
+  // handle (resolved by the engine from SKRIPTTS_CF_* environment
+  // variables). The statement returns at once; the outcome arrives
+  // later as a cfResponse event. The sql is a text expression whose
+  // expression parts become bound ? parameters, never inlined.
+  | {
+      kind: "cfD1Query";
+      id: string;
+      handle: string;
+      sql: TextExpr;
+      store?: VariableExpr;
+      timeoutSeconds?: number;
+      loc?: SourceLoc;
     };
 
 /** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. Phase 22 generalized death (any entity, victim filter), added the entity pickup / drop forms, and split fishing into its state sub-events. */
@@ -987,7 +1011,8 @@ export type EventKind =
   | "timerTick"
   | "timerComplete"
   | "papiRequest"
-  | "httpResponse";
+  | "httpResponse"
+  | "cfResponse";
 
 /**
  * A Skript event filter (phase 16): the type-name lists of the

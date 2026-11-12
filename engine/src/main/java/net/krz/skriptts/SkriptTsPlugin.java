@@ -62,6 +62,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     private Engine engine;
     private WebSockets websockets;
     private Urls urls;
+    private Cloudflare cloudflare;
     private Timers timers;
     private Placeholders placeholders;
     private Database database;
@@ -152,6 +153,23 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
                 urls.download(id, url, path, timeoutSeconds);
             }
         });
+        // Cloudflare client (M4 CF-1): the destination is fixed to
+        // api.cloudflare.com; SKRIPTTS_CF_API_BASE_URL overrides it
+        // so verification can run against a local stub — never set
+        // it on a production server.
+        String cfBaseUrl = System.getenv("SKRIPTTS_CF_API_BASE_URL");
+        if (cfBaseUrl != null && !cfBaseUrl.isBlank()) {
+            getLogger().warning("skript-ts: WARNING SKRIPTTS_CF_API_BASE_URL is set — Cloudflare API traffic goes to that base URL instead of api.cloudflare.com. This override exists for verification stubs only; do not set it on a production server.");
+        }
+        cloudflare = new Cloudflare(
+                result -> getServer().getScheduler().runTask(this, () -> engine.completeCf(result)),
+                getLogger());
+        engine.setCfHost(new Engine.CfHost() {
+            @Override
+            public void d1Query(String id, String handle, String sql, List<Object> params, String storeVar, double timeoutSeconds) {
+                cloudflare.d1Query(id, handle, sql, params, storeVar, timeoutSeconds);
+            }
+        });
         timers = new Timers(this, new Timers.Events() {
             @Override
             public void onTick(String id, double timeLeft) {
@@ -240,6 +258,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         if (placeholders != null) placeholders.shutdown();
         if (timers != null) timers.shutdown();
         if (urls != null) urls.shutdown();
+        if (cloudflare != null) cloudflare.shutdown();
         if (websockets != null) websockets.closeAll();
         if (variables != null) variables.save();
     }
