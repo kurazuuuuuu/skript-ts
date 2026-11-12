@@ -254,6 +254,26 @@ export type Expr =
   | { kind: "slotItem"; inventory: Expr; slot: Expr }
   | { kind: "clickedSlotIndex" }
   | { kind: "clickedRawSlotIndex" }
+  // Phase 28: drag slots and enchantment expressions.
+  //
+  // Drag events expose the affected slots as slot values
+  // (`event-slots`). `index of` a slot counts within the
+  // inventory the slot belongs to (the player's bottom inventory
+  // uses player-inventory numbering). The original exposes no
+  // raw view index and no owning inventory for drag slots, and
+  // the `event-slots` list order is unspecified.
+  //
+  // Enchantment expressions mirror the original item-literal
+  // suffix: the with-enchantment form exists only in item type
+  // literals, and levels are literal integers there and in the
+  // enchant effect.
+  | { kind: "draggedSlots" }
+  | { kind: "slotIndexOf"; target: Expr }
+  | { kind: "clickedClickType" }
+  | { kind: "eventCursor" }
+  | { kind: "itemWithEnchantment"; base: Expr; enchant: string; level: number }
+  | { kind: "enchantmentLevelOf"; target: Expr; enchant: string }
+  | { kind: "enchantmentsOf"; target: Expr }
   // Core-language world operations (phase 18). All semantics were
   // probed against the real Skript 2.17.1 in the sandbox (see the
   // development log for the probe rounds):
@@ -710,6 +730,14 @@ export type Stmt =
   | { kind: "openInventory"; target: Expr; inventory: Expr; loc?: SourceLoc }
   | { kind: "openGui"; target: Expr; rows: Expr; title?: Expr; loc?: SourceLoc }
   | { kind: "closeInventory"; target: Expr; loc?: SourceLoc }
+  // Phase 28: GUI slice 2 — slot/inventory add/remove, cursor and enchantment effects.
+  | { kind: "addToSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }
+  | { kind: "removeFromSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }
+  | { kind: "addToInventory"; inventory: Expr; item: Expr; loc?: SourceLoc }
+  | { kind: "removeFromInventory"; inventory: Expr; item: Expr; loc?: SourceLoc }
+  | { kind: "enchantItem"; target: ScalarVarExpr; enchant: string; level: number; loc?: SourceLoc }
+  | { kind: "enchantSlot"; inventory: Expr; slot: Expr; enchant: string; level: number; loc?: SourceLoc }
+  | { kind: "setCursorItem"; target: Expr; item: Expr; loc?: SourceLoc }
   // Core-language world statements (phase 18), mirroring the
   // change / effect forms probed against the real Skript 2.17.1:
   // - setBlock writes an item's material at a location
@@ -970,6 +998,7 @@ export type EventKind =
   | "bedLeave"
   | "inventoryClick"
   | "inventoryClose"
+  | "inventoryDrag"
   | "entityPickup"
   | "entityDrop"
   | "fishCast"

@@ -80,6 +80,8 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "httpError",
   "httpSavedPath",
   "httpOk",
+  "eventCursor",
+  "setCursorItem",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
