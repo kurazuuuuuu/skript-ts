@@ -2851,3 +2851,76 @@ export function httpOk(): Cond {
 export function env(name: TextExpr): Expr {
   return { kind: "envVar", name };
 }
+
+// ---------------------------------------------------------------------------
+// Engine builtins (Cloudflare, M4 CF-1)
+//
+// Cloudflare operations are asynchronous like HTTP: cfD1Query starts
+// one D1 statement under a caller-chosen literal id against a named
+// handle and returns immediately. The handle is resolved by the
+// engine from environment variables (SKRIPTTS_CF_*), so credentials
+// never appear in scripts or IR; a handle that cannot be resolved
+// completes with error kind "policy". The SQL is a text expression
+// whose literal parts are the author's SQL and whose expression
+// parts become bound ? parameters, never inlined (the dbExecute
+// rule). The optional store variable receives the result rows as
+// <var>::<column>::<row> entries with the variable itself set to
+// the row count, or the affected-row count for statements without
+// a result set (the dbExecute mapping). Completion arrives as a
+// cfResponse event read through cfId(), cfError(), and cfOk().
+// D1 over REST has no session consistency: a read right after a
+// write can observe older data on the real service.
+// ---------------------------------------------------------------------------
+
+function requireCfId(id: string): string {
+  if (typeof id !== "string" || id.trim() === "") {
+    throw new RangeError("cf id must be a non-empty string");
+  }
+  return id;
+}
+
+function requireCfHandle(handle: string): string {
+  if (typeof handle !== "string" || handle.trim() === "") {
+    throw new RangeError("cf handle must be a non-empty string");
+  }
+  return handle;
+}
+
+/** Construct a cf-d1-query statement that starts an asynchronous D1 query (engine builtin). */
+export function cfD1Query(
+  id: string,
+  handle: string,
+  sql: TextExpr,
+  store?: VariableExpr,
+  opts?: { timeoutSeconds?: number },
+): Stmt {
+  const timeout = requireTimeoutSeconds(opts);
+  return withLoc({
+    kind: "cfD1Query",
+    id: requireCfId(id),
+    handle: requireCfHandle(handle),
+    sql,
+    ...(store !== undefined ? { store } : {}),
+    ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
+  });
+}
+
+/** Construct an on-cf-response event (engine builtin). */
+export function onCfResponse(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "cfResponse", body });
+}
+
+/** Construct a cf-id expression: the operation id, inside cfResponse events. */
+export function cfId(): Expr {
+  return { kind: "cfId" };
+}
+
+/** Construct a cf-error expression: the error kind text, no value on success. */
+export function cfError(): Expr {
+  return { kind: "cfError" };
+}
+
+/** Construct a cf-ok condition (engine builtin): the operation completed without an error. */
+export function cfOk(): Cond {
+  return { kind: "cfOk" };
+}

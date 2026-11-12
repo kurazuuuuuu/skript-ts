@@ -299,6 +299,8 @@ function emitValue(e: Expr): string {
     case "httpError":
     case "httpSavedPath":
     case "envVar":
+    case "cfId":
+    case "cfError":
       // Engine-builtin expressions (phases 6-10, 26) exist only
       // in the engine jar; there is no Skript text form to emit.
       throw new Error(
@@ -446,6 +448,8 @@ function emitString(e: Expr): string {
     case "httpError":
     case "httpSavedPath":
     case "envVar":
+    case "cfId":
+    case "cfError":
       throw new Error(
         `Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -552,6 +556,7 @@ function emitLeafCond(c: Cond, negated: boolean): string {
     case "timerActive":
     case "fileExists":
     case "httpOk":
+    case "cfOk":
       throw new Error(
         `Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -1079,6 +1084,7 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     case "setPlaceholderResult":
     case "httpFetch":
     case "httpDownload":
+    case "cfD1Query":
       throw new Error(
         `Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -1199,7 +1205,8 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
         t.event === "timerTick" ||
         t.event === "timerComplete" ||
         t.event === "papiRequest" ||
-        t.event === "httpResponse"
+        t.event === "httpResponse" ||
+        t.event === "cfResponse"
       ) {
         throw new Error(
           `Unhandled Event in emitTop: '${t.event}' is an engine-only builtin with no .sk form`,

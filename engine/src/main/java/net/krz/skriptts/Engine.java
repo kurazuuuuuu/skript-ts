@@ -242,6 +242,8 @@ final class Engine {
         String httpBody;    // fetched text in http response events (fetch only)
         String httpError;   // http error kind in http response events; null on success
         String httpSavedPath; // saved file path in http response events (download only)
+        String cfId;        // cf operation id in cf response events (M4 CF-1)
+        String cfError;     // cf error kind in cf response events; null on success
         String papiPrefix;  // matched expansion prefix in placeholder request events
         String papiIdentifier; // parameter part of the placeholder being requested
         String papiResult;  // answer set by the set-result statement (read back after dispatch)
@@ -279,6 +281,8 @@ final class Engine {
             c.httpBody = httpBody;
             c.httpError = httpError;
             c.httpSavedPath = httpSavedPath;
+            c.cfId = cfId;
+            c.cfError = cfError;
             c.papiPrefix = papiPrefix;
             c.papiIdentifier = papiIdentifier;
             c.papiResult = papiResult;
@@ -307,6 +311,15 @@ final class Engine {
     interface HttpHost {
         void fetchText(String id, String url, double timeoutSeconds);
         void download(String id, String url, String path, double timeoutSeconds);
+    }
+
+    /**
+     * Bridge to the plugin's Cloudflare client manager (M4 CF-1).
+     * The engine only issues operations through this interface;
+     * completions come back as engine events fired by the plugin.
+     */
+    interface CfHost {
+        void d1Query(String id, String handle, String sql, List<Object> params, String storeVar, double timeoutSeconds);
     }
 
     /**
@@ -351,6 +364,7 @@ final class Engine {
     private Map<String, List<Map<String, Object>>> functions = Map.of();
     private WsHost wsHost;
     private HttpHost httpHost;
+    private CfHost cfHost;
     private TimerHost timerHost;
     private DelayHost delayHost;
     private PlaceholderHost placeholderHost;
@@ -390,6 +404,83 @@ final class Engine {
     private static double httpTimeoutSeconds(Map<String, Object> stmt) {
         Object value = stmt.get("timeoutSeconds");
         return value instanceof Number n ? n.doubleValue() : 15.0;
+    }
+
+    /** Install the Cloudflare host (called by the plugin on enable). */
+    void setCfHost(CfHost cfHost) {
+        this.cfHost = cfHost;
+    }
+
+    /**
+     * Handle a Cloudflare completion (called by the plugin on the
+     * main thread; the manager's worker threads hop through the
+     * scheduler first). On success the store mapping is applied
+     * BEFORE the event fires, so cfResponse handlers can read the
+     * stored variables; a failed operation never touches the store
+     * (the dbExecute failure contract). The script-visible error is
+     * the kind only — details stay in the server log.
+     */
+    void completeCf(Cloudflare.Result result) {
+        if (result.ok() && result.storeVar() != null) {
+            applyCfStore(result);
+        }
+        Ctx ctx = new Ctx();
+        ctx.cfId = result.id();
+        ctx.cfError = result.ok() ? null : result.errorKind();
+        fireEvent("cfResponse", ctx, false);
+    }
+
+    /**
+     * The D1 store mapping, mirroring the JDBC result mapping in
+     * {@link Database}: result rows become
+     * {@code <var>::<column>::<row>} entries (rows 1-based, column
+     * names lowercased like all store indices, null cells skipped)
+     * after clearing the variable's previous entries, with the
+     * variable itself set to the row count. A statement with
+     * changes but no rows stores the affected-row count and leaves
+     * any old entries alone (JDBC parity). A successful statement
+     * with neither (an empty result set) clears the entries and
+     * stores 0, so a previous query's rows cannot leak into this
+     * read.
+     */
+    private void applyCfStore(Cloudflare.Result result) {
+        String storeKey = result.storeVar();
+        List<Map<String, Object>> rows = result.rows();
+        if (rows != null && !rows.isEmpty()) {
+            LinkedHashMap<String, Object> cells = new LinkedHashMap<>();
+            int rowNumber = 1;
+            for (Map<String, Object> row : rows) {
+                for (Map.Entry<String, Object> cell : row.entrySet()) {
+                    Object value = cfCellValue(cell.getValue());
+                    if (value != null) {
+                        cells.put(storeKey + "::" + cell.getKey().toLowerCase(Locale.ROOT) + "::" + rowNumber, value);
+                    }
+                }
+                rowNumber++;
+            }
+            variables.removePrefix(storeKey + "::");
+            variables.setAll(cells);
+            variables.set(storeKey, (double) rows.size());
+        } else if (result.changes() > 0) {
+            variables.set(storeKey, result.changes());
+        } else {
+            variables.removePrefix(storeKey + "::");
+            variables.set(storeKey, 0.0);
+        }
+    }
+
+    /** A D1 cell as a store value: scalars keep their type; nested JSON is stored in its JSON text form. */
+    private static Object cfCellValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return Double.valueOf(number.doubleValue());
+        }
+        if (value instanceof String || value instanceof Boolean) {
+            return value;
+        }
+        return Json.write(value);
     }
 
     /** Install the timer host (called by the plugin on enable). */
@@ -1973,6 +2064,18 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "cfD1Query" -> {
+                if (cfHost == null) {
+                    logger.warning("skript-ts: cfD1Query without a cloudflare host installed");
+                } else {
+                    QueryText query = buildQuery(node(stmt.get("sql")), ctx);
+                    String storeKey = stmt.get("store") != null
+                            ? varKey(node(stmt.get("store")), ctx)
+                            : null;
+                    cfHost.d1Query(str(stmt.get("id")), str(stmt.get("handle")), query.sql, query.params, storeKey, httpTimeoutSeconds(stmt));
+                }
+                cont.run();
+            }
             case "setBorderSize" -> {
                 Object w = evalExpr(node(stmt.get("world")), ctx);
                 Object size = evalExpr(node(stmt.get("size")), ctx);
@@ -2488,6 +2591,9 @@ final class Engine {
             }
             case "httpOk" -> {
                 yield ctx.httpId != null && ctx.httpError == null;
+            }
+            case "cfOk" -> {
+                yield ctx.cfId != null && ctx.cfError == null;
             }
             case "fileExists" -> {
                 String path = renderText(node(cond.get("path")), ctx);
@@ -3045,6 +3151,8 @@ final class Engine {
             case "httpBody" -> ctx.httpBody;
             case "httpError" -> ctx.httpError;
             case "httpSavedPath" -> ctx.httpSavedPath;
+            case "cfId" -> ctx.cfId;
+            case "cfError" -> ctx.cfError;
             case "worldOf" -> {
                 // Core language since phase 18 (`world of ...`
                 // is plain Skript, probed for player, location

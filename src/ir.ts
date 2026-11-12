@@ -80,6 +80,10 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "httpError",
   "httpSavedPath",
   "httpOk",
+  "cfD1Query",
+  "cfId",
+  "cfError",
+  "cfOk",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
@@ -90,6 +94,7 @@ const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
   "timerComplete",
   "papiRequest",
   "httpResponse",
+  "cfResponse",
 ]);
 
 function containsEngineOnly(value: unknown): boolean {
