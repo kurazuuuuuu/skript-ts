@@ -25,8 +25,10 @@ command /g2load:
 
 command /g2clear:
     trigger:
+        set {_i} to 0
         loop numbers from 0 to 35:
-            set slot loop-index of player to air
+            set slot {_i} of player to air
+            add 1 to {_i}
         send "cleared" to player
 
 command /g2add1:

@@ -1,4 +1,5 @@
 import {
+  add,
   addToInventory,
   addToSlot,
   cancelEvent,
@@ -16,7 +17,6 @@ import {
   item,
   listSize,
   localVar,
-  loopIndex,
   loopList,
   loopRange,
   loopValue,
@@ -113,7 +113,15 @@ export const gui2Script: Script = script(
     send(player(), str("loaded")),
   ]),
   command("g2clear", null, [
-    loopRange(num(0), num(35), [setSlot(player(), loopIndex(), item("air"))]),
+    // A manual counter instead of loopIndex(): the original
+    // has no loop-index in a numbers loop (its value is the
+    // loop number itself), so the index expression cannot be
+    // used there.
+    set(localVar("i"), num(0)),
+    loopRange(num(0), num(35), [
+      setSlot(player(), localVar("i"), item("air")),
+      add(localVar("i"), num(1)),
+    ]),
     send(player(), str("cleared")),
   ]),
   command("g2add1", null, [
