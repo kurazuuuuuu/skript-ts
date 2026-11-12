@@ -162,9 +162,12 @@ export const gui2Script: Script = script(
     send(player(), fmt("s11=", slotItem(player(), num(11)))),
   ]),
   command("g2chest", null, [
-    set(variable("g2chest"), chestInventory(num(1), str("Box"))),
-    addToSlot(variable("g2chest"), num(5), withAmount(item("stone"), num(100))),
-    send(player(), fmt("c5=", slotItem(variable("g2chest"), num(5)))),
+    // A local variable on purpose: the original warns (and
+    // the load check fails) when an inventory is stored in a
+    // global variable, since inventories cannot be saved.
+    set(localVar("chest"), chestInventory(num(1), str("Box"))),
+    addToSlot(localVar("chest"), num(5), withAmount(item("stone"), num(100))),
+    send(player(), fmt("c5=", slotItem(localVar("chest"), num(5)))),
   ]),
   command("g2addinv", null, [
     addToInventory(player(), withAmount(item("stone"), num(100))),
