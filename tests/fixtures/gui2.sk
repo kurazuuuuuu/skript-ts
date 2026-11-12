@@ -1,0 +1,144 @@
+command /g2open:
+    trigger:
+        open chest inventory with 1 rows named "G2" to player
+        send "opened" to player
+
+command /g2modenone:
+    trigger:
+        set {g2mode} to "none"
+        send "mode set" to player
+
+command /g2modedrag:
+    trigger:
+        set {g2mode} to "drag"
+        send "mode set" to player
+
+command /g2modeclick:
+    trigger:
+        set {g2mode} to "click"
+        send "mode set" to player
+
+command /g2load:
+    trigger:
+        add 12 of stone to player
+        send "loaded" to player
+
+command /g2clear:
+    trigger:
+        loop numbers from 0 to 35:
+            set slot loop-index of player to air
+        send "cleared" to player
+
+command /g2add1:
+    trigger:
+        add 5 of stone to slot 10 of player
+        send "s10=%slot 10 of player%" to player
+
+command /g2add2:
+    trigger:
+        add stone to slot 10 of player
+        send "s10=%slot 10 of player%" to player
+
+command /g2add3:
+    trigger:
+        add 100 of stone to slot 10 of player
+        send "s10=%slot 10 of player%" to player
+
+command /g2add4:
+    trigger:
+        add 100 of stone to slot 11 of player
+        send "s11=%slot 11 of player%" to player
+
+command /g2add5:
+    trigger:
+        add 10 of dirt to slot 11 of player
+        send "s11=%slot 11 of player%" to player
+
+command /g2rem1:
+    trigger:
+        remove 30 of stone from slot 11 of player
+        send "s11=%slot 11 of player%" to player
+
+command /g2rem2:
+    trigger:
+        remove dirt from slot 11 of player
+        send "s11=%slot 11 of player%" to player
+
+command /g2rem3:
+    trigger:
+        remove 100 of stone from slot 11 of player
+        send "s11=%slot 11 of player%" to player
+
+command /g2addinv:
+    trigger:
+        add 100 of stone to player
+        send "s0=%slot 0 of player% s1=%slot 1 of player% s10=%slot 10 of player%" to player
+
+command /g2reminv:
+    trigger:
+        remove 70 of stone from player
+        send "s0=%slot 0 of player% s1=%slot 1 of player% s10=%slot 10 of player%" to player
+
+command /g2named:
+    trigger:
+        set {_x} to 5 of stone
+        set name of {_x} to "Rock"
+        add {_x} to slot 12 of player
+        send "s12=%slot 12 of player%" to player
+        add 5 of stone to slot 12 of player
+        send "s12=%slot 12 of player%" to player
+        set {_y} to 5 of stone named "Other"
+        add {_y} to slot 12 of player
+        send "s12=%slot 12 of player%" to player
+
+command /g2ench:
+    trigger:
+        set {_s} to diamond sword
+        enchant {_s} with sharpness 5
+        set {g2sword} to {_s}
+        send "lvl=%sharpness level of {_s}% list=%enchantments of {_s}% fire=%fire aspect level of {_s}%" to player
+
+command /g2ench2:
+    trigger:
+        set {_a} to diamond sword of sharpness 5
+        if {g2sword} is {_a}:
+            send "eq1=true" to player
+        else:
+            send "eq1=false" to player
+        if {g2sword} is 1 of diamond sword:
+            send "eq2=true" to player
+        else:
+            send "eq2=false" to player
+        set {_c} to diamond sword named "X"
+        set {_d} to diamond sword of sharpness 5 named "X"
+        if {_c} is {_d}:
+            send "eq3=true" to player
+        else:
+            send "eq3=false" to player
+
+command /g2enchslot:
+    trigger:
+        set slot 20 of player to bow
+        enchant slot 20 of player with power 3
+        send "s20=%slot 20 of player% plvl=%power level of slot 20 of player%" to player
+
+command /g2persist:
+    trigger:
+        set {g2saved} to diamond sword of sharpness 7 named "Keepsake"
+        send "saved" to player
+
+command /g2readback:
+    trigger:
+        send "saved=%{g2saved}% lvl=%sharpness level of {g2saved}%" to player
+
+on inventory drag:
+    loop event-slots:
+        send "dragged %index of loop-value%" to player
+    send "drag n=%size of event-slots% item=%event-item%" to player
+    if {g2mode} is "drag":
+        cancel event
+
+on inventory click:
+    send "ct=%click type%" to player
+    if {g2mode} is "click":
+        cancel event

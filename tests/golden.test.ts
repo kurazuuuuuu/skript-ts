@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   add,
   addTo,
+  addToInventory,
+  addToSlot,
   addBossBarViewer,
   amountOf,
   and,
@@ -35,6 +37,7 @@ import {
   chatMessage,
   chestInventory,
   clickedEntity,
+  clickedClickType,
   clickedRawSlotIndex,
   clickedSlotIndex,
   clockTime,
@@ -120,6 +123,16 @@ import {
   onFirstJoin,
   onFishCast,
   onInventoryClick,
+  onInventoryDrag,
+  draggedSlots,
+  slotIndexOf,
+  withEnchantment,
+  enchantItem,
+  enchantSlot,
+  enchantmentLevelOf,
+  enchantmentsOf,
+  removeFromInventory,
+  removeFromSlot,
   onInventoryClose,
   onJoin,
   onLeftClick,
@@ -219,6 +232,7 @@ import { textScript } from "../examples/text.js";
 import { events2Script } from "../examples/events2.js";
 import { events3Script } from "../examples/events3.js";
 import { guiScript } from "../examples/gui.js";
+import { gui2Script } from "../examples/gui2.js";
 import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
 import { commandsScript } from "../examples/commands.js";
@@ -2027,5 +2041,128 @@ describe("timespans (phase 23)", () => {
   });
   it("the timespan sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(timespanScript)).toBe(false);
+  });
+});
+
+describe("GUI slice 2: drags, slot add/remove, enchantments (phase 28)", () => {
+  it("gui2", () => {
+    expect(emit(gui2Script)).toBe(fixture("gui2.sk"));
+  });
+
+  it("drag event header, slot loop and summary values", () => {
+    expect(
+      emit(
+        script(
+          onInventoryDrag([
+            loopList(draggedSlots(), [
+              broadcast(fmt("dragged ", slotIndexOf(loopValue()))),
+            ]),
+            broadcast(fmt("n=", listSize(draggedSlots()), " item=", eventItem())),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on inventory drag:\n" +
+        "    loop event-slots:\n" +
+        '        broadcast "dragged %index of loop-value%"\n' +
+        '    broadcast "n=%size of event-slots% item=%event-item%"\n',
+    );
+  });
+
+  it("click type in click events", () => {
+    expect(
+      emit(script(onInventoryClick([broadcast(fmt("ct=", clickedClickType()))]))),
+    ).toBe('on inventory click:\n    broadcast "ct=%click type%"\n');
+  });
+
+  it("slot and inventory add/remove forms", () => {
+    expect(
+      emit(
+        script(
+          command("x", null, [
+            addToSlot(player(), num(3), withAmount(item("stone"), num(5))),
+            removeFromSlot(player(), num(3), item("stone")),
+            addToInventory(player(), item("stone")),
+            removeFromInventory(player(), withAmount(item("stone"), num(2))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "command /x:\n" +
+        "    trigger:\n" +
+        "        add 5 of stone to slot 3 of player\n" +
+        "        remove stone from slot 3 of player\n" +
+        "        add stone to player\n" +
+        "        remove 2 of stone from player\n",
+    );
+  });
+
+  it("enchantment literals, the enchant effect and the reads", () => {
+    expect(
+      emit(
+        script(
+          command("x", null, [
+            set(localVar("a"), withEnchantment(item("diamond sword"), "sharpness", 5)),
+            set(
+              localVar("b"),
+              withEnchantment(withName(item("diamond sword"), str("X")), "sharpness", 5),
+            ),
+            enchantItem(localVar("a"), "unbreaking", 3),
+            enchantSlot(player(), num(4), "power", 2),
+            broadcast(
+              fmt(
+                enchantmentLevelOf(localVar("a"), "sharpness"),
+                " ",
+                enchantmentsOf(localVar("a")),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "command /x:\n" +
+        "    trigger:\n" +
+        "        set {_a} to diamond sword of sharpness 5\n" +
+        // The enchantment suffix precedes the name suffix in
+        // the original's literal order (probed); the reverse
+        // order parses but evaluates to no value.
+        '        set {_b} to diamond sword of sharpness 5 named "X"\n' +
+        "        enchant {_a} with unbreaking 3\n" +
+        "        enchant slot 4 of player with power 2\n" +
+        '        broadcast "%sharpness level of {_a}% %enchantments of {_a}%"\n',
+    );
+  });
+
+  it("build errors mirror the original's load errors", () => {
+    expect(() =>
+      emit(script(command("x", null, [addToSlot(player(), num(1), num(3))]))),
+    ).toThrow(/neither an item type nor an item stack/);
+    expect(() =>
+      emit(
+        script(
+          command("x", null, [
+            set(localVar("a"), withEnchantment(localVar("a"), "sharpness", 5)),
+          ]),
+        ),
+      ),
+    ).toThrow(/item literal base/);
+    expect(() =>
+      emit(
+        script(
+          command("x", null, [
+            set(localVar("a"), withEnchantment(item("stone"), "shrpness", 5)),
+          ]),
+        ),
+      ),
+    ).toThrow(/invalid enchantment name/);
+    expect(() => enchantItem(localVar("a"), "sharpness", -1)).toThrow(RangeError);
+    expect(() => enchantItem(localVar("a"), "sharpness", 2.5)).toThrow(RangeError);
+  });
+
+  it("the GUI slice 2 sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(gui2Script)).toBe(false);
+    expect(
+      isEngineOnlyScript(script(onInventoryDrag([broadcast(str("x"))]))),
+    ).toBe(false);
   });
 });
