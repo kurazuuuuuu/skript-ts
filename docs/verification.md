@@ -15,7 +15,9 @@ Two stages, both required:
    show no Skript errors. The server harness lives in `server/`
    (gitignored): Paper 1.21.11, Skript 2.17.1, Temurin JDK 21.
    `pnpm exec tsx examples/to-sk-files.ts` regenerates the `.sk` files
-   into `server/plugins/Skript/scripts/`.
+   of the five core samples (welcome, kit, chatlog, death, spawn) into
+   `server/plugins/Skript/scripts/` for manual runs; the CLI's
+   `build --deploy` and `verify` deploy the full sample set.
 
 ## Build & verify CLI
 
@@ -26,10 +28,10 @@ non-TTY output falls back to append-only lines.
 
 ```sh
 # typecheck -> transpile into build/ (add --deploy to also copy into a server)
-bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--server-dir server]
+bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--engine] [--server-dir server] [--json]
 
 # full verification against the throwaway sandbox server in server/
-bin/skript-ts.mjs verify [--no-behavior] [--no-fresh] [--json]
+bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--json]
 ```
 
 `verify` runs: typecheck → transpile → deploy → server start → script
@@ -96,5 +98,8 @@ tsgolint type check in one pass (see `vite.config.ts`). The server-backed
 `verify` above is not part of CI v1 — booting a real Paper server is
 heavy, so behavior verification stays on the Freestyle verification
 farm. Pushing a `v*` tag runs `.github/workflows/release.yml`, which
-re-runs the fast gates, builds `skript-ts.jar`, and publishes a GitHub
-Release with the jar and a CLI bundle zip attached.
+re-runs the fast gates and the dependency audit, builds
+`skript-ts.jar`, and publishes a GitHub Release (as a prerelease)
+with the jar, a CLI bundle zip and a SHA-256 checksum file attached;
+the artifacts and the checksum file carry signed build-provenance
+attestations (see [SECURITY.md](../SECURITY.md)).

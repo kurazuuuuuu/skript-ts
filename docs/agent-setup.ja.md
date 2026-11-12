@@ -10,12 +10,12 @@
 
 ## 0. 前提
 
-| ツール  | 要件                                                                          | 確認コマンド     |
-| ------- | ----------------------------------------------------------------------------- | ---------------- |
-| Git     | 最近のバージョン                                                              | `git --version`  |
-| Node.js | 20 以上                                                                       | `node --version` |
-| pnpm    | 12.15.0（`package.json` の `packageManager` で固定。Corepack が用意します）   | `pnpm --version` |
-| JDK     | 21（Temurin など）— サンドボックスサーバー、エンジンのビルド、`verify` に必要 | `java -version`  |
+| ツール  | 要件                                                                                                     | 確認コマンド     |
+| ------- | -------------------------------------------------------------------------------------------------------- | ---------------- |
+| Git     | 最近のバージョン                                                                                         | `git --version`  |
+| Node.js | 22 以上（`pnpm check` / `pnpm test` の土台の Vite+ が Node ^22.18、^24.11、>=26 のいずれかを要求します） | `node --version` |
+| pnpm    | 12.15.0（`package.json` の `packageManager` で固定。Corepack が用意します）                              | `pnpm --version` |
+| JDK     | 21（Temurin など）— サンドボックスサーバー、エンジンのビルド、`verify` に必要                            | `java -version`  |
 
 pnpm が無い場合は Corepack を有効化してください: `corepack enable`
 （`package.json` に固定されたバージョンを使います）。
@@ -66,7 +66,8 @@ Paper サーバーを起動します。初回だけ用意してください。
    ```
 
 CLI が Java を探す順序は、`--java <path>` フラグ、`SKRIPT_TS_JAVA`
-環境変数、`PATH` 上の `java` です。JDK 21 がデフォルトの `java` で
+環境変数、`~/workspace/tools/jdk-21.0.13+9` に JDK が置かれていれば
+それ、`PATH` 上の `java` です。JDK 21 がデフォルトの `java` で
 ない場合は、ステップ4で明示してください
 （例: `--java /path/to/jdk21/bin/java`）。
 

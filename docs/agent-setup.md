@@ -10,12 +10,12 @@ Japanese version: [agent-setup.ja.md](agent-setup.ja.md)
 
 ## 0. Prerequisites
 
-| Tool    | Requirement                                                                                     | Check            |
-| ------- | ----------------------------------------------------------------------------------------------- | ---------------- |
-| Git     | any recent version                                                                              | `git --version`  |
-| Node.js | 20 or newer                                                                                     | `node --version` |
-| pnpm    | 12.15.0 (pinned by `packageManager` in `package.json`; Corepack will provide it)                | `pnpm --version` |
-| JDK     | 21 (Temurin or any distribution) — needed by the sandbox server, the engine build, and `verify` | `java -version`  |
+| Tool    | Requirement                                                                                       | Check            |
+| ------- | ------------------------------------------------------------------------------------------------- | ---------------- |
+| Git     | any recent version                                                                                | `git --version`  |
+| Node.js | 22 or newer (`pnpm check` / `pnpm test` run on Vite+, which requires Node ^22.18, ^24.11 or >=26) | `node --version` |
+| pnpm    | 12.15.0 (pinned by `packageManager` in `package.json`; Corepack will provide it)                  | `pnpm --version` |
+| JDK     | 21 (Temurin or any distribution) — needed by the sandbox server, the engine build, and `verify`   | `java -version`  |
 
 If pnpm is missing, enable Corepack: `corepack enable` (it reads
 the pinned version from `package.json`).
@@ -67,7 +67,9 @@ directory (gitignored). Provision it once:
    ```
 
 The CLI finds Java in this order: the `--java <path>` flag, the
-`SKRIPT_TS_JAVA` environment variable, then `java` on your `PATH`.
+`SKRIPT_TS_JAVA` environment variable, a JDK bundled at
+`~/workspace/tools/jdk-21.0.13+9` when one is present there, then
+`java` on your `PATH`.
 If your JDK 21 is not the default `java`, pass it explicitly in
 step 4 (for example `--java /path/to/jdk21/bin/java`).
 
