@@ -2060,7 +2060,21 @@ final class Engine {
                 // Snapshot the entries: bodies may change the list
                 // while it is being visited.
                 Map<String, Object> listNode = node(stmt.get("list"));
-                loopListStep(stmt, listEntries(storeFor(listNode, ctx), str(listNode.get("name"))), 0, ctx, cont);
+                if ("variableList".equals(kind(listNode)) || "localVariableList".equals(kind(listNode))) {
+                    loopListStep(stmt, listEntries(storeFor(listNode, ctx), str(listNode.get("name"))), 0, ctx, cont);
+                } else {
+                    // Any other list-valued expression (phase 28:
+                    // draggedSlots()): evaluate it once and visit
+                    // the values with 1-based indices.
+                    Object value = evalExpr(listNode, ctx);
+                    List<Map.Entry<Object, Object>> entries = new ArrayList<>();
+                    if (value instanceof List<?> values) {
+                        for (int i = 0; i < values.size(); i++) {
+                            entries.add(new AbstractMap.SimpleEntry<>((double) (i + 1), values.get(i)));
+                        }
+                    }
+                    loopListStep(stmt, entries, 0, ctx, cont);
+                }
             }
             case "loopTimes" -> {
                 Object count = evalExpr(node(stmt.get("count")), ctx);
@@ -2863,7 +2877,15 @@ final class Engine {
             case "localVariableList" -> listValue(localStore(ctx), str(expr.get("name")));
             case "listSize" -> {
                 Map<String, Object> listNode = node(expr.get("list"));
-                yield (double) listEntries(storeFor(listNode, ctx), str(listNode.get("name"))).size();
+                if ("variableList".equals(kind(listNode)) || "localVariableList".equals(kind(listNode))) {
+                    yield (double) listEntries(storeFor(listNode, ctx), str(listNode.get("name"))).size();
+                }
+                // Any other list-valued expression (phase 28:
+                // draggedSlots(), enchantments, lore, ...):
+                // count its evaluated entries.
+                Object value = evalExpr(listNode, ctx);
+                if (value instanceof List<?> entries) yield (double) entries.size();
+                yield value == null ? 0.0 : 1.0;
             }
             case "functionCall" ->
                 invokeFunction(str(expr.get("name")), evalArgs(list(expr.get("args")), ctx), ctx);

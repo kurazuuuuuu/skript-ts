@@ -10,7 +10,7 @@ export type Expr =
   // Core-language list support (phase 12): the whole list {name::*}
   // as a value (its entries in iteration order), and its size.
   | { kind: "variableList"; name: string }
-  | { kind: "listSize"; list: AnyListExpr }
+  | { kind: "listSize"; list: Expr }
   // Loop expressions (phase 12): the element a list loop is
   // visiting (in times/range loops, the current number; in player
   // loops, the player), and the index of a list loop (a number or
@@ -921,7 +921,7 @@ export type Stmt =
   | { kind: "listAdd"; list: AnyListExpr; value: Expr; loc?: SourceLoc }
   | { kind: "listRemove"; list: AnyListExpr; value: Expr; loc?: SourceLoc }
   | { kind: "deleteVar"; target: VarTarget; loc?: SourceLoc }
-  | { kind: "loopList"; list: AnyListExpr; body: readonly Stmt[]; loc?: SourceLoc }
+  | { kind: "loopList"; list: Expr; body: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "loopTimes"; count: Expr; body: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "loopRange"; from: Expr; to: Expr; body: readonly Stmt[]; loc?: SourceLoc }
   | { kind: "while"; cond: Cond; body: readonly Stmt[]; loc?: SourceLoc }

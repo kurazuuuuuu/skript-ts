@@ -337,8 +337,12 @@ export function listVar(name: string): ListExpr {
   return { kind: "variableList", name };
 }
 
-/** Construct a list-size expression: the number of entries in the list (0 when unset). */
-export function listSize(list: AnyListExpr): Expr {
+/**
+ * Construct a list-size expression: the number of entries in the
+ * list (0 when unset). Accepts a list variable or any list-valued
+ * expression (phase 28: draggedSlots()).
+ */
+export function listSize(list: Expr): Expr {
   return { kind: "listSize", list };
 }
 
@@ -372,8 +376,13 @@ export function deleteVar(target: VarTarget): Stmt {
   return withLoc({ kind: "deleteVar", target });
 }
 
-/** Construct a loop over a list variable's entries, exposing loopValue() and loopIndex(). */
-export function loopList(list: AnyListExpr, body: readonly Stmt[]): Stmt {
+/**
+ * Construct a loop over a list's entries, exposing loopValue()
+ * and loopIndex(). The list may be a list variable (entries are
+ * visited as a snapshot) or any list-valued expression (phase
+ * 28: draggedSlots()); expression lists are indexed 1-based.
+ */
+export function loopList(list: Expr, body: readonly Stmt[]): Stmt {
   return withLoc({ kind: "loopList", list, body });
 }
 
