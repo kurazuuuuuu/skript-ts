@@ -17,7 +17,7 @@ Skript プラグインなしで skript-ts のプログラムを Paper 上で実�
 
 ### jar のビルド
 
-VM には Java がないため、`~/workspace/tools` の Temurin JDK 21 を使います。コンパイル用ライブラリは `engine/libs/`（gitignore 対象）に置き、初回だけチェックサム検証つきで取得します。Java の HTTPS はこの VM のプロキシを通れないため、取得は curl で行います。
+ビルドには JDK 21 が必要です。`engine/build.sh` は `SKRIPT_TS_JDK` が設定されていればそれを使い、無ければ通常のツール配置パスへフォールバックします（[agent-setup.ja.md](agent-setup.ja.md) の手順5参照）。コンパイル用ライブラリは `engine/libs/`（jar は gitignore 対象）に置き、初回だけ SHA-512 チェックサム検証つきで取得します。取得は curl で行います（`engine/fetch-libs.sh` 参照）。
 
 ```sh
 engine/fetch-libs.sh   # paper-api 等をダウンロード＋SHA-512 検証

@@ -14,8 +14,10 @@ README から移設しました。
    実際の Paper サーバーに読み込ませ、コンソールログに Skript のエラーが
    出ないことを合格条件とします。検証環境は `server/`（gitignore 済み）:
    Paper 1.21.11、Skript 2.17.1、Temurin JDK 21。
-   `pnpm exec tsx examples/to-sk-files.ts` で `.sk` を
-   `server/plugins/Skript/scripts/` へ再生成できます。
+   `pnpm exec tsx examples/to-sk-files.ts` で、中核サンプル5本
+   （welcome、kit、chatlog、death、spawn）の `.sk` を手動実行用に
+   `server/plugins/Skript/scripts/` へ再生成できます。全サンプルの
+   配置は CLI の `build --deploy` と `verify` が行います。
 
 ## ビルド／検証 CLI
 
@@ -26,10 +28,10 @@ README から移設しました。
 
 ```sh
 # 型チェック → build/ へ変換（--deploy でサーバーへも配置）
-bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--server-dir server]
+bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--engine] [--server-dir server] [--json]
 
 # server/ の使い捨てサンドボックスに対する全検証
-bin/skript-ts.mjs verify [--no-behavior] [--no-fresh] [--json]
+bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--json]
 ```
 
 `verify` のステージは、型チェック → 変換 → 配置 → サーバー起動 →
@@ -96,5 +98,8 @@ tsgolint の型チェックを一括で実行します（`vite.config.ts` 参照
 使う `verify` は CI v1 には含めません。実 Paper サーバーの起動が
 重いため、振る舞い検証は Freestyle の検証ファームが担当します。
 `v*` タグを push すると `.github/workflows/release.yml` が走り、
-fast gates を再実行して `skript-ts.jar` をビルドし、jar と CLI
-一式の zip を添付した GitHub Release を作成します。
+fast gates と依存関係監査を再実行して `skript-ts.jar` をビルドし、
+jar と CLI 一式の zip と SHA-256 チェックサムファイルを添付した
+GitHub Release（プレリリース）を作成します。成果物とチェックサム
+ファイルには署名付きのビルド証明（attestation）が付きます
+（[SECURITY.md](../SECURITY.md) 参照）。

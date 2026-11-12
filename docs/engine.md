@@ -38,11 +38,12 @@ whole numbers render without a fraction (`1`, not `1.0`).
 
 ### Building the jar
 
-The VM ships no Java; the build uses the Temurin JDK 21 in
-`~/workspace/tools`. Compile-time libraries live in `engine/libs/`
-(gitignored) and are fetched once with checksum verification —
-Java's HTTPS cannot traverse this VM's proxy, which is why the fetch
-is done with curl:
+The build needs a JDK 21: `engine/build.sh` uses `$SKRIPT_TS_JDK`
+when set and otherwise falls back to a conventional tools path
+(see [agent-setup.md](agent-setup.md) step 5). Compile-time
+libraries live in `engine/libs/` (the jars are gitignored) and
+are fetched once with SHA-512 checksum verification; the fetch
+is done with curl (see `engine/fetch-libs.sh`):
 
 ```sh
 engine/fetch-libs.sh   # download + SHA-512-verify paper-api and friends
