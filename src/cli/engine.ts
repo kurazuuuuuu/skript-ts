@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, renameSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { basename, join } from "node:path";
 
 /**
  * Server plugin-set management for the two verify modes.
@@ -22,9 +23,12 @@ export const SKRIPT_DISABLED_SUFFIX = ".skript-ts-disabled";
  * PlaceholderAPI jar (phase 10): the engine's placeholder bridge
  * soft-depends on the PlaceholderAPI plugin, so engine mode deploys
  * the checksum-pinned jar from `engine/libs/` (fetched by
- * `engine/fetch-libs.sh`) next to the engine jar. Skript mode never
- * deploys it, keeping that sandbox's plugin set unchanged. The file
- * name inside the sandbox is fixed so install/uninstall stay exact.
+ * `engine/fetch-libs.sh`) next to the engine jar. The pin is
+ * re-verified at deploy time (see `verifyPinnedJar`), so a jar
+ * whose bits changed after fetching never reaches the sandbox.
+ * Skript mode never deploys it, keeping that sandbox's plugin set
+ * unchanged. The file name inside the sandbox is fixed so
+ * install/uninstall stay exact.
  */
 export const PAPI_LIBS_JAR = "PlaceholderAPI-2.12.3.jar";
 export const PAPI_SANDBOX_JAR = "PlaceholderAPI.jar";
@@ -39,6 +43,35 @@ export function engineJarPath(rootDir: string): string {
   return join(rootDir, "engine", "build", "skript-ts.jar");
 }
 
+/**
+ * Re-verify a jar in `engine/libs/` against the SHA-512 pinned next
+ * to it (`<jar>.sha512`, the same pin `engine/fetch-libs.sh` checks
+ * after downloading). Fetching verified the bits once; this catches
+ * anything that changed them afterwards — a truncated copy, a
+ * manual replacement, the wrong version dropped in — before the
+ * jar is deployed into the sandbox. Throws on a missing pin or a
+ * mismatch; the pin file holds the bare hex digest (a trailing
+ * `sha512sum`-style file name is tolerated).
+ */
+export function verifyPinnedJar(jarPath: string): void {
+  const pinPath = `${jarPath}.sha512`;
+  if (!existsSync(pinPath)) {
+    throw new Error(
+      `cannot deploy ${basename(jarPath)}: pinned checksum file ${pinPath} is missing — restore it with engine/fetch-libs.sh`,
+    );
+  }
+  const expected = readFileSync(pinPath, "utf8").trim().split(/\s+/)[0]?.toLowerCase();
+  const actual = createHash("sha512").update(readFileSync(jarPath)).digest("hex");
+  if (expected !== actual) {
+    throw new Error(
+      `SHA-512 mismatch for ${basename(jarPath)} — refusing to deploy an unverified jar\n` +
+        `  expected: ${expected}\n` +
+        `  actual:   ${actual}\n` +
+        `  (pin: ${pinPath}; re-fetch with engine/fetch-libs.sh if the jar is stale)`,
+    );
+  }
+}
+
 /** Put the server into engine mode: install skript-ts.jar, disable Skript.jar. */
 export function installEngine(rootDir: string, serverDir: string): PluginSetResult {
   const built = engineJarPath(rootDir);
@@ -47,6 +80,11 @@ export function installEngine(rootDir: string, serverDir: string): PluginSetResu
       `engine jar not found at ${built} — build it first with engine/build.sh (see README)`,
     );
   }
+  // Verify the PlaceholderAPI pin before touching the plugin set,
+  // so a bad jar fails the run with the sandbox exactly as it was.
+  const papiLib = join(rootDir, "engine", "libs", PAPI_LIBS_JAR);
+  const papiPresent = existsSync(papiLib);
+  if (papiPresent) verifyPinnedJar(papiLib);
   const pluginsDir = join(serverDir, "plugins");
   const changes: string[] = [];
   const skriptJar = join(pluginsDir, "Skript.jar");
@@ -58,8 +96,7 @@ export function installEngine(rootDir: string, serverDir: string): PluginSetResu
   }
   copyFileSync(built, join(pluginsDir, "skript-ts.jar"));
   changes.push("skript-ts.jar を配置");
-  const papiLib = join(rootDir, "engine", "libs", PAPI_LIBS_JAR);
-  if (existsSync(papiLib)) {
+  if (papiPresent) {
     copyFileSync(papiLib, join(pluginsDir, PAPI_SANDBOX_JAR));
     changes.push("PlaceholderAPI.jar を配置");
   } else {
