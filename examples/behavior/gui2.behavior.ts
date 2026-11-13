@@ -315,6 +315,21 @@ export default defineBehavior(async (t) => {
 
     bot.closeWindow();
   } finally {
+    // Suite hygiene: {g2mode} is a persistent global and the
+    // sample's handlers cancel clicks / drags in EVERY
+    // inventory while it is armed. The suite ends in "click"
+    // mode, which then poisons later suites sharing this
+    // server — gui2cursor's vanilla clicks were cancelled by
+    // it (engine verify on tsumu-dev, 2026-11-13: slot 0
+    // stayed empty after a click the handler had reported,
+    // and variables.json still held g2mode=click after the
+    // run). Disarm on every exit path, not just the happy one.
+    try {
+      bot.chat("/g2modenone");
+      await t.sleep(500);
+    } catch {
+      // The bot is already gone; nothing to disarm through it.
+    }
     bot.disconnect();
   }
 });
