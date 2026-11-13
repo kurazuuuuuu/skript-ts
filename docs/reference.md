@@ -731,6 +731,95 @@ forgotten): facing-relative offsets from _entities_
 entity's facing needs a live-facing probe design),
 and world time arithmetic.
 
+## World paint: shapes and fills
+
+Bulk world building composed as _shape × fill_:
+a shape value describes a set of block positions, a
+fill value decides which material each position
+gets, and the `paint` statement writes the whole
+region as **one engine operation** — never as a
+sequence of per-block statements. This family is
+**engine-only** (an engine builtin, like the addon
+slices): the bulk single-operation semantics and the
+seeded, position-pure material selection below have
+no Skript text form, so the emitter throws on these
+kinds, scripts using them deploy as IR only, and
+Skript-mode deployment skips them. Shapes and fills
+are runtime-only values (like data sources): they
+can be stored in variables and reused, but are never
+persisted across restarts.
+
+Shapes (positions are block positions; a location
+contributes its block coordinates, and the first
+location's world anchors the whole shape):
+
+| TS builder | Shape |
+|---|---|
+| `cuboid(from, to)` | every block between the two corner locations, inclusive, in either corner order |
+| `sphere(center, radius)` | every block whose integer offset from the center block satisfies dx²+dy²+dz² ≤ radius² |
+| `cylinder(center, radius, height)` | dx²+dz² ≤ radius² over the center block, from its Y up `height` layers (a layer count: rounded, at least 1) |
+| `blockLine(from, to)` | the blocks on the segment between the two locations, stepped along the dominant axis with per-axis rounding, so the line stays connected; both endpoints included |
+
+A negative radius, or a cylinder height of zero or
+less, paints nothing.
+
+Fills (the item expressions resolve to materials by
+the same rules as `setBlockAt` — a stack's type, a
+type name, or a block's type):
+
+| TS builder | Fill |
+|---|---|
+| `uniformFill(item)` | that item's material at every position |
+| `mixFill([[item, weight], ...], seed?)` | per position, one entry picked by cumulative weight |
+| `noiseFill(base, spot, { scale?, amount?, seed? })` | the spot material where a seeded value noise peaks, the base material elsewhere |
+
+- **Determinism is the contract**: mix and noise
+  selection is a pure function of (seed, x, y, z) —
+  a splitmix64-style position hash — so repainting
+  the same shape with the same fill reproduces the
+  same world exactly, on any run and any server.
+  The pattern depends on the absolute world
+  coordinates: the same shape painted somewhere else
+  gets a different, still reproducible, pattern.
+  Seeds are builder-level numbers (default 0),
+  truncated to whole numbers by the engine.
+- **Mix**: weights are relative (normalized at pick
+  time) and must be positive; entries whose item
+  resolves to no material are dropped when the fill
+  is evaluated, and if none remain the fill has no
+  value and the paint is a no-op.
+- **Noise**: 3D value noise — hashed lattice values
+  on a grid of `scale`-block cells (default 4),
+  trilinearly interpolated with smoothstep weights.
+  A position gets the spot material when its noise
+  value reaches `1 - amount`; `amount` (default
+  0.5) is the _approximate_ spot coverage, because
+  value noise is not uniformly distributed. Amount
+  0 paints all base, amount 1 paints all spot. A
+  side whose item resolves to no material leaves
+  its positions untouched.
+
+The statement: `paint(shape, fill)` writes every
+position of the shape; `paint(shape, fill,
+{ replace: item })` writes only positions currently
+holding the replace item's material — and a replace
+item that resolves to no material makes the whole
+statement a no-op rather than degrading into an
+unrestricted paint. Blocks already holding the
+picked material are left untouched, and writes
+apply **no physics updates** (placed gravel does
+not fall, water does not flow from the write).
+Reading a position's block loads its chunk, as with
+`blockAt`.
+
+`examples/paint.ts` drives the family from commands
+anchored at the player's feet — noise- and
+weight-mixed floors, a wall with replace-restricted
+repaints, a rising line, a sphere and a cylinder —
+and `examples/behavior/paint.behavior.ts` verifies
+the geometry and the seed reproducibility against a
+live server under the engine.
+
 ## Player state and effects
 
 Player / entity state reads and writes, potion
