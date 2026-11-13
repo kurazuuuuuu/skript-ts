@@ -269,6 +269,12 @@ function emitValue(e: Expr): string {
       return e.op === "mod"
         ? `mod(${emitValue(e.left)}, ${emitValue(e.right)})`
         : `(${emitValue(e.left)} ${e.op} ${emitValue(e.right)})`;
+    case "math":
+      // Math functions emit as Skript's built-in function calls,
+      // the same shape as mod() above: floor(2.5), round(2.675, 2),
+      // min(1, 2, 3). A function call binds tightly, so no
+      // parentheses are needed around it as an operand.
+      return `${e.fn}(${e.args.map((arg) => emitValue(arg)).join(", ")})`;
     case "format":
       return `"${emitStringParts(e.parts)}"`;
     case "timespan":
@@ -425,6 +431,7 @@ function emitString(e: Expr): string {
     case "fishingApproachAngle":
       return `%${emitValue(e)}%`;
     case "arith":
+    case "math":
       return `%${emitValue(e)}%`;
     case "format":
       return emitStringParts(e.parts);

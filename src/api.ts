@@ -240,6 +240,88 @@ export function remainder(left: Expr, right: Expr): Expr {
   return arith("mod", left, right);
 }
 
+/**
+ * Construct a floor expression: the greatest whole number not
+ * greater than the value (floor(-2.5) is -3). The result is a
+ * whole number; a missing or non-number operand yields no value.
+ */
+export function floor(value: Expr): Expr {
+  return { kind: "math", fn: "floor", args: [value] };
+}
+
+/**
+ * Construct a ceiling expression: the smallest whole number not
+ * less than the value (ceil(-2.5) is -2). The result is a whole
+ * number; a missing or non-number operand yields no value.
+ */
+export function ceil(value: Expr): Expr {
+  return { kind: "math", fn: "ceil", args: [value] };
+}
+
+/**
+ * Construct a round expression. Without `places`, halves round
+ * toward positive infinity (round(-2.5) is -2). With `places`,
+ * the value is rounded at that many decimal digits, halves away
+ * from zero (round(2.675, 2) is 2.68); a negative places count
+ * rounds at the tens/hundreds place — see docs/reference.md for
+ * the exact rules, including the places defaulting and the
+ * whole-number pass-through. A missing or non-number value
+ * yields no value.
+ */
+export function round(value: Expr, places?: Expr): Expr {
+  return places === undefined
+    ? { kind: "math", fn: "round", args: [value] }
+    : { kind: "math", fn: "round", args: [value, places] };
+}
+
+/**
+ * Construct an absolute-value expression (abs(-0.5) is 0.5).
+ * A missing or non-number operand yields no value.
+ */
+export function abs(value: Expr): Expr {
+  return { kind: "math", fn: "abs", args: [value] };
+}
+
+/**
+ * Construct a square-root expression (sqrt(2) is about 1.41;
+ * the root of a negative value is NaN). A missing or
+ * non-number operand yields no value.
+ */
+export function sqrt(value: Expr): Expr {
+  return { kind: "math", fn: "sqrt", args: [value] };
+}
+
+/**
+ * Construct a minimum expression over one or more values.
+ * Only the numeric arguments compete — missing and non-number
+ * arguments drop out silently; a NaN argument loses to any
+ * non-NaN one, and if every argument is NaN the result is NaN.
+ * With no numeric argument at all, the result has no value.
+ * Skript rejects a zero-argument min() at parse time, so this
+ * builder throws instead.
+ */
+export function min(...values: Expr[]): Expr {
+  if (values.length === 0) {
+    throw new RangeError("min() needs at least one argument");
+  }
+  return { kind: "math", fn: "min", args: values };
+}
+
+/**
+ * Construct a maximum expression over one or more values.
+ * The argument rules are min()'s: only numeric arguments
+ * compete, NaN loses to any non-NaN argument, all-NaN yields
+ * NaN, and no numeric argument yields no value. Skript rejects
+ * a zero-argument max() at parse time, so this builder throws
+ * instead.
+ */
+export function max(...values: Expr[]): Expr {
+  if (values.length === 0) {
+    throw new RangeError("max() needs at least one argument");
+  }
+  return { kind: "math", fn: "max", args: values };
+}
+
 /** Construct a has-permission condition. */
 export function hasPermission(target: Expr, permission: string): Cond {
   return { kind: "hasPermission", target, permission };

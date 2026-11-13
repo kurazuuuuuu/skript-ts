@@ -55,12 +55,15 @@ import {
   endsWith,
   equals,
   every,
+  abs,
+  ceil,
   eventBlock,
   eventInventory,
   eventItem,
   eventPlayer,
   experienceOf,
   firstChars,
+  floor,
   fishingApproachAngle,
   fishingBiteTime,
   fishingWaitTime,
@@ -103,7 +106,9 @@ import {
   loopValue,
   loreOf,
   lowerCase,
+  max,
   maxHealthOf,
+  min,
   minus,
   nameOf,
   not,
@@ -138,6 +143,7 @@ import {
   relativeBlock,
   remainder,
   remove,
+  round,
   removeFrom,
   removeBossBarViewer,
   removePotion,
@@ -176,6 +182,7 @@ import {
   slotItem,
   spawnEntity,
   splitText,
+  sqrt,
   startsWith,
   stopTrigger,
   str,
@@ -212,6 +219,7 @@ import { chatLogScript } from "../examples/chatlog.js";
 import { deathScript } from "../examples/death.js";
 import { spawnScript } from "../examples/spawn.js";
 import { logicScript } from "../examples/logic.js";
+import { mathScript } from "../examples/math.js";
 import { listsScript } from "../examples/lists.js";
 import { functionsScript } from "../examples/functions.js";
 import { gameplayScript } from "../examples/gameplay.js";
@@ -248,6 +256,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("logic", () => {
     expect(emit(logicScript)).toBe(fixture("logic.sk"));
+  });
+  it("math", () => {
+    expect(emit(mathScript)).toBe(fixture("math.sk"));
   });
   it("lists", () => {
     expect(emit(listsScript)).toBe(fixture("lists.sk"));
@@ -2027,5 +2038,59 @@ describe("timespans (phase 23)", () => {
   });
   it("the timespan sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(timespanScript)).toBe(false);
+  });
+});
+
+describe("math functions (phase 29)", () => {
+  it("emit as Skript's built-in function calls", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            send(
+              player(),
+              fmt(
+                "f=",
+                floor(num(2.5)),
+                ", c=",
+                ceil(num(2.5)),
+                ", r=",
+                round(num(-2.5)),
+                ", r2=",
+                round(num(2.675), num(2)),
+                ", a=",
+                abs(num(-0.5)),
+                ", s=",
+                sqrt(num(16)),
+                ", lo=",
+                min(num(3), num(1), num(2)),
+                ", hi=",
+                max(num(3)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ).toBe(
+      'on join:\n    send "f=%floor(2.5)%, c=%ceil(2.5)%, r=%round(-2.5)%, r2=%round(2.675, 2)%, a=%abs(-0.5)%, s=%sqrt(16)%, lo=%min(3, 1, 2)%, hi=%max(3)%" to player\n',
+    );
+  });
+  it("nest inside arithmetic and other math calls", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            send(player(), fmt("v=", plus(floor(sqrt(num(10))), num(1)))),
+          ]),
+        ),
+      ),
+    ).toBe('on join:\n    send "v=%(floor(sqrt(10)) + 1)%" to player\n');
+  });
+  it("min and max reject zero arguments, as Skript's parser does", () => {
+    expect(() => min()).toThrow(RangeError);
+    expect(() => max()).toThrow(RangeError);
+  });
+  it("the math sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(mathScript)).toBe(false);
   });
 });

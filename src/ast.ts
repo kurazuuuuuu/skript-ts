@@ -73,6 +73,15 @@ export type Expr =
   // expressions. "+" also concatenates when both operands are texts;
   // "mod" is the mathematical remainder (Skript's mod() function).
   | { kind: "arith"; op: ArithOp; left: Expr; right: Expr }
+  // Core-language math functions (phase 29): Skript's built-in
+  // numeric functions as one variadic node. floor / ceil / abs /
+  // sqrt carry exactly one argument, round one or two (the value
+  // and an optional decimal-places count), min / max one or more.
+  // The semantics — including round's places rules and the
+  // no-value treatment of missing or non-number operands — were
+  // pinned by probes against the real Skript 2.17.1 and are
+  // written up in docs/reference.md.
+  | { kind: "math"; fn: MathFn; args: readonly Expr[] }
   // Core-language local variables (phase 13): {_name} / {_name::%i%}
   // and the whole local list {_name::*}. Locals live in the current
   // trigger's frame — every event/command body has one, and every
@@ -424,6 +433,9 @@ export type Expr =
 
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
+
+/** Represents a built-in math function name. */
+export type MathFn = "floor" | "ceil" | "round" | "abs" | "sqrt" | "min" | "max";
 
 /** Represents a Skript text expression. */
 export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;

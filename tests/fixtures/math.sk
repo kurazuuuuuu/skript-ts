@@ -1,0 +1,15 @@
+command /math [<number>]:
+    trigger:
+        send "math: floor=%floor(arg-1)%, ceil=%ceil(arg-1)%, round=%round(arg-1)%, abs=%abs(arg-1)%, sqrt=%sqrt(arg-1)%" to player
+
+command /mathround [<number>]:
+    trigger:
+        send "round: two=%round(arg-1, 2)%, tens=%round(arg-1, -1)%" to player
+
+command /mathmin [<number>]:
+    trigger:
+        send "minmax: min=%min(arg-1, 10, 3)%, max=%max(arg-1, 10, 3)%, missmin=%min({_unset}, arg-1)%" to player
+
+command /mathbig:
+    trigger:
+        send "big: floor=%floor(10000000000000000000)%, ceil=%ceil(-10000000000000000000)%" to player
