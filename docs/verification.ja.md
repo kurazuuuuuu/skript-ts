@@ -31,7 +31,7 @@ README から移設しました。
 bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--engine] [--server-dir server] [--json]
 
 # server/ の使い捨てサンドボックスに対する全検証
-bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--json]
+bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--fast] [--json]
 ```
 
 `verify` のステージは、型チェック → 変換 → 配置 → サーバー起動 →
@@ -73,6 +73,14 @@ TypeScript 側の位置へ変換して報告します
 Skript の `variables.csv`、`ops.json`）を消去し、振る舞いテストが
 まっさらな状態から始まるようにします。残す場合は `--no-fresh` を
 指定します。
+
+振る舞いテスト段階が全体の約9割を占めるため（実測）、開発ループ用に
+`verify --fast` では振る舞いスイートの決定的な3分の1サブサンプルだけを
+実行します。ファイル名の FNV-1a ハッシュが3で割り切れるスイートが
+サンプルに入る方式で、スイートの増減に対して所属が安定します。JSON
+結果にはどちらのモードでもスイートごとの `durationMs` が記録され、
+ステージの注記には最長のスイートが表示されます。`--fast` は開発ループの
+信号専用で、ゲートは従来どおり `--fast` なしの全量実行です。
 
 ### 振る舞いテスト
 

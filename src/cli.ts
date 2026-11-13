@@ -4,7 +4,7 @@
  *
  *   skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--server-dir <dir>] [--json]
  *   skript-ts verify [--src <dir>] [--out <dir>] [--server-dir <dir>] [--java <path>]
- *                    [--engine] [--no-behavior] [--no-fresh] [--json]
+ *                    [--engine] [--no-behavior] [--no-fresh] [--fast] [--json]
  *   skript-ts probe start  [--server-dir <dir>] [--java <path>] [--json]
  *   skript-ts probe run <probe-dir> [--commands <file>] [--out <file>]
  *                    [--pace-ms <n>] [--settle-ms <n>] [--server-dir <dir>] [--json]
@@ -48,6 +48,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createBehaviorContext, type BehaviorTest } from "./behavior.js";
+import { selectBehaviorSuites } from "./cli/behavior-select.js";
 import { installEngine, uninstallEngine } from "./cli/engine.js";
 import { readProbeState, runProbeRound, startProbeServer, stopProbeServer } from "./cli/probe.js";
 import { installSkillPack } from "./cli/skills.js";
@@ -77,6 +78,7 @@ interface CliOptions {
   engine: boolean;
   behavior: boolean;
   fresh: boolean;
+  fast: boolean;
   // watch only
   yes: boolean;
   debounceMs: number;
@@ -102,6 +104,7 @@ interface StageResult {
 interface BehaviorResult {
   name: string;
   status: "passed" | "failed";
+  durationMs: number;
   error?: string;
 }
 
@@ -118,7 +121,7 @@ interface RunResult {
 const USAGE = `usage:
   skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--server-dir <dir>] [--json]
   skript-ts verify [--src <dir>] [--out <dir>] [--server-dir <dir>] [--java <path>]
-                   [--engine] [--no-behavior] [--no-fresh] [--json]
+                   [--engine] [--no-behavior] [--no-fresh] [--fast] [--json]
   skript-ts probe start  [--server-dir <dir>] [--java <path>] [--json]
   skript-ts probe run <probe-dir> [--commands <file>] [--out <file>] [--pace-ms <n>] [--settle-ms <n>]
                    [--server-dir <dir>] [--json]
@@ -279,6 +282,7 @@ function parseArgs(argv: string[]): CliOptions {
     engine: false,
     behavior: true,
     fresh: true,
+    fast: false,
     yes: false,
     debounceMs: 400,
     probeAction: "status",
@@ -337,6 +341,9 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       case "--no-fresh":
         opts.fresh = false;
+        break;
+      case "--fast":
+        opts.fast = true;
         break;
       case "--help":
       case "-h":
@@ -854,10 +861,15 @@ async function main(): Promise<number> {
           console: (cmd) => server.sendCommand(cmd),
           mode: opts.engine ? "engine" : "skript",
         });
+        // --fast runs a deterministic subsample (see behavior-select.ts);
+        // the full set remains the gate. Per-suite durations are recorded
+        // either way so slow suites are visible in the JSON result.
+        const selected = selectBehaviorSuites(files, opts.fast);
         let failures = 0;
-        for (const file of files) {
+        for (const [index, file] of selected.entries()) {
           const name = basename(file, ".behavior.ts");
           h.update(name);
+          const suiteStartedAt = Date.now();
           try {
             const mod = (await import(pathToFileURL(join(behaviorDir, file)).href)) as Record<
               string,
@@ -874,20 +886,40 @@ async function main(): Promise<number> {
                 ).unref(),
               ),
             ]);
-            behaviorResults.push({ name, status: "passed" });
+            behaviorResults.push({
+              name,
+              status: "passed",
+              durationMs: Date.now() - suiteStartedAt,
+            });
           } catch (err) {
             failures++;
             behaviorResults.push({
               name,
               status: "failed",
+              durationMs: Date.now() - suiteStartedAt,
               error: err instanceof Error ? err.message : String(err),
             });
           }
           // Give the single player slot a moment to free up between tests.
-          await new Promise((r) => setTimeout(r, 1000));
+          if (index < selected.length - 1) {
+            await new Promise((r) => setTimeout(r, 1000));
+          }
         }
-        if (failures > 0) throw new Error(`振る舞いテスト ${failures}/${files.length} 件失敗`);
-        return { note: `${files.length} 件合格` };
+        if (failures > 0) {
+          throw new Error(`振る舞いテスト ${failures}/${selected.length} 件失敗`);
+        }
+        const slowest = behaviorResults.reduce<BehaviorResult | null>(
+          (acc, r) => (acc === null || r.durationMs > acc.durationMs ? r : acc),
+          null,
+        );
+        const slowestNote =
+          slowest !== null ? `、最長 ${slowest.name} ${(slowest.durationMs / 1000).toFixed(1)}s` : "";
+        if (opts.fast) {
+          return {
+            note: `${selected.length}/${files.length} 件合格（--fast 決定的サブサンプル${slowestNote}）`,
+          };
+        }
+        return { note: `${selected.length} 件合格${slowestNote}` };
       });
     }
 
@@ -941,7 +973,10 @@ async function main(): Promise<number> {
       }
     }
     for (const b of behaviorResults) {
-      if (b.status === "failed") console.log(`振る舞いテスト失敗: ${b.name}: ${b.error ?? ""}`);
+      if (b.status === "failed")
+        console.log(
+          `振る舞いテスト失敗: ${b.name} (${(b.durationMs / 1000).toFixed(1)}s): ${b.error ?? ""}`,
+        );
     }
     console.log(ok ? "\n結果: 合格" : "\n結果: 不合格");
   }
