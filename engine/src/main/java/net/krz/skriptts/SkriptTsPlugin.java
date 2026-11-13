@@ -7,7 +7,9 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandMap;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
@@ -648,6 +650,25 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         });
     }
 
+    /**
+     * The attacker of a by-entity damage event, in the original's
+     * semantics: a projectile damager resolves to its shooter when
+     * the shooter is an entity — verified live against the real
+     * Skript 2.17.1 (a snow golem's snowballs and a skeleton's
+     * arrows both read the shooter as the attacker, the damage
+     * "by" filter matches the shooter, and a death by projectile
+     * credits the shooter). A projectile from a non-entity source
+     * (a dispenser) keeps the projectile itself as the attacker,
+     * and any other damager stands as itself.
+     */
+    private static Entity resolveAttacker(Entity damager) {
+        if (damager instanceof Projectile projectile
+                && projectile.getShooter() instanceof Entity shooter) {
+            return shooter;
+        }
+        return damager;
+    }
+
     @EventHandler
     public void onDeath(EntityDeathEvent event) {
         // Generalized in phase 22: Skript's death event covers
@@ -658,7 +679,10 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         // damage cause when that cause was an entity attack —
         // any entity, matching the original (verified live: a
         // zombie killed by an iron golem read attacker "iron
-        // golem"; a command kill read no attacker). The event
+        // golem"; a command kill read no attacker). A projectile
+        // killing blow resolves to the shooter via
+        // resolveAttacker (a snow golem shot dead by a skeleton
+        // read attacker "skeleton"). The event
         // is not cancellable in Bukkit, so no cancellable is
         // packed (a cancel in a handler is the established
         // no-op, as in the original). For a player victim the
@@ -668,7 +692,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         Engine.Ctx ctx = entity instanceof Player player ? baseCtx(player) : new Engine.Ctx();
         ctx.victim = entity;
         if (entity.getLastDamageCause() instanceof EntityDamageByEntityEvent byEntity) {
-            ctx.attacker = byEntity.getDamager();
+            ctx.attacker = resolveAttacker(byEntity.getDamager());
         }
         engine.fireEvent("death", ctx, false);
     }
@@ -875,7 +899,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         Engine.Ctx ctx = new Engine.Ctx();
         ctx.victim = event.getEntity();
         if (event instanceof EntityDamageByEntityEvent byEntity) {
-            ctx.attacker = byEntity.getDamager();
+            ctx.attacker = resolveAttacker(byEntity.getDamager());
         }
         ctx.damageEvent = event;
         ctx.cancellable = event;

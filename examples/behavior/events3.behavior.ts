@@ -116,6 +116,61 @@ export default defineBehavior(async (t) => {
     await t.console("difficulty peaceful");
 
     // ---------------------------------------------------------
+    // Death D: the bot kills a zombie with thrown splash
+    // potions of healing (which damage the undead) — the
+    // killing damage comes from a thrown projectile, and
+    // the attacker resolves through it to the thrower (B1,
+    // probed against the original with a mob archer: a snow
+    // golem shot dead by a skeleton read "snow golem by
+    // skeleton", never "by arrow"; here the thrower reads
+    // as "player"). The victim is a zombie because the
+    // sample's death handler only announces zombie and
+    // skeleton victims — a golem victim's death is never
+    // broadcast, so it cannot be asserted. The delivery is
+    // splash potions because they are thrown on the use
+    // press and burst in an area: a skeleton archer and
+    // bot bow shots both proved unreliable in this sandbox
+    // (only the first arrow ever landed, reason not
+    // identified). The zombie is NoAI so it just stands in
+    // the splash.
+    // ---------------------------------------------------------
+    await t.console("fill 210 -61 210 230 -61 228 stone");
+    await t.console("fill 210 -60 210 230 -56 228 air");
+    await t.console("fill 210 -55 210 230 -55 228 stone");
+    await t.console("tp Ev3Bot 220.2 -60 219.5");
+    await t.sleep(800);
+    await t.console("difficulty easy");
+    await t.console("summon zombie 221.5 -60 219.5 {NoAI:1b,PersistenceRequired:1b}");
+    await t.console(
+      'give Ev3Bot splash_potion[minecraft:potion_contents={potion:"minecraft:healing"}] 16',
+    );
+    await t.sleep(400);
+    m = bot.messages.length;
+    const deathDSeen = () =>
+      bot.messages
+        .slice(m)
+        .some((x) => x.includes("mob death zombie by player"));
+    // Re-equip before every throw: a thrown potion is
+    // consumed, and without a fresh equip the bot's hand
+    // tracking goes stale and later throws never happen
+    // (observed: exactly one throw registered).
+    for (let shot = 0; shot < 10 && !deathDSeen(); shot++) {
+      await bot.equipItem("splash_potion");
+      await bot.lookAtPoint(221.5, -60, 219.5);
+      bot.activateItem();
+      await t.sleep(300);
+      bot.deactivateItem();
+      await t.sleep(900);
+    }
+    if (!deathDSeen()) {
+      throw new Error("Death D: bot potions never killed the zombie");
+    }
+    await t.console("kill @e[type=minecraft:zombie]");
+    await t.console("difficulty peaceful");
+    await t.console("tp Ev3Bot 218.5 -60 218.5");
+    await t.sleep(600);
+
+    // ---------------------------------------------------------
     // Entity pickup: a loot-enabled zombie takes wheat at
     // its feet — the entity form fires with the zombie as
     // event-entity, and the bare form (player-only) does not.
