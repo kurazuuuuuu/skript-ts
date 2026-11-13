@@ -2177,6 +2177,116 @@ export function setBlockAt(location: Expr, itemValue: Expr): Stmt {
   return withLoc({ kind: "setBlock", location, item: itemValue });
 }
 
+// ---------------------------------------------------------------------------
+// World paint (engine-only): compose a shape with a fill and
+// write the whole region in one bulk operation via paint().
+// Shapes and fills are runtime-only values (like data sources):
+// build them inline or store them in a variable and reuse them.
+// The bulk write and the seeded, position-based material
+// selection have no .sk form, so scripts using this family
+// deploy as IR only and run under the engine jar.
+// ---------------------------------------------------------------------------
+
+/** Construct a cuboid shape: every block between two corner locations, inclusive, in either corner order. */
+export function cuboid(from: Expr, to: Expr): Expr {
+  return { kind: "cuboidShape", from, to };
+}
+
+/** Construct a sphere shape: every block whose integer offset from the center location's block satisfies dx²+dy²+dz² ≤ radius². */
+export function sphere(center: Expr, radius: Expr): Expr {
+  return { kind: "sphereShape", center, radius };
+}
+
+/** Construct a cylinder shape: the vertical cylinder over the center location's block (dx²+dz² ≤ radius²), rising `height` layers from the center's Y (a layer count, at least 1). */
+export function cylinder(center: Expr, radius: Expr, height: Expr): Expr {
+  return { kind: "cylinderShape", center, radius, height };
+}
+
+/** Construct a line shape: the blocks on the segment between two locations, stepped along the dominant axis so the line stays connected. */
+export function blockLine(from: Expr, to: Expr): Expr {
+  return { kind: "lineShape", from, to };
+}
+
+/** Construct a uniform fill: one item's material at every position of the shape. */
+export function uniformFill(item: Expr): Expr {
+  return { kind: "uniformFill", item };
+}
+
+/**
+ * Construct a mix fill: each position picks one of the given
+ * items by weight, using a seeded position hash — the same
+ * (seed, position) always picks the same material, so painting
+ * the same shape twice with the same seed is reproducible.
+ * Entries are `[item, weight]` pairs; weights are relative
+ * (they are normalized) and must be positive. The seed defaults
+ * to 0.
+ */
+export function mixFill(
+  entries: readonly (readonly [Expr, number])[],
+  seed = 0,
+): Expr {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new RangeError("mix fill needs at least one [item, weight] entry");
+  }
+  const checked = entries.map(([item, weight]) => {
+    if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) {
+      throw new RangeError(`mix fill weights must be positive numbers, got ${String(weight)}`);
+    }
+    return { item, weight };
+  });
+  if (!Number.isFinite(seed)) {
+    throw new RangeError("mix fill seed must be a finite number");
+  }
+  return { kind: "mixFill", entries: checked, seed };
+}
+
+/**
+ * Construct a noise fill: the spot item's material lands where
+ * a seeded 3D value noise reaches the coverage threshold, and
+ * the base item's material lands elsewhere — the natural mix
+ * for scattering gravel over a dirt path and the like. Options:
+ * `scale` is the noise feature size in blocks (default 4),
+ * `amount` is the approximate spot coverage between 0 and 1
+ * (default 0.5), and `seed` (default 0) selects the noise
+ * field; the same (seed, position) always picks the same
+ * material, so a repaint is reproducible.
+ */
+export function noiseFill(
+  base: Expr,
+  spot: Expr,
+  options: { scale?: number; amount?: number; seed?: number } = {},
+): Expr {
+  const scale = options.scale ?? 4;
+  const amount = options.amount ?? 0.5;
+  const seed = options.seed ?? 0;
+  if (typeof scale !== "number" || !Number.isFinite(scale) || scale <= 0) {
+    throw new RangeError(`noise fill scale must be a positive number, got ${String(scale)}`);
+  }
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0 || amount > 1) {
+    throw new RangeError(`noise fill amount must be between 0 and 1, got ${String(amount)}`);
+  }
+  if (!Number.isFinite(seed)) {
+    throw new RangeError("noise fill seed must be a finite number");
+  }
+  return { kind: "noiseFill", base, spot, scale, amount, seed };
+}
+
+/**
+ * Construct a paint statement (engine-only): write every block
+ * of `shape` with the material `fill` picks for its position,
+ * as one bulk operation in the engine. With `replace`, only
+ * positions currently holding that item's material are written.
+ * Blocks already holding the picked material are left untouched
+ * and the write applies no physics updates.
+ */
+export function paint(shape: Expr, fill: Expr, options: { replace?: Expr } = {}): Stmt {
+  return withLoc(
+    options.replace === undefined
+      ? { kind: "paint", shape, fill }
+      : { kind: "paint", shape, fill, replace: options.replace },
+  );
+}
+
 /** Construct a set-world-time statement: set a world's clock (`set time in <world> to <time>`). The value is a clockTime literal or an expression carrying a clock text. */
 export function setWorldTime(world: Expr, value: Expr): Stmt {
   return withLoc({ kind: "setWorldTime", world, value });

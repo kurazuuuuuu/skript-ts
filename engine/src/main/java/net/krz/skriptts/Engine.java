@@ -1785,6 +1785,26 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "paint" -> {
+                // Bulk-write a shape with a fill's materials
+                // (world paint family). Shape and fill are
+                // runtime-only values; a missing value on either
+                // side — or a replace item that resolves to no
+                // material — makes the statement a no-op, so a
+                // restricted paint never degrades into an
+                // unrestricted one.
+                Object shape = evalExpr(node(stmt.get("shape")), ctx);
+                Object fill = evalExpr(node(stmt.get("fill")), ctx);
+                boolean hasReplace = stmt.get("replace") != null;
+                Material replaceOnly =
+                        hasReplace ? materialOf(evalExpr(node(stmt.get("replace")), ctx)) : null;
+                if (shape instanceof Paint.Shape s
+                        && fill instanceof Paint.Fill f
+                        && (!hasReplace || replaceOnly != null)) {
+                    Paint.apply(s, f, replaceOnly);
+                }
+                cont.run();
+            }
             case "setWorldTime" -> {
                 // The value is a clock text ("13:00"), from a
                 // clockTime literal or a variable carrying one;
@@ -3318,6 +3338,59 @@ final class Engine {
                 Object name = evalExpr(node(expr.get("name")), ctx);
                 yield name == null ? null : timerHost.timeLeft(stringify(name));
             }
+            case "cuboidShape" -> {
+                Object a = evalExpr(node(expr.get("from")), ctx);
+                Object b = evalExpr(node(expr.get("to")), ctx);
+                yield a instanceof Location la && b instanceof Location lb
+                        ? new Paint.Cuboid(la, lb)
+                        : null;
+            }
+            case "sphereShape" -> {
+                Object c = evalExpr(node(expr.get("center")), ctx);
+                Object r = evalExpr(node(expr.get("radius")), ctx);
+                yield c instanceof Location lc && r instanceof Number rn
+                        ? new Paint.Sphere(lc, rn.doubleValue())
+                        : null;
+            }
+            case "cylinderShape" -> {
+                Object c = evalExpr(node(expr.get("center")), ctx);
+                Object r = evalExpr(node(expr.get("radius")), ctx);
+                Object h = evalExpr(node(expr.get("height")), ctx);
+                yield c instanceof Location lc && r instanceof Number rn && h instanceof Number hn
+                        ? new Paint.Cylinder(lc, rn.doubleValue(), hn.doubleValue())
+                        : null;
+            }
+            case "lineShape" -> {
+                Object a = evalExpr(node(expr.get("from")), ctx);
+                Object b = evalExpr(node(expr.get("to")), ctx);
+                yield a instanceof Location la && b instanceof Location lb
+                        ? new Paint.Line(la, lb)
+                        : null;
+            }
+            case "uniformFill" -> new Paint.Uniform(materialOf(evalExpr(node(expr.get("item")), ctx)));
+            case "mixFill" -> {
+                // Entries whose item resolves to no material are
+                // dropped; with none left the fill has no value.
+                List<Paint.Mix.Part> parts = new ArrayList<>();
+                for (Object entryObj : list(expr.get("entries"))) {
+                    Map<String, Object> entry = node(entryObj);
+                    Material m = materialOf(evalExpr(node(entry.get("item")), ctx));
+                    double w = entry.get("weight") instanceof Number wn ? wn.doubleValue() : 0;
+                    if (m != null && w > 0) parts.add(new Paint.Mix.Part(m, w));
+                }
+                yield parts.isEmpty()
+                        ? null
+                        : new Paint.Mix(parts, seedOf(expr.get("seed")));
+            }
+            case "noiseFill" -> {
+                Material base = materialOf(evalExpr(node(expr.get("base")), ctx));
+                Material spot = materialOf(evalExpr(node(expr.get("spot")), ctx));
+                double scale = expr.get("scale") instanceof Number sn ? sn.doubleValue() : 4;
+                double amount = expr.get("amount") instanceof Number an ? an.doubleValue() : 0.5;
+                yield base == null && spot == null
+                        ? null
+                        : new Paint.Noise(base, spot, scale, amount, seedOf(expr.get("seed")));
+            }
             case "dataSource" -> {
                 if (database == null) yield null;
                 String url = renderText(node(expr.get("url")), ctx);
@@ -4541,6 +4614,11 @@ final class Engine {
             }
             default -> null;
         };
+    }
+
+    /** A fill seed from an IR number field, truncated to a long (world paint family). */
+    private static long seedOf(Object value) {
+        return value instanceof Number n ? (long) n.doubleValue() : 0;
     }
 
     /** The material an item-ish value names, for setBlock: a stack's type, a type name, or a block's type. */

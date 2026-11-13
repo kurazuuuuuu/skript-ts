@@ -333,8 +333,16 @@ function emitValue(e: Expr): string {
     case "envVar":
     case "cfId":
     case "cfError":
-      // Engine-builtin expressions (phases 6-10, 26) exist only
-      // in the engine jar; there is no Skript text form to emit.
+    case "cuboidShape":
+    case "sphereShape":
+    case "cylinderShape":
+    case "lineShape":
+    case "uniformFill":
+    case "mixFill":
+    case "noiseFill":
+      // Engine-builtin expressions (phases 6-10, 26 and the
+      // world paint family) exist only in the engine jar; there
+      // is no Skript text form to emit.
       throw new Error(
         `Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -489,6 +497,13 @@ function emitString(e: Expr): string {
     case "envVar":
     case "cfId":
     case "cfError":
+    case "cuboidShape":
+    case "sphereShape":
+    case "cylinderShape":
+    case "lineShape":
+    case "uniformFill":
+    case "mixFill":
+    case "noiseFill":
       throw new Error(
         `Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -1126,6 +1141,7 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     case "httpFetch":
     case "httpDownload":
     case "cfD1Query":
+    case "paint":
       throw new Error(
         `Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`,
       );

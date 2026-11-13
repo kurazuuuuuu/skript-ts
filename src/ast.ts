@@ -353,6 +353,40 @@ export type Expr =
   | { kind: "clockTime"; text: string }
   | { kind: "worldWeather"; world: Expr }
   | { kind: "weatherType"; name: WeatherName }
+  // World paint values (engine-only). A shape is a set of block
+  // positions derived from locations; a fill decides which
+  // material each position gets. Both are runtime-only values
+  // (like data sources): they live in the engine as objects and
+  // are never persisted. There is no .sk form on purpose — the
+  // paint operation is a single bulk write in the engine (not a
+  // per-block statement sequence) and the seeded noise / mix
+  // selection is defined as a pure function of (seed, position),
+  // which Skript text cannot reproduce; the emitter throws on
+  // these kinds and scripts using them deploy as IR only.
+  //
+  // - cuboidShape is every block between two corner locations
+  //   (inclusive, either corner order).
+  // - sphereShape is every block whose integer offset from the
+  //   center block satisfies dx²+dy²+dz² ≤ radius².
+  // - cylinderShape is the vertical cylinder over the center
+  //   block: dx²+dz² ≤ radius², from the center's Y up `height`
+  //   layers (height is a layer count, at least 1).
+  // - lineShape is the blocks on the segment between two
+  //   locations, stepped along the dominant axis.
+  // - uniformFill paints one item's material everywhere.
+  // - mixFill picks per position by cumulative weight, using the
+  //   seeded position hash — the same (seed, position) always
+  //   picks the same material, so a repaint is reproducible.
+  // - noiseFill picks the spot material where a seeded 3D value
+  //   noise (trilinear over a lattice of `scale`-block cells)
+  //   reaches 1 - amount, and the base material elsewhere.
+  | { kind: "cuboidShape"; from: Expr; to: Expr }
+  | { kind: "sphereShape"; center: Expr; radius: Expr }
+  | { kind: "cylinderShape"; center: Expr; radius: Expr; height: Expr }
+  | { kind: "lineShape"; from: Expr; to: Expr }
+  | { kind: "uniformFill"; item: Expr }
+  | { kind: "mixFill"; entries: readonly { item: Expr; weight: number }[]; seed: number }
+  | { kind: "noiseFill"; base: Expr; spot: Expr; scale: number; amount: number; seed: number }
   // Core-language player / entity state (phase 19). All semantics
   // were probed against the real Skript 2.17.1 in the sandbox (see
   // the development log for the probe rounds):
@@ -782,6 +816,14 @@ export type Stmt =
   //   (`set weather in %world% to rain`); the name is a literal
   //   in the .sk text, like an item name.
   | { kind: "setBlock"; location: Expr; item: Expr; loc?: SourceLoc }
+  // - paint (engine-only) writes a whole shape in one bulk
+  //   operation: every position of the shape expression gets
+  //   the material its fill expression picks for it. The
+  //   optional replace item restricts the write to positions
+  //   currently holding that item's material. Blocks already
+  //   holding the picked material are left untouched, and the
+  //   write applies no physics updates.
+  | { kind: "paint"; shape: Expr; fill: Expr; replace?: Expr; loc?: SourceLoc }
   | { kind: "setWorldTime"; world: Expr; value: Expr; loc?: SourceLoc }
   | { kind: "setWorldWeather"; world: Expr; name: WeatherName; loc?: SourceLoc }
   // Core-language state changes and effects (phase 19), mirroring

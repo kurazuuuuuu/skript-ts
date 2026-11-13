@@ -84,6 +84,14 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "cfId",
   "cfError",
   "cfOk",
+  "cuboidShape",
+  "sphereShape",
+  "cylinderShape",
+  "lineShape",
+  "uniformFill",
+  "mixFill",
+  "noiseFill",
+  "paint",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
