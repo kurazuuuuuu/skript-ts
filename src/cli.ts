@@ -801,11 +801,30 @@ async function main(): Promise<number> {
     // 5. Script load check (initial load + explicit reload)
     await runStage("読み込み確認", async (h) => {
       if (build === null) throw new Error("build result missing");
+      // On a wait timeout, attach the log received since the command
+      // was sent: it separates "the reload never ran / the server is
+      // stuck" (no reload output at all) from "the reload ran but
+      // its completion line never appeared" (reload output present).
+      const waitForLineDiagnosed = async (
+        re: RegExp,
+        timeoutMs: number,
+        from: number,
+      ): Promise<RegExpMatchArray> => {
+        try {
+          return await server.waitForLine(re, timeoutMs, from);
+        } catch (err) {
+          const tail = server.logLines.slice(from).slice(-20).join("\n");
+          throw new Error(
+            `${err instanceof Error ? err.message : String(err)}\n` +
+              `--- コマンド送信後のサーバーログ (末尾最大20行) ---\n${tail}`,
+          );
+        }
+      };
       if (opts.engine) {
         h.update("skript-ts reload 実行");
         const mark = server.mark();
         server.sendCommand("skript-ts reload");
-        const m = await server.waitForLine(
+        const m = await waitForLineDiagnosed(
           /\[skript-ts\] Loaded (\d+) script\(s\), (\d+) top-level structure\(s\)/,
           120_000,
           mark,
@@ -826,7 +845,7 @@ async function main(): Promise<number> {
       h.update("skript reload all 実行");
       const mark = server.mark();
       server.sendCommand("skript reload all");
-      await server.waitForLine(
+      await waitForLineDiagnosed(
         /Successfully reloaded the config|Encountered \d+ errors? while reloading/,
         180_000,
         mark,

@@ -18,6 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { stripAnsi } from "./ansi.js";
 import { SkriptLogParser, type SkriptParseError } from "./skript-log.js";
 
 export type { SkriptParseError } from "./skript-log.js";
@@ -281,7 +282,10 @@ export async function runProbeRound(opts: {
     () =>
       readLogLines(stateDir)
         .slice(mark)
-        .some((l) => RELOAD_DONE.test(l)),
+        // The recorded lines pass through SandboxServer (which strips
+        // ANSI escapes), but strip here too so a log written under a
+        // color-capable terminal can never stall this check.
+        .some((l) => RELOAD_DONE.test(stripAnsi(l))),
     opts.reloadTimeoutMs ?? 180_000,
     200,
   );
