@@ -105,6 +105,19 @@ questions is the same: probe, don't guess (see
   amounts only, first fire one full period after load, and a
   reload re-anchors them.
 
+## Dates
+
+- A date is epoch milliseconds. `differenceBetween(a, b)` is
+  absolute: date − date is a timespan, timespan − timespan a
+  timespan, number − number a number; mixed pairs have no
+  value. A date ± a timespan shifts the date, but a timespan
+  + a date and a date − a date have no value.
+- The unix timestamp of a date is fractional seconds; the
+  reverse builder is `dateFromUnix` (`unix date of ...`) —
+  there is no `date from unix timestamp` form. Dates print in
+  the default (JVM SHORT/SHORT) form; custom date formatting
+  is unsupported.
+
 ## Engine-only boundary
 
 Constructs reimplemented from addons (WebSocket, timers, SQL,

@@ -47,8 +47,10 @@ import {
   currentInventoryOf,
   damageAmount,
   damageCause,
+  dateFromUnix,
   defineFunction,
   deleteVar,
+  differenceBetween,
   dividedBy,
   dropItem,
   emit,
@@ -108,6 +110,7 @@ import {
   nameOf,
   not,
   notEquals,
+  now,
   num,
   onBedEnter,
   onBedLeave,
@@ -186,6 +189,7 @@ import {
   timespan,
   typeOf,
   uncancelEvent,
+  unixTimestamp,
   uncolored,
   unformatted,
   upperCase,
@@ -225,6 +229,7 @@ import { commandsScript } from "../examples/commands.js";
 import { displayScript } from "../examples/display.js";
 import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
+import { timeScript } from "../examples/time.js";
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), "utf8");
@@ -269,6 +274,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("timespan", () => {
     expect(emit(timespanScript)).toBe(fixture("timespan.sk"));
+  });
+  it("time", () => {
+    expect(emit(timeScript)).toBe(fixture("time.sk"));
   });
   it("gui", () => {
     expect(emit(guiScript)).toBe(fixture("gui.sk"));
@@ -2027,5 +2035,28 @@ describe("timespans (phase 23)", () => {
   });
   it("the timespan sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(timespanScript)).toBe(false);
+  });
+  it("date expressions emit the probed forms (feedback C3)", () => {
+    expect(
+      emit(
+        script(
+          onJoin([
+            set(localVar("x"), now()),
+            set(localVar("u"), unixTimestamp(localVar("x"))),
+            set(localVar("d"), dateFromUnix(localVar("u"))),
+            set(localVar("g"), differenceBetween(localVar("d"), localVar("x"))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n    set {_x} to now\n    set {_u} to unix timestamp of {_x}\n    set {_d} to unix date of {_u}\n    set {_g} to difference between {_d} and {_x}\n",
+    );
+  });
+  it("api guards: date function parameter types (feedback C3)", () => {
+    expect(() => param("d", "date")).not.toThrow();
+    expect(() => param("ds", "dates")).not.toThrow();
+  });
+  it("the time sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(timeScript)).toBe(false);
   });
 });

@@ -152,6 +152,20 @@ export type Expr =
   // (degrees). All three are event values like fishingHook: no value
   // outside fishing events.
   | { kind: "timespan"; amount: number; unit: TimespanUnit }
+  // Dates and the current time (feedback C3): a date is an
+  // instant in time (epoch milliseconds in the engine). now is
+  // the moment the expression evaluates; unixTimestamp reads a
+  // date as whole seconds since the epoch; dateFromUnix builds
+  // a date back from those seconds; difference yields the
+  // absolute gap between two dates as a timespan (and, like the
+  // original, the numeric / timespan differences of its other
+  // operand pairings). Date arithmetic (+/- a timespan) rides
+  // the phase-11 arith nodes. All semantics were probed against
+  // the real Skript 2.17.1 (see the reference's dates section).
+  | { kind: "now" }
+  | { kind: "unixTimestamp"; date: Expr }
+  | { kind: "dateFromUnix"; seconds: Expr }
+  | { kind: "difference"; left: Expr; right: Expr }
   | { kind: "fishingWaitTime"; bound: "min" | "max" }
   | { kind: "fishingBiteTime" }
   | { kind: "fishingApproachAngle"; bound: "min" | "max" }
@@ -527,7 +541,12 @@ export type FunctionTypeName =
   // Both "timespan" and "timespans" parse as Skript declaration types
   // (probed); the engine matches them against its timespan values.
   | "timespan"
-  | "timespans";
+  | "timespans"
+  // Both "date" and "dates" parse as Skript declaration types
+  // (probed, feedback C3); the engine matches them against its
+  // date values.
+  | "date"
+  | "dates";
 
 /**
  * One declared parameter of a custom function. The parameter is a

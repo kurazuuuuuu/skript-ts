@@ -1534,7 +1534,10 @@ final class Engine {
                 // Phase 23: timespans ("add 1 hour to {_t}") go
                 // through the probed arithmetic; a valueless
                 // combination leaves the variable unchanged.
-                if (v instanceof Timespan || tsCur instanceof Timespan) {
+                // Dates route the same way (feedback C3): a
+                // timespan shifts the stored date, anything else
+                // is valueless and leaves it unchanged.
+                if (v instanceof Timespan || tsCur instanceof Timespan || tsCur instanceof SkriptDate) {
                     Object r = evalArith("+", tsCur, v);
                     if (r != null) {
                         tsStore.set(tsKey, r);
@@ -1561,8 +1564,9 @@ final class Engine {
                 // Phase 23: timespans ("remove 30 minutes from
                 // {_t}") go through the probed arithmetic,
                 // saturating at zero; a valueless combination
-                // leaves the variable unchanged.
-                if (v instanceof Timespan || tsCur instanceof Timespan) {
+                // leaves the variable unchanged. Dates route the
+                // same way (feedback C3), shifting backwards.
+                if (v instanceof Timespan || tsCur instanceof Timespan || tsCur instanceof SkriptDate) {
                     Object r = evalArith("-", tsCur, v);
                     if (r != null) {
                         tsStore.set(tsKey, r);
@@ -2467,7 +2471,7 @@ final class Engine {
     }
 
     private static final Set<String> PLURAL_TYPE_NAMES =
-            Set.of("numbers", "texts", "booleans", "players", "locations", "objects", "timespans");
+            Set.of("numbers", "texts", "booleans", "players", "locations", "objects", "timespans", "dates");
 
     private static boolean isPluralTypeName(String type) {
         return type != null && PLURAL_TYPE_NAMES.contains(type);
@@ -2496,6 +2500,7 @@ final class Engine {
             case "item" -> value instanceof ItemStack;
             case "entity" -> value instanceof Entity;
             case "timespan" -> value instanceof Timespan;
+            case "date" -> value instanceof SkriptDate;
             default -> true; // object, and any type outside the subset's checks
         };
     }
@@ -2649,6 +2654,11 @@ final class Engine {
         if (a instanceof Timespan || b instanceof Timespan) {
             return a instanceof Timespan ta && b instanceof Timespan tb && ta.equals(tb);
         }
+        // A date equals only another date at the exact same
+        // millisecond (feedback C3, probed).
+        if (a instanceof SkriptDate || b instanceof SkriptDate) {
+            return a instanceof SkriptDate da && b instanceof SkriptDate db && da.epochMs == db.epochMs;
+        }
         if (a instanceof Number na && b instanceof Number nb) {
             double x = na.doubleValue(), y = nb.doubleValue();
             return !Double.isNaN(x) && !Double.isNaN(y) && x == y;
@@ -2713,6 +2723,7 @@ final class Engine {
             return entity.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
         }
         if (value instanceof Timespan) return "timespan";
+        if (value instanceof SkriptDate) return "date";
         if (value instanceof Number) return "number";
         if (value instanceof String) return "text";
         if (value instanceof Boolean) return "boolean";
@@ -2756,6 +2767,11 @@ final class Engine {
         // mismatched type is false).
         if (a instanceof Timespan ta && b instanceof Timespan tb) return ta.compareTo(tb);
         if (a instanceof Timespan || b instanceof Timespan) return null;
+        // Two dates order by their epoch milliseconds (feedback
+        // C3, probed); a date against anything else is
+        // incomparable.
+        if (a instanceof SkriptDate da && b instanceof SkriptDate db) return da.compareTo(db);
+        if (a instanceof SkriptDate || b instanceof SkriptDate) return null;
         if (!(a instanceof Number na) || !(b instanceof Number nb)) return null;
         double x = na.doubleValue(), y = nb.doubleValue();
         if (Double.isNaN(x) || Double.isNaN(y)) return null;
@@ -2977,6 +2993,24 @@ final class Engine {
             // tick counts at 50 ms per tick; the angles are
             // plain numbers of degrees.
             case "timespan" -> Timespan.literal(num(expr.get("amount")), str(expr.get("unit")));
+            // Dates (feedback C3): now is the evaluation moment;
+            // the unix timestamp of a date is its epoch seconds
+            // (fractional); unix date of a number builds the date
+            // back; a difference is the absolute gap — a timespan
+            // for two dates (see evalDifference). Wrong-typed or
+            // missing operands have no value (all probed).
+            case "now" -> SkriptDate.now();
+            case "unixTimestamp" -> {
+                Object date = evalExpr(node(expr.get("date")), ctx);
+                yield date instanceof SkriptDate d ? d.unixSeconds() : null;
+            }
+            case "dateFromUnix" -> {
+                Object seconds = evalExpr(node(expr.get("seconds")), ctx);
+                yield seconds instanceof Number n ? SkriptDate.fromUnixSeconds(n.doubleValue()) : null;
+            }
+            case "difference" -> evalDifference(
+                    evalExpr(node(expr.get("left")), ctx),
+                    evalExpr(node(expr.get("right")), ctx));
             case "fishingWaitTime" -> ctx.fishingHook == null ? null
                     : Timespan.ofTicks("min".equals(str(expr.get("bound")))
                             ? ctx.fishingHook.getMinWaitTime()
@@ -3253,6 +3287,20 @@ final class Engine {
      * {@link #evalTimespanArith} before any of the above.
      */
     private static Object evalArith(String op, Object a, Object b) {
+        // Dates (feedback C3, probed): a date plus or minus a
+        // timespan is the shifted date; every other pairing that
+        // involves a date — a timespan plus a date, a date minus
+        // a date, a date with a number, a missing partner — has
+        // no value.
+        if (a instanceof SkriptDate || b instanceof SkriptDate) {
+            if ("+".equals(op) && a instanceof SkriptDate da && b instanceof Timespan tb) {
+                return da.plus(tb);
+            }
+            if ("-".equals(op) && a instanceof SkriptDate da && b instanceof Timespan tb) {
+                return da.minus(tb);
+            }
+            return null;
+        }
         if (a instanceof Timespan || b instanceof Timespan) {
             return evalTimespanArith(op, a, b);
         }
@@ -3273,6 +3321,29 @@ final class Engine {
             case "mod" -> x - Math.floor(x / y) * y;
             default -> null;
         };
+    }
+
+    /**
+     * The original's `difference between ... and ...` (feedback
+     * C3, probed): two dates yield the absolute gap as a
+     * timespan, two timespans yield their absolute gap (an
+     * eternal side follows {@link Timespan#minus}: any eternal
+     * operand keeps the result eternal), and two numbers yield
+     * the absolute numeric difference. Mixed pairings and a
+     * missing operand have no value.
+     */
+    private static Object evalDifference(Object a, Object b) {
+        if (a == null || b == null) return null;
+        if (a instanceof SkriptDate da && b instanceof SkriptDate db) {
+            return da.differenceTo(db);
+        }
+        if (a instanceof Timespan ta && b instanceof Timespan tb) {
+            return ta.compareTo(tb) >= 0 ? ta.minus(tb) : tb.minus(ta);
+        }
+        if (a instanceof Number na && b instanceof Number nb) {
+            return Math.abs(na.doubleValue() - nb.doubleValue());
+        }
+        return null;
     }
 
     /**
@@ -3772,6 +3843,7 @@ final class Engine {
         if (value instanceof Entity entity) return typeNameOf(entity);
         if (value instanceof World w) return w.getName();
         if (value instanceof Timespan t) return t.toString();
+        if (value instanceof SkriptDate d) return d.toString();
         if (value instanceof Number n) return formatNumber(n.doubleValue());
         if (value instanceof Boolean b) return b.toString();
         if (value instanceof Location l) {

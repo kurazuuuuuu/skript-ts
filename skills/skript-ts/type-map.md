@@ -54,6 +54,7 @@ predict behavior — not what the compiler will catch.
 | `bossBar(options)`, `eventBossBar()`                                        | `org.bukkit.boss.BossBar`                                   |                                                                                                                               |
 | `keyedBossBar(key, options)`, `keyedBossBarOf(key)`                         | `org.bukkit.boss.KeyedBossBar`                              | A BossBar sub-interface                                                                                                       |
 | `timespan(amount, unit)`                                                    | a timespan value                                            | Integer milliseconds inside; no Bukkit counterpart                                                                            |
+| `now()`, `dateFromUnix(seconds)`                                            | a date value                                                | Epoch milliseconds inside; no Bukkit counterpart. `unixTimestamp(date)` reads it back as fractional epoch seconds           |
 | `fishingState(name)`                                                        | a fishing-state literal                                     | One of the 8 `FishingStateName` values; a comparison value, not an object                                                     |
 | `damageAmount()`                                                            | number                                                      |                                                                                                                               |
 | `damageCause()`, `typeOf(x)`, `chatMessage()`                               | text                                                        | `typeOf` returns the Skript type name                                                                                         |
@@ -86,7 +87,7 @@ Values that come back from the variable store, custom-function
 return values, `argument(n)` and loop values carry no static
 value type, on purpose (Skript compatibility). The engine
 persists variables with type tags (`__location`, `__item`,
-`__timespan`, `__keyedbossbar` in `Variables.java`) and
+`__timespan`, `__date`, `__keyedbossbar` in `Variables.java`) and
 restores the Java type at runtime — but on the TypeScript side
 a variable expression does not know what it holds. A function
 call whose argument type mismatches the declared parameter
@@ -136,7 +137,7 @@ spelling.
 Custom functions declare parameter/return types from
 `FunctionTypeName`: `number(s)`, `text(s)`, `boolean(s)`,
 `player(s)`, `location(s)`, `object(s)`, `block`, `item`,
-`entity`, `timespan(s)` — the singular/plural pairs mirror the
+`entity`, `timespan(s)`, `date(s)` — the singular/plural pairs mirror the
 runtime classes in the table above (`player` ↔ a `Player`
 value, and so on). Command arguments use `CommandArgType`:
 `text`, `player`, `offlinePlayer`, `integer`, `number`,

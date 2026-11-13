@@ -1145,6 +1145,22 @@ The "minecraft" unit family (1 minecraft day measured at 20 minutes) is a separa
 
 Three grammar edges were found by load-checking: a bare timespan literal cannot be a string interpolation, a literal number cannot be a `%{...}%` list index, and a statically typed timespan-versus-number condition is a load-time error (through variables it evaluates to false, as the semantics require).
 
+## Dates and the current time
+
+A **date** is an instant in time with millisecond precision — the value behind cooldowns and deadlines (feedback C3). `now()` is the moment the expression evaluates, `unixTimestamp(date)` reads a date as seconds since the unix epoch, `dateFromUnix(seconds)` builds a date back from epoch seconds, and `differenceBetween(a, b)` is the gap between two values. Dates are core language: the builders emit the original's expressions and the engine evaluates the same IR. Everything in this section was probed against the real Skript 2.17.1 (November 2026) rather than assumed, and several corners differ from the obvious guess.
+
+**Conversions.** The unix timestamp is fractional: the milliseconds ride along as the fraction, so `unixTimestamp(now())` reads like `1794541239.13`, and the pair round-trips at millisecond precision. The reverse form is `unix date of <number>`; there is no `date from unix timestamp ...` form (a parse error). Wrong-typed operands split by form: through a variable they have no value, but a literal of the wrong type (`unix timestamp of 5`, `unix date of "abc"`) is a load-time error, because the original types these expressions' arguments.
+
+**Differences.** `differenceBetween` is the original's `difference between ... and ...` and is always absolute: two dates yield the gap as a timespan — either direction gives the same value, and a date against itself gives 0 seconds — two timespans yield a timespan, and two numbers yield a number (10 and 3 give 7). Mixed pairings (a date against a timespan) and a missing operand have no value.
+
+**Shifting.** A date plus or minus a timespan (the `plus` / `minus` builders) is the date shifted by that span, which is how deadlines are written: store `plus(now(), timespan(5, "minutes"))` per player, later test `now()` against it, and read the remaining time as `differenceBetween(deadline, now())`. The `time` sample's `/cdstart` and `/cdleft` commands are exactly this shape, and the behavior test drives the none → cooling → ready sequence. The pairing is asymmetric: a timespan plus a date, a date minus a date, and a date plus a number all have no value; the difference expression is the only way to subtract two dates. The add / remove statements on a variable holding a date shift it by a timespan the same way, and adding a plain number leaves the variable unchanged (both probed). The eternal corners follow the timespan rules without a dedicated probe: shifting by an eternal timespan has no value, and a difference with an eternal side stays eternal.
+
+**Equality, ordering, printing.** Dates compare by their millisecond count: two `now()` readings some 150 ms apart are unequal, and the ordering conditions sort dates as expected; a date equals nothing of another type. A date prints in the original's configured date format — under the default configuration (`date format: default`) that is the JVM's default SHORT/SHORT date-time form, e.g. `11/13/26, 12:40 PM` on an en_US / JST host. The engine prints the same JVM default form and does not read a Skript configuration file, so under a customized Skript date format the two runtimes print the same date differently; values and comparisons are unaffected.
+
+**Types and storage.** Dates type function parameters and returns as `date` / `dates` (plurals collect, as for timespans), store in local and global variables and in list elements, and persist in the engine's variable store (a `__date` record of epoch milliseconds). One divergence is recorded rather than papered over: the original's `type of` on a date reads `<none>`, while the engine names it `date`, following its uniform naming of value types; the behavior battery pins no `type of` line for dates in either mode.
+
+**Not adopted.** Date formatting is out of scope for this feedback item: there is no builder for custom format strings or formatted-date expressions, and dates print in the default form only. Reading a date back from text is likewise unsupported.
+
 ## String escaping
 
 Literal text follows Skript's escaping: `"` is doubled (`""`) and a literal
