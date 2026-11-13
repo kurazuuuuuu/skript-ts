@@ -1,6 +1,6 @@
 import { defineBehavior } from "../../src/behavior.js";
 
-// customitems.ts (RP-2): /citem stores the pack's gem in a
+// customitems.ts (RP-2): /cgem stores the pack's gem in a
 // variable, gives it to the player, and reports the components
 // back. Both runtimes must agree: the stack is an amethyst shard
 // carrying item_model "example:gem", CustomModelData 1 (the first
@@ -10,7 +10,7 @@ export default defineBehavior(async (t) => {
   const bot = await t.connect("GemBot");
   try {
     await t.console("clear GemBot");
-    bot.chat("/citem");
+    bot.chat("/cgem");
     await bot.waitForMessage(/モデル: example:gem \/ 番号: 1/);
     const info = await bot.inventoryItemInfo("amethyst_shard");
     if (info === null) {

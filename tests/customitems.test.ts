@@ -42,10 +42,10 @@ function samplePack() {
 
 function sampleScript(): Script {
   return script(
-    command("citem", null, [
-      set(variable("citem"), customItem("gem")),
-      giveItem(player(), variable("citem")),
-      send(player(), itemModelOf(variable("citem"))),
+    command("cgem", null, [
+      set(variable("cgem"), customItem("gem")),
+      giveItem(player(), variable("cgem")),
+      send(player(), itemModelOf(variable("cgem"))),
     ]),
   );
 }
@@ -55,9 +55,9 @@ describe("customItem resolution (RP-2)", () => {
     const table = buildCustomItemTable(samplePack(), new Map([["example:gem", 1]]));
     const resolved = resolveCustomItems(sampleScript(), table, "customitems.ts", "example");
     expect(emit(resolved)).toContain(
-      'set {citem} to minecraft:amethyst_shard with item model "example:gem" with custom model data 1 named "ジェム"',
+      'set {cgem} to minecraft:amethyst_shard with item model "example:gem" with custom model data 1 named "ジェム"',
     );
-    expect(emit(resolved)).toContain("give {citem} to player");
+    expect(emit(resolved)).toContain("give {cgem} to player");
   });
 
   it("resolves a fully namespaced ref and an ItemDef ref identically", () => {

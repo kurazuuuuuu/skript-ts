@@ -27,16 +27,16 @@ import {
 import type { Script } from "../src/index.js";
 
 export const customItemsScript: Script = script(
-  command("citem", null, [
-    set(variable("citem"), customItem("gem")),
-    giveItem(player(), variable("citem")),
+  command("cgem", null, [
+    set(variable("cgem"), customItem("gem")),
+    giveItem(player(), variable("cgem")),
     send(
       player(),
       fmt(
         "モデル: ",
-        itemModelOf(variable("citem")),
+        itemModelOf(variable("cgem")),
         " / 番号: ",
-        customModelDataOf(variable("citem")),
+        customModelDataOf(variable("cgem")),
       ),
     ),
   ]),
