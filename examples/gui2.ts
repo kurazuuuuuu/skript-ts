@@ -101,10 +101,7 @@ import type { Script } from "../src/index.js";
 //                     the drag distributed everything)
 //   click anywhere    "ct=<click type>" ("left mouse button",…)
 export const gui2Script: Script = script(
-  command("g2open", null, [
-    openGui(player(), num(1), str("G2")),
-    send(player(), str("opened")),
-  ]),
+  command("g2open", null, [openGui(player(), num(1), str("G2")), send(player(), str("opened"))]),
   command("g2modenone", null, [
     set(variable("g2mode"), str("none")),
     send(player(), str("mode set")),
@@ -241,10 +238,7 @@ export const gui2Script: Script = script(
       [send(player(), str("eq2=false"))],
     ),
     set(localVar("c"), withName(item("diamond sword"), str("X"))),
-    set(
-      localVar("d"),
-      withEnchantment(withName(item("diamond sword"), str("X")), "sharpness", 5),
-    ),
+    set(localVar("d"), withEnchantment(withName(item("diamond sword"), str("X")), "sharpness", 5)),
     ifElse(
       equals(localVar("c"), localVar("d")),
       [send(player(), str("eq3=true"))],
@@ -272,11 +266,7 @@ export const gui2Script: Script = script(
   command("g2persist", null, [
     set(
       variable("g2saved"),
-      withEnchantment(
-        withName(item("diamond sword"), str("Keepsake")),
-        "sharpness",
-        7,
-      ),
+      withEnchantment(withName(item("diamond sword"), str("Keepsake")), "sharpness", 7),
     ),
     send(player(), str("saved")),
   ]),
@@ -292,13 +282,8 @@ export const gui2Script: Script = script(
     ),
   ]),
   onInventoryDrag([
-    loopList(draggedSlots(), [
-      send(player(), fmt("dragged ", slotIndexOf(loopValue()))),
-    ]),
-    send(
-      player(),
-      fmt("drag n=", listSize(draggedSlots()), " item=", eventItem()),
-    ),
+    loopList(draggedSlots(), [send(player(), fmt("dragged ", slotIndexOf(loopValue())))]),
+    send(player(), fmt("drag n=", listSize(draggedSlots()), " item=", eventItem())),
     ifElse(equals(variable("g2mode"), str("drag")), [cancelEvent()]),
   ]),
   onInventoryClick([

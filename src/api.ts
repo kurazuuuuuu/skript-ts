@@ -2607,10 +2607,7 @@ export function uniformFill(item: Expr): Expr {
  * (they are normalized) and must be positive. The seed defaults
  * to 0.
  */
-export function mixFill(
-  entries: readonly (readonly [Expr, number])[],
-  seed = 0,
-): Expr {
+export function mixFill(entries: readonly (readonly [Expr, number])[], seed = 0): Expr {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new RangeError("mix fill needs at least one [item, weight] entry");
   }

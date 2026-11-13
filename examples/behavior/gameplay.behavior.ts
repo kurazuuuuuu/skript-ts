@@ -89,9 +89,7 @@ async function waitHurtCause(
   cause: string,
   timeoutMs = 15_000,
 ): Promise<number> {
-  const re = new RegExp(
-    `^${victim} was hurt by ${attacker}: ([0-9.]+) damage \\(${cause}\\)$`,
-  );
+  const re = new RegExp(`^${victim} was hurt by ${attacker}: ([0-9.]+) damage \\(${cause}\\)$`);
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     for (const msg of bot.messages.slice(mark)) {
@@ -152,7 +150,12 @@ export default defineBehavior(async (t) => {
     let m = bot.messages.length;
     await bot.digAt(bx, by - 1, bz);
     await waitNew(bot, m, "GameBot left clicked grass block with <none>", 8000);
-    await waitNew(bot, m, "GameBot broke grass block (block item: grass block, tool: air, off hand: air)", 8000);
+    await waitNew(
+      bot,
+      m,
+      "GameBot broke grass block (block item: grass block, tool: air, off hand: air)",
+      8000,
+    );
     expectBlock(bot, bx, by - 1, bz, null);
 
     // Restore the platform and put the bot back at grade.

@@ -56,17 +56,20 @@ There is also a copy-paste prompt template in that document
 
 Every change must pass, in order:
 
-1. `pnpm typecheck` — the type checker is the first guardrail.
-2. `pnpm test` — golden tests compare every construct and sample
+1. `pnpm check` — format + lint + types (Vite+ `vp check`). This is
+   the exact command CI's Fast gates job runs; a tree that fails it
+   is red on GitHub no matter how green the local gates below look.
+2. `pnpm typecheck` — the type checker is the first guardrail.
+3. `pnpm test` — golden tests compare every construct and sample
    program against the expected `.sk` output in `tests/fixtures/`.
-3. `bin/skript-ts.mjs verify` — boots a real Paper server, checks
+4. `bin/skript-ts.mjs verify` — boots a real Paper server, checks
    that the emitted scripts load under Skript 2.17.1 with no
    errors, and runs the mineflayer behavior suites in
    `examples/behavior/`. Engine-side changes also need
    `bin/skript-ts.mjs verify --engine`.
 
 Load checks only prove a script parses; behavior tests are what
-catch semantic bugs. A change that is green on 1–2 but untested on
+catch semantic bugs. A change that is green on 1–3 but untested on
 a real server is not done.
 
 ### Clean-room principle

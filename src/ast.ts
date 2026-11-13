@@ -932,7 +932,14 @@ export type Stmt =
   | { kind: "addToInventory"; inventory: Expr; item: Expr; loc?: SourceLoc }
   | { kind: "removeFromInventory"; inventory: Expr; item: Expr; loc?: SourceLoc }
   | { kind: "enchantItem"; target: ScalarVarExpr; enchant: string; level: number; loc?: SourceLoc }
-  | { kind: "enchantSlot"; inventory: Expr; slot: Expr; enchant: string; level: number; loc?: SourceLoc }
+  | {
+      kind: "enchantSlot";
+      inventory: Expr;
+      slot: Expr;
+      enchant: string;
+      level: number;
+      loc?: SourceLoc;
+    }
   | { kind: "setCursorItem"; target: Expr; item: Expr; loc?: SourceLoc }
   // Core-language world statements (phase 18), mirroring the
   // change / effect forms probed against the real Skript 2.17.1:

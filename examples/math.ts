@@ -49,12 +49,7 @@ export const mathScript: Script = script(
   command("mathround", "number", [
     send(
       player(),
-      fmt(
-        "round: two=",
-        round(argument(1), num(2)),
-        ", tens=",
-        round(argument(1), num(-1)),
-      ),
+      fmt("round: two=", round(argument(1), num(2)), ", tens=", round(argument(1), num(-1))),
     ),
   ]),
   command("mathmin", "number", [
@@ -71,9 +66,6 @@ export const mathScript: Script = script(
     ),
   ]),
   command("mathbig", null, [
-    send(
-      player(),
-      fmt("big: floor=", floor(num(1e19)), ", ceil=", ceil(num(-1e19))),
-    ),
+    send(player(), fmt("big: floor=", floor(num(1e19)), ", ceil=", ceil(num(-1e19)))),
   ]),
 );

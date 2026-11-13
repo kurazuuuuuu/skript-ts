@@ -26,21 +26,21 @@ import {
 // storage key differs, which /uvkeys makes observable.
 
 // /uvset <number>: store the number under the player's key.
-const uvset = command("uvset", [cmdArg("number")], [
-  set(variable("uvgrowth", player()), argument(1)),
-  send(player(), fmt("uv set to ", argument(1))),
-]);
+const uvset = command(
+  "uvset",
+  [cmdArg("number")],
+  [
+    set(variable("uvgrowth", player()), argument(1)),
+    send(player(), fmt("uv set to ", argument(1))),
+  ],
+);
 
 // /uvget: read the number back through the same key.
-const uvget = command("uvget", null, [
-  send(player(), fmt("uv=", variable("uvgrowth", player()))),
-]);
+const uvget = command("uvget", null, [send(player(), fmt("uv=", variable("uvgrowth", player())))]);
 
 // /uvkeys: report every stored key segment with its value.
 const uvkeys = command("uvkeys", null, [
-  loopList(listVar("uvgrowth"), [
-    send(player(), fmt("uvkey=", loopIndex(), " val=", loopValue())),
-  ]),
+  loopList(listVar("uvgrowth"), [send(player(), fmt("uvkey=", loopIndex(), " val=", loopValue()))]),
   send(player(), str("uvkeys done")),
 ]);
 

@@ -357,15 +357,15 @@ describe("randomness (phase 28)", () => {
     expect(isEngineOnlyScript(randomScript)).toBe(false);
   });
   it("draws emit in value position and inside strings", () => {
-    expect(
-      emit(script(onJoin([set(variable("v"), randomInteger(num(1), num(6)))]))),
-    ).toBe("on join:\n    set {v} to random integer between 1 and 6\n");
+    expect(emit(script(onJoin([set(variable("v"), randomInteger(num(1), num(6)))])))).toBe(
+      "on join:\n    set {v} to random integer between 1 and 6\n",
+    );
     expect(
       emit(script(onJoin([set(variable("v"), randomNumber(variable("lo"), variable("hi")))]))),
     ).toBe("on join:\n    set {v} to random number between {lo} and {hi}\n");
-    expect(
-      emit(script(onJoin([broadcast(fmt("roll ", randomInteger(num(1), num(6))))]))),
-    ).toBe('on join:\n    broadcast "roll %random integer between 1 and 6%"\n');
+    expect(emit(script(onJoin([broadcast(fmt("roll ", randomInteger(num(1), num(6))))])))).toBe(
+      'on join:\n    broadcast "roll %random integer between 1 and 6%"\n',
+    );
   });
   it("chance emits the fraction as a plain number", () => {
     expect(emit(script(onJoin([ifElse(chance(num(0.5)), y)])))).toBe(
@@ -386,9 +386,9 @@ describe("randomness (phase 28)", () => {
     );
   });
   it("chance heads a while loop; its negation is rejected", () => {
-    expect(
-      emit(script(onJoin([whileLoop(chance(num(0.5)), [broadcast(str("tick"))])]))),
-    ).toBe('on join:\n    while chance of 0.5:\n        broadcast "tick"\n');
+    expect(emit(script(onJoin([whileLoop(chance(num(0.5)), [broadcast(str("tick"))])])))).toBe(
+      'on join:\n    while chance of 0.5:\n        broadcast "tick"\n',
+    );
     expect(() => whileLoop(not(chance(num(0.5))), [])).toThrow(RangeError);
   });
 });
@@ -461,7 +461,7 @@ describe("gameplay events (phase 14)", () => {
     ).toBe(
       "on block break:\n" +
         "    set {t} to tool of player\n" +
-        "    broadcast \"tool: %tool of player%\"\n",
+        '    broadcast "tool: %tool of player%"\n',
     );
   });
   it("the player's off-hand tool in value position and interpolated", () => {
@@ -477,7 +477,7 @@ describe("gameplay events (phase 14)", () => {
     ).toBe(
       "on block break:\n" +
         "    set {t} to offhand tool of player\n" +
-        "    broadcast \"offhand: %offhand tool of player%\"\n",
+        '    broadcast "offhand: %offhand tool of player%"\n',
     );
   });
   it("cancel, uncancel and set damage statements", () => {
@@ -2291,13 +2291,7 @@ describe("math functions (phase 29)", () => {
   });
   it("nest inside arithmetic and other math calls", () => {
     expect(
-      emit(
-        script(
-          onJoin([
-            send(player(), fmt("v=", plus(floor(sqrt(num(10))), num(1)))),
-          ]),
-        ),
-      ),
+      emit(script(onJoin([send(player(), fmt("v=", plus(floor(sqrt(num(10))), num(1))))]))),
     ).toBe('on join:\n    send "v=%(floor(sqrt(10)) + 1)%" to player\n');
   });
   it("min and max reject zero arguments, as Skript's parser does", () => {
@@ -2319,9 +2313,7 @@ describe("GUI slice 2: drags, slot add/remove, enchantments (phase 28)", () => {
       emit(
         script(
           onInventoryDrag([
-            loopList(draggedSlots(), [
-              broadcast(fmt("dragged ", slotIndexOf(loopValue()))),
-            ]),
+            loopList(draggedSlots(), [broadcast(fmt("dragged ", slotIndexOf(loopValue())))]),
             broadcast(fmt("n=", listSize(draggedSlots()), " item=", eventItem())),
           ]),
         ),
@@ -2335,9 +2327,9 @@ describe("GUI slice 2: drags, slot add/remove, enchantments (phase 28)", () => {
   });
 
   it("click type in click events", () => {
-    expect(
-      emit(script(onInventoryClick([broadcast(fmt("ct=", clickedClickType()))]))),
-    ).toBe('on inventory click:\n    broadcast "ct=%click type%"\n');
+    expect(emit(script(onInventoryClick([broadcast(fmt("ct=", clickedClickType()))])))).toBe(
+      'on inventory click:\n    broadcast "ct=%click type%"\n',
+    );
   });
 
   it("slot and inventory add/remove forms", () => {
@@ -2399,24 +2391,20 @@ describe("GUI slice 2: drags, slot add/remove, enchantments (phase 28)", () => {
   });
 
   it("build errors mirror the original's load errors", () => {
-    expect(() =>
-      emit(script(command("x", null, [addToSlot(player(), num(1), num(3))]))),
-    ).toThrow(/neither an item type nor an item stack/);
+    expect(() => emit(script(command("x", null, [addToSlot(player(), num(1), num(3))])))).toThrow(
+      /neither an item type nor an item stack/,
+    );
     expect(() =>
       emit(
         script(
-          command("x", null, [
-            set(localVar("a"), withEnchantment(localVar("a"), "sharpness", 5)),
-          ]),
+          command("x", null, [set(localVar("a"), withEnchantment(localVar("a"), "sharpness", 5))]),
         ),
       ),
     ).toThrow(/item literal base/);
     expect(() =>
       emit(
         script(
-          command("x", null, [
-            set(localVar("a"), withEnchantment(item("stone"), "shrpness", 5)),
-          ]),
+          command("x", null, [set(localVar("a"), withEnchantment(item("stone"), "shrpness", 5))]),
         ),
       ),
     ).toThrow(/invalid enchantment name/);
@@ -2426,9 +2414,7 @@ describe("GUI slice 2: drags, slot add/remove, enchantments (phase 28)", () => {
 
   it("the GUI slice 2 sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(gui2Script)).toBe(false);
-    expect(
-      isEngineOnlyScript(script(onInventoryDrag([broadcast(str("x"))]))),
-    ).toBe(false);
+    expect(isEngineOnlyScript(script(onInventoryDrag([broadcast(str("x"))])))).toBe(false);
   });
 });
 
@@ -2442,13 +2428,13 @@ describe("inventory operations (feedback lane D)", () => {
     expect(
       emit(script(onJoin([ifElse(hasItem(player(), withAmount(item("diamond"), num(3))), y, n)]))),
     ).toBe(
-      "on join:\n    if player has 3 of diamond:\n        broadcast \"y\"\n    else:\n        broadcast \"n\"\n",
+      'on join:\n    if player has 3 of diamond:\n        broadcast "y"\n    else:\n        broadcast "n"\n',
     );
     expect(
       emit(script(onJoin([ifElse(hasItem(currentInventoryOf(player()), item("diamond")), y)]))),
-    ).toBe("on join:\n    if player's current inventory has diamond:\n        broadcast \"y\"\n");
+    ).toBe('on join:\n    if player\'s current inventory has diamond:\n        broadcast "y"\n');
     expect(emit(script(onJoin([ifElse(not(hasItem(player(), item("diamond"))), y)])))).toBe(
-      "on join:\n    if player does not have diamond:\n        broadcast \"y\"\n",
+      'on join:\n    if player does not have diamond:\n        broadcast "y"\n',
     );
   });
   it("count emits in value position and inside strings", () => {
@@ -2457,31 +2443,27 @@ describe("inventory operations (feedback lane D)", () => {
     ).toBe('on join:\n    broadcast "n=%amount of diamond in player%"\n');
   });
   it("remove and remove-all emit; remove-all rejects a counted pattern", () => {
-    expect(
-      emit(script(onJoin([removeItem(player(), withAmount(item("diamond"), num(2)))]))),
-    ).toBe("on join:\n    remove 2 of diamond from player\n");
+    expect(emit(script(onJoin([removeItem(player(), withAmount(item("diamond"), num(2)))])))).toBe(
+      "on join:\n    remove 2 of diamond from player\n",
+    );
     expect(emit(script(onJoin([removeAllItems(player(), item("diamond"))])))).toBe(
       "on join:\n    remove all diamond from player\n",
     );
-    expect(() => removeAllItems(player(), withAmount(item("diamond"), num(2)))).toThrow(
-      RangeError,
-    );
+    expect(() => removeAllItems(player(), withAmount(item("diamond"), num(2)))).toThrow(RangeError);
   });
   it("can hold emits with the probed native negation, and both conditions head while loops", () => {
     expect(emit(script(onJoin([ifElse(canHoldItem(player(), item("diamond")), y, n)])))).toBe(
-      "on join:\n    if player can hold diamond:\n        broadcast \"y\"\n    else:\n        broadcast \"n\"\n",
+      'on join:\n    if player can hold diamond:\n        broadcast "y"\n    else:\n        broadcast "n"\n',
     );
     expect(emit(script(onJoin([ifElse(not(canHoldItem(player(), item("diamond"))), y)])))).toBe(
-      "on join:\n    if player can't hold diamond:\n        broadcast \"y\"\n",
+      'on join:\n    if player can\'t hold diamond:\n        broadcast "y"\n',
     );
     expect(
       emit(script(onJoin([whileLoop(hasItem(player(), item("diamond")), [broadcast(str("x"))])]))),
-    ).toBe("on join:\n    while player has diamond:\n        broadcast \"x\"\n");
-    expect(
-      emit(
-        script(onJoin([whileLoop(not(canHoldItem(player(), item("diamond"))), y)])),
-      ),
-    ).toBe("on join:\n    while player can't hold diamond:\n        broadcast \"y\"\n");
+    ).toBe('on join:\n    while player has diamond:\n        broadcast "x"\n');
+    expect(emit(script(onJoin([whileLoop(not(canHoldItem(player(), item("diamond"))), y)])))).toBe(
+      'on join:\n    while player can\'t hold diamond:\n        broadcast "y"\n',
+    );
   });
   it("freeSpaceFor is engine-only: no .sk form, IR only", () => {
     expect(isEngineOnlyScript(invspaceScript)).toBe(true);

@@ -126,7 +126,12 @@ export default defineBehavior(async (t) => {
     await t.console(`setblock ${bx + 1} ${by} ${bz} grass_block`);
     m = bot.messages.length;
     await bot.digAt(bx + 1, by, bz);
-    await waitNew(bot, m, "EvBot broke grass block (block item: grass block, tool: iron pickaxe, off hand: air)", 10_000);
+    await waitNew(
+      bot,
+      m,
+      "EvBot broke grass block (block item: grass block, tool: iron pickaxe, off hand: air)",
+      10_000,
+    );
     await expectAbsent(bot, m, "filtered break grass block by EvBot");
 
     // ---------------------------------------------------------

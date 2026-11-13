@@ -147,9 +147,7 @@ export default defineBehavior(async (t) => {
     await t.sleep(400);
     m = bot.messages.length;
     const deathDSeen = () =>
-      bot.messages
-        .slice(m)
-        .some((x) => x.includes("mob death zombie by player"));
+      bot.messages.slice(m).some((x) => x.includes("mob death zombie by player"));
     // Re-equip before every throw: a thrown potion is
     // consumed, and without a fresh equip the bot's hand
     // tracking goes stale and later throws never happen

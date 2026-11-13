@@ -1378,7 +1378,9 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
       ];
     case "enchantItem":
       requireEnchantmentName(s.enchant, s.loc);
-      return [own(`${prefix}enchant ${emitValue(s.target)} with ${s.enchant} ${s.level}`, path, s.loc)];
+      return [
+        own(`${prefix}enchant ${emitValue(s.target)} with ${s.enchant} ${s.level}`, path, s.loc),
+      ];
     case "enchantSlot":
       requireEnchantmentName(s.enchant, s.loc);
       return [

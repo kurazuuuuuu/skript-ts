@@ -33,10 +33,7 @@ import type { Script } from "../src/index.js";
 //   click anywhere   "cursor=<the item on the cursor before
 //                    the click>" — "cursor=" when it is empty
 export const gui2CursorScript: Script = script(
-  command("g2copen", null, [
-    openGui(player(), num(1), str("G2C")),
-    send(player(), str("opened")),
-  ]),
+  command("g2copen", null, [openGui(player(), num(1), str("G2C")), send(player(), str("opened"))]),
   command("g2cgive", null, [
     setCursorItem(player(), withAmount(item("emerald"), num(7))),
     send(player(), str("gave")),

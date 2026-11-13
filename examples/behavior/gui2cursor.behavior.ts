@@ -47,9 +47,10 @@ async function waitCursor(
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const item = bot.cursorItem();
-    const ok = want === null
-      ? item === null
-      : item !== null && item.name === want.name && item.count === want.count;
+    const ok =
+      want === null
+        ? item === null
+        : item !== null && item.name === want.name && item.count === want.count;
     if (ok) return;
     if (Date.now() >= deadline) {
       throw new Error(

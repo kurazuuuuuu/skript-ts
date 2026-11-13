@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  emit,
-  emitIr,
-  isEngineOnlyScript,
-  item,
-  mixFill,
-  noiseFill,
-} from "../src/index.js";
+import { emit, emitIr, isEngineOnlyScript, item, mixFill, noiseFill } from "../src/index.js";
 import { paintScript } from "../examples/paint.js";
 import { welcomeScript } from "../examples/welcome.js";
 
@@ -64,9 +57,7 @@ describe("World paint family (engine-only)", () => {
     expect(() => noiseFill(item("dirt"), item("gravel"), { scale: 0 })).toThrow(RangeError);
     expect(() => noiseFill(item("dirt"), item("gravel"), { amount: -0.1 })).toThrow(RangeError);
     expect(() => noiseFill(item("dirt"), item("gravel"), { amount: 1.1 })).toThrow(RangeError);
-    expect(() => noiseFill(item("dirt"), item("gravel"), { seed: Number.NaN })).toThrow(
-      RangeError,
-    );
+    expect(() => noiseFill(item("dirt"), item("gravel"), { seed: Number.NaN })).toThrow(RangeError);
   });
 
   it("noise fill defaults are scale 4, amount 0.5, seed 0", () => {

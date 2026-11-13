@@ -35,11 +35,7 @@ export default defineBehavior(async (t) => {
   };
 
   const helpers = (bot: Awaited<ReturnType<typeof t.connect>>) => {
-    const waitMsg = async (
-      mark: number,
-      pattern: RegExp,
-      timeoutMs = 15_000,
-    ): Promise<string> => {
+    const waitMsg = async (mark: number, pattern: RegExp, timeoutMs = 15_000): Promise<string> => {
       const deadline = Date.now() + timeoutMs;
       for (;;) {
         for (let i = mark; i < bot.messages.length; i++) {

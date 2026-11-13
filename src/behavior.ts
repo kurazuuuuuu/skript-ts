@@ -1016,9 +1016,8 @@ function readCursorPacketItem(bot: Bot, packet: RawCursorItemPacket): WindowSlot
   const count = contents.itemCount;
   const itemId = contents.itemId;
   if (typeof count !== "number" || count <= 0 || typeof itemId !== "number") return null;
-  const registry = (
-    bot as unknown as { registry?: { items?: Record<number, { name?: unknown }> } }
-  ).registry;
+  const registry = (bot as unknown as { registry?: { items?: Record<number, { name?: unknown }> } })
+    .registry;
   const name = registry?.items?.[itemId]?.name;
   if (typeof name !== "string") return null;
   let customName: string | null = null;

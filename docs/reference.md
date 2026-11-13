@@ -71,52 +71,52 @@ section.
 
 ## Expressions
 
-| TypeScript                                                       | value position                                               | inside a string                      |
-| ---------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------ |
-| `player()`                                                       | `player`                                                     | `%player%`                           |
-| `eventPlayer()`                                                  | `event-player`                                               | `%event-player%`                     |
-| `loopPlayer()`                                                   | `loop-player`                                                | `%loop-player%`                      |
-| `victim()`                                                       | `victim`                                                     | `%victim%`                           |
-| `argument(n)` (1-based)                                          | `arg-<n>`                                                    | `%arg-<n>%`                          |
-| `chatMessage()`                                                  | `message`                                                    | `%message%`                          |
-| `variable(name)`                                                 | `{name}`                                                     | `%{name}%`                           |
-| `variable(name, index)`                                          | `{name::%<index>%}`                                          | `%{name::%<index>%}%`                |
-| `listVar(name)`                                                  | `{name::*}`                                                  | `%{name::*}%`                        |
-| `localVar(name)` / `localVar(name, index)`                       | `{_name}` / `{_name::%<index>%}`                             | `%{_name}%`                          |
-| `localList(name)`                                                | `{_name::*}`                                                 | `%{_name::*}%`                       |
-| `call(name, ...args)`                                            | `<name>(<args>)`                                             | `%<name>(<args>)%`                   |
-| `listSize(list)`                                                 | `size of {name::*}`                                          | `%size of {name::*}%`                |
-| `loopValue()`                                                    | `loop-value`                                                 | `%loop-value%`                       |
-| `loopIndex()`                                                    | `loop-index`                                                 | `%loop-index%`                       |
-| `str(s)`                                                         | `"<s>"`                                                      | raw text                             |
-| `num(n)` / `bool(b)`                                             | `42` / `true`                                                | same                                 |
-| `item(name)`                                                     | `diamond sword`                                              | same                                 |
-| `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                  |
-| `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                      |
-| `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                       |
-| `toolOf(target)`                                                 | `tool of <target>`                                           | `%tool of <target>%`                 |
-| `offHandToolOf(target)`                                          | `offhand tool of <target>`                                   | `%offhand tool of <target>%`         |
-| `attacker()`                                                     | `attacker`                                                   | `%attacker%`                         |
-| `damageAmount()`                                                 | `damage`                                                     | `%damage%`                           |
-| `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                     |
-| `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                      |
-| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc.                                           | `%(<a> + <b>)%` etc.                 |
-| `remainder(a, b)` (or `arith(op, a, b)` for any of the five)     | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                    |
-| `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%` |
-| `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                          | `%random integer between <a> and <b>%` |
-| `floor(e)` / `ceil(e)` / `abs(e)` / `sqrt(e)`                    | `floor(<e>)` etc.                                            | `%floor(<e>)%` etc.                  |
-| `round(e)` / `round(e, places)`                                  | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` etc.                  |
-| `min(...es)` / `max(...es)` (one or more arguments)              | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` etc.                   |
-| `fmt(...parts)`                                                  | `"<parts>"`                                                  | flattened into the enclosing string  |
-| `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                    |
-| `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%` |
-| `firstChars(t, n)` / `lastChars(t, n)`                           | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` etc. |
-| `charAt(t, i)`                                                   | `character at <i> in <t>`                                    | `%character at <i> in <t>%`          |
-| `upperCase(t)` / `lowerCase(t)`                                  | `<t> in uppercase` / `<t> in lowercase`                      | `%<t> in uppercase%` etc.            |
-| `splitText(t, delim, caseSensitive?)`                            | `split <t> at <d>` (`with case sensitivity` when asked)      | `%split <t> at <d>%`                 |
-| `joinText(list, delim?)`                                         | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`             |
-| `colored(t)` / `formatted(t)`                                    | `colored <t>` / `formatted <t>`                              | `%colored <t>%` etc.                 |
-| `uncolored(t)` / `unformatted(t)`                                | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` etc.               |
+| TypeScript                                                       | value position                                               | inside a string                        |
+| ---------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- |
+| `player()`                                                       | `player`                                                     | `%player%`                             |
+| `eventPlayer()`                                                  | `event-player`                                               | `%event-player%`                       |
+| `loopPlayer()`                                                   | `loop-player`                                                | `%loop-player%`                        |
+| `victim()`                                                       | `victim`                                                     | `%victim%`                             |
+| `argument(n)` (1-based)                                          | `arg-<n>`                                                    | `%arg-<n>%`                            |
+| `chatMessage()`                                                  | `message`                                                    | `%message%`                            |
+| `variable(name)`                                                 | `{name}`                                                     | `%{name}%`                             |
+| `variable(name, index)`                                          | `{name::%<index>%}`                                          | `%{name::%<index>%}%`                  |
+| `listVar(name)`                                                  | `{name::*}`                                                  | `%{name::*}%`                          |
+| `localVar(name)` / `localVar(name, index)`                       | `{_name}` / `{_name::%<index>%}`                             | `%{_name}%`                            |
+| `localList(name)`                                                | `{_name::*}`                                                 | `%{_name::*}%`                         |
+| `call(name, ...args)`                                            | `<name>(<args>)`                                             | `%<name>(<args>)%`                     |
+| `listSize(list)`                                                 | `size of {name::*}`                                          | `%size of {name::*}%`                  |
+| `loopValue()`                                                    | `loop-value`                                                 | `%loop-value%`                         |
+| `loopIndex()`                                                    | `loop-index`                                                 | `%loop-index%`                         |
+| `str(s)`                                                         | `"<s>"`                                                      | raw text                               |
+| `num(n)` / `bool(b)`                                             | `42` / `true`                                                | same                                   |
+| `item(name)`                                                     | `diamond sword`                                              | same                                   |
+| `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                    |
+| `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                        |
+| `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                         |
+| `toolOf(target)`                                                 | `tool of <target>`                                           | `%tool of <target>%`                   |
+| `offHandToolOf(target)`                                          | `offhand tool of <target>`                                   | `%offhand tool of <target>%`           |
+| `attacker()`                                                     | `attacker`                                                   | `%attacker%`                           |
+| `damageAmount()`                                                 | `damage`                                                     | `%damage%`                             |
+| `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                       |
+| `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                        |
+| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc.                                           | `%(<a> + <b>)%` etc.                   |
+| `remainder(a, b)` (or `arith(op, a, b)` for any of the five)     | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                      |
+| `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%`  |
+| `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                         | `%random integer between <a> and <b>%` |
+| `floor(e)` / `ceil(e)` / `abs(e)` / `sqrt(e)`                    | `floor(<e>)` etc.                                            | `%floor(<e>)%` etc.                    |
+| `round(e)` / `round(e, places)`                                  | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` etc.                    |
+| `min(...es)` / `max(...es)` (one or more arguments)              | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` etc.                     |
+| `fmt(...parts)`                                                  | `"<parts>"`                                                  | flattened into the enclosing string    |
+| `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                      |
+| `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%`   |
+| `firstChars(t, n)` / `lastChars(t, n)`                           | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` etc.   |
+| `charAt(t, i)`                                                   | `character at <i> in <t>`                                    | `%character at <i> in <t>%`            |
+| `upperCase(t)` / `lowerCase(t)`                                  | `<t> in uppercase` / `<t> in lowercase`                      | `%<t> in uppercase%` etc.              |
+| `splitText(t, delim, caseSensitive?)`                            | `split <t> at <d>` (`with case sensitivity` when asked)      | `%split <t> at <d>%`                   |
+| `joinText(list, delim?)`                                         | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`               |
+| `colored(t)` / `formatted(t)`                                    | `colored <t>` / `formatted <t>`                              | `%colored <t>%` etc.                   |
+| `uncolored(t)` / `unformatted(t)`                                | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` etc.                 |
 
 Arithmetic semantics (verified against the real Skript 2.17.1):
 operands must both be numbers, except that `+` over two texts
@@ -1095,12 +1095,12 @@ Shapes (positions are block positions; a location
 contributes its block coordinates, and the first
 location's world anchors the whole shape):
 
-| TS builder | Shape |
-|---|---|
-| `cuboid(from, to)` | every block between the two corner locations, inclusive, in either corner order |
-| `sphere(center, radius)` | every block whose integer offset from the center block satisfies dx²+dy²+dz² ≤ radius² |
-| `cylinder(center, radius, height)` | dx²+dz² ≤ radius² over the center block, from its Y up `height` layers (a layer count: rounded, at least 1) |
-| `blockLine(from, to)` | the blocks on the segment between the two locations, stepped along the dominant axis with per-axis rounding, so the line stays connected; both endpoints included |
+| TS builder                         | Shape                                                                                                                                                             |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cuboid(from, to)`                 | every block between the two corner locations, inclusive, in either corner order                                                                                   |
+| `sphere(center, radius)`           | every block whose integer offset from the center block satisfies dx²+dy²+dz² ≤ radius²                                                                            |
+| `cylinder(center, radius, height)` | dx²+dz² ≤ radius² over the center block, from its Y up `height` layers (a layer count: rounded, at least 1)                                                       |
+| `blockLine(from, to)`              | the blocks on the segment between the two locations, stepped along the dominant axis with per-axis rounding, so the line stays connected; both endpoints included |
 
 A negative radius, or a cylinder height of zero or
 less, paints nothing.
@@ -1109,10 +1109,10 @@ Fills (the item expressions resolve to materials by
 the same rules as `setBlockAt` — a stack's type, a
 type name, or a block's type):
 
-| TS builder | Fill |
-|---|---|
-| `uniformFill(item)` | that item's material at every position |
-| `mixFill([[item, weight], ...], seed?)` | per position, one entry picked by cumulative weight |
+| TS builder                                          | Fill                                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `uniformFill(item)`                                 | that item's material at every position                                          |
+| `mixFill([[item, weight], ...], seed?)`             | per position, one entry picked by cumulative weight                             |
 | `noiseFill(base, spot, { scale?, amount?, seed? })` | the spot material where a seeded value noise peaks, the base material elsewhere |
 
 - **Determinism is the contract**: mix and noise

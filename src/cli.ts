@@ -932,7 +932,9 @@ async function main(): Promise<number> {
           null,
         );
         const slowestNote =
-          slowest !== null ? `、最長 ${slowest.name} ${(slowest.durationMs / 1000).toFixed(1)}s` : "";
+          slowest !== null
+            ? `、最長 ${slowest.name} ${(slowest.durationMs / 1000).toFixed(1)}s`
+            : "";
         if (opts.fast) {
           return {
             note: `${selected.length}/${files.length} 件合格（--fast 決定的サブサンプル${slowestNote}）`,

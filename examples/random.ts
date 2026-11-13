@@ -35,9 +35,7 @@ import type { Script } from "../src/index.js";
 //   /chancebattery -> 100 checks of chance(0.5), true count out
 //   /chancebounds  -> chance(0) never fires, chance(1) always
 export const randomScript: Script = script(
-  command("roll", null, [
-    send(player(), fmt("roll: ", randomInteger(num(1), num(6)))),
-  ]),
+  command("roll", null, [send(player(), fmt("roll: ", randomInteger(num(1), num(6))))]),
   command("coinflip", null, [
     ifElse(
       chance(num(0.5)),
@@ -75,10 +73,7 @@ export const randomScript: Script = script(
     set(localVar("tally", str("3")), num(0)),
     loopTimes(num(100), [
       set(localVar("v"), randomInteger(num(1), num(3))),
-      set(
-        localVar("tally", localVar("v")),
-        plus(localVar("tally", localVar("v")), num(1)),
-      ),
+      set(localVar("tally", localVar("v")), plus(localVar("tally", localVar("v")), num(1))),
       // The three counts pin the range exactly: a draw outside
       // 1..3 would leave their total below 100 (and a draw of
       // some other whole number would grow a fourth element
@@ -89,22 +84,11 @@ export const randomScript: Script = script(
     set(localVar("c1"), localVar("tally", str("1"))),
     set(localVar("c2"), localVar("tally", str("2"))),
     set(localVar("c3"), localVar("tally", str("3"))),
-    broadcast(
-      fmt(
-        "battery: c1=",
-        localVar("c1"),
-        " c2=",
-        localVar("c2"),
-        " c3=",
-        localVar("c3"),
-      ),
-    ),
+    broadcast(fmt("battery: c1=", localVar("c1"), " c2=", localVar("c2"), " c3=", localVar("c3"))),
   ]),
   command("chancebattery", null, [
     set(localVar("t"), num(0)),
-    loopTimes(num(100), [
-      ifElse(chance(num(0.5)), [add(localVar("t"), num(1))]),
-    ]),
+    loopTimes(num(100), [ifElse(chance(num(0.5)), [add(localVar("t"), num(1))])]),
     broadcast(fmt("chancebattery: true=", localVar("t"))),
   ]),
   command("chancebounds", null, [
@@ -119,8 +103,6 @@ export const randomScript: Script = script(
       ifElse(chance(localVar("zero")), [add(localVar("never"), num(1))]),
       ifElse(chance(localVar("one")), [add(localVar("always"), num(1))]),
     ]),
-    broadcast(
-      fmt("chancebounds: never=", localVar("never"), " always=", localVar("always")),
-    ),
+    broadcast(fmt("chancebounds: never=", localVar("never"), " always=", localVar("always"))),
   ]),
 );

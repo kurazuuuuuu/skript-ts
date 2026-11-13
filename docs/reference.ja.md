@@ -67,52 +67,52 @@
 
 ## 式
 
-| TypeScript                                                       | 値の位置                                                     | 文字列の中                           |
-| ---------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------ |
-| `player()`                                                       | `player`                                                     | `%player%`                           |
-| `eventPlayer()`                                                  | `event-player`                                               | `%event-player%`                     |
-| `loopPlayer()`                                                   | `loop-player`                                                | `%loop-player%`                      |
-| `victim()`                                                       | `victim`                                                     | `%victim%`                           |
-| `argument(n)`（1始まり）                                         | `arg-<n>`                                                    | `%arg-<n>%`                          |
-| `chatMessage()`                                                  | `message`                                                    | `%message%`                          |
-| `variable(name)`                                                 | `{name}`                                                     | `%{name}%`                           |
-| `variable(name, index)`                                          | `{name::%<index>%}`                                          | `%{name::%<index>%}%`                |
-| `listVar(name)`                                                  | `{name::*}`                                                  | `%{name::*}%`                        |
-| `localVar(name)` / `localVar(name, index)`                       | `{_name}` / `{_name::%<index>%}`                             | `%{_name}%`                          |
-| `localList(name)`                                                | `{_name::*}`                                                 | `%{_name::*}%`                       |
-| `call(name, ...args)`                                            | `<name>(<args>)`                                             | `%<name>(<args>)%`                   |
-| `listSize(list)`                                                 | `size of {name::*}`                                          | `%size of {name::*}%`                |
-| `loopValue()`                                                    | `loop-value`                                                 | `%loop-value%`                       |
-| `loopIndex()`                                                    | `loop-index`                                                 | `%loop-index%`                       |
-| `str(s)`                                                         | `"<s>"`                                                      | 素のテキスト                         |
-| `num(n)` / `bool(b)`                                             | `42` / `true`                                                | 同じ                                 |
-| `item(name)`                                                     | `diamond sword`                                              | 同じ                                 |
-| `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                  |
-| `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                      |
-| `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                       |
-| `toolOf(target)`                                                 | `tool of <target>`                                           | `%tool of <target>%`                 |
-| `offHandToolOf(target)`                                          | `offhand tool of <target>`                                   | `%offhand tool of <target>%`         |
-| `attacker()`                                                     | `attacker`                                                   | `%attacker%`                         |
-| `damageAmount()`                                                 | `damage`                                                     | `%damage%`                           |
-| `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                     |
-| `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                      |
-| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` など                                           | `%(<a> + <b>)%` など                 |
-| `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可）          | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                    |
-| `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%` |
-| `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                          | `%random integer between <a> and <b>%` |
-| `floor(e)` / `ceil(e)` / `abs(e)` / `sqrt(e)`                    | `floor(<e>)` など                                            | `%floor(<e>)%` など                  |
-| `round(e)` / `round(e, places)`                                  | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` など                  |
-| `min(...es)` / `max(...es)`（引数は1つ以上）                      | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` など                   |
-| `fmt(...parts)`                                                  | `"<parts>"`                                                  | 外側の文字列に平坦化                 |
-| `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                    |
-| `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%` |
-| `firstChars(t, n)` / `lastChars(t, n)`                           | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` など |
-| `charAt(t, i)`                                                   | `character at <i> in <t>`                                    | `%character at <i> in <t>%`          |
-| `upperCase(t)` / `lowerCase(t)`                                  | `<t> in uppercase` / `<t> in lowercase`                      | `%<t> in uppercase%` など            |
-| `splitText(t, delim, caseSensitive?)`                            | `split <t> at <d>`（指定時は `with case sensitivity`）       | `%split <t> at <d>%`                 |
-| `joinText(list, delim?)`                                         | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`             |
-| `colored(t)` / `formatted(t)`                                    | `colored <t>` / `formatted <t>`                              | `%colored <t>%` など                 |
-| `uncolored(t)` / `unformatted(t)`                                | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` など               |
+| TypeScript                                                       | 値の位置                                                     | 文字列の中                             |
+| ---------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- |
+| `player()`                                                       | `player`                                                     | `%player%`                             |
+| `eventPlayer()`                                                  | `event-player`                                               | `%event-player%`                       |
+| `loopPlayer()`                                                   | `loop-player`                                                | `%loop-player%`                        |
+| `victim()`                                                       | `victim`                                                     | `%victim%`                             |
+| `argument(n)`（1始まり）                                         | `arg-<n>`                                                    | `%arg-<n>%`                            |
+| `chatMessage()`                                                  | `message`                                                    | `%message%`                            |
+| `variable(name)`                                                 | `{name}`                                                     | `%{name}%`                             |
+| `variable(name, index)`                                          | `{name::%<index>%}`                                          | `%{name::%<index>%}%`                  |
+| `listVar(name)`                                                  | `{name::*}`                                                  | `%{name::*}%`                          |
+| `localVar(name)` / `localVar(name, index)`                       | `{_name}` / `{_name::%<index>%}`                             | `%{_name}%`                            |
+| `localList(name)`                                                | `{_name::*}`                                                 | `%{_name::*}%`                         |
+| `call(name, ...args)`                                            | `<name>(<args>)`                                             | `%<name>(<args>)%`                     |
+| `listSize(list)`                                                 | `size of {name::*}`                                          | `%size of {name::*}%`                  |
+| `loopValue()`                                                    | `loop-value`                                                 | `%loop-value%`                         |
+| `loopIndex()`                                                    | `loop-index`                                                 | `%loop-index%`                         |
+| `str(s)`                                                         | `"<s>"`                                                      | 素のテキスト                           |
+| `num(n)` / `bool(b)`                                             | `42` / `true`                                                | 同じ                                   |
+| `item(name)`                                                     | `diamond sword`                                              | 同じ                                   |
+| `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                    |
+| `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                        |
+| `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                         |
+| `toolOf(target)`                                                 | `tool of <target>`                                           | `%tool of <target>%`                   |
+| `offHandToolOf(target)`                                          | `offhand tool of <target>`                                   | `%offhand tool of <target>%`           |
+| `attacker()`                                                     | `attacker`                                                   | `%attacker%`                           |
+| `damageAmount()`                                                 | `damage`                                                     | `%damage%`                             |
+| `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                       |
+| `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                        |
+| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` など                                           | `%(<a> + <b>)%` など                   |
+| `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可）          | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                      |
+| `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%`  |
+| `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                         | `%random integer between <a> and <b>%` |
+| `floor(e)` / `ceil(e)` / `abs(e)` / `sqrt(e)`                    | `floor(<e>)` など                                            | `%floor(<e>)%` など                    |
+| `round(e)` / `round(e, places)`                                  | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` など                    |
+| `min(...es)` / `max(...es)`（引数は1つ以上）                     | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` など                     |
+| `fmt(...parts)`                                                  | `"<parts>"`                                                  | 外側の文字列に平坦化                   |
+| `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                      |
+| `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%`   |
+| `firstChars(t, n)` / `lastChars(t, n)`                           | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` など   |
+| `charAt(t, i)`                                                   | `character at <i> in <t>`                                    | `%character at <i> in <t>%`            |
+| `upperCase(t)` / `lowerCase(t)`                                  | `<t> in uppercase` / `<t> in lowercase`                      | `%<t> in uppercase%` など              |
+| `splitText(t, delim, caseSensitive?)`                            | `split <t> at <d>`（指定時は `with case sensitivity`）       | `%split <t> at <d>%`                   |
+| `joinText(list, delim?)`                                         | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`               |
+| `colored(t)` / `formatted(t)`                                    | `colored <t>` / `formatted <t>`                              | `%colored <t>%` など                   |
+| `uncolored(t)` / `unformatted(t)`                                | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` など                 |
 
 算術の意味論（本家 Skript 2.17.1 の実挙動で裏取り済み）: 被演算子は
 原則として両方とも数値です。例外は `+` で、両方が文字列なら連結に
@@ -1055,12 +1055,12 @@ _形状 × フィル_ として合成する一括ワールド
 そのブロック座標を与え、最初のロケーションの
 ワールドが形状全体の基準になります）:
 
-| TS ビルダー | 形状 |
-|---|---|
-| `cuboid(from, to)` | 2つの隅のロケーションの間の全ブロック（含む、隅の順序は不問） |
-| `sphere(center, radius)` | 中心ブロックからの整数オフセットが dx²+dy²+dz² ≤ radius² を満たす全ブロック |
-| `cylinder(center, radius, height)` | 中心ブロックの上で dx²+dz² ≤ radius²、その Y から `height` 層（層数: 四捨五入、最低1） |
-| `blockLine(from, to)` | 2つのロケーションを結ぶ線分上のブロック。主軸方向にステップし各軸で丸めるため線はつながり、両端を含みます |
+| TS ビルダー                        | 形状                                                                                                      |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `cuboid(from, to)`                 | 2つの隅のロケーションの間の全ブロック（含む、隅の順序は不問）                                             |
+| `sphere(center, radius)`           | 中心ブロックからの整数オフセットが dx²+dy²+dz² ≤ radius² を満たす全ブロック                               |
+| `cylinder(center, radius, height)` | 中心ブロックの上で dx²+dz² ≤ radius²、その Y から `height` 層（層数: 四捨五入、最低1）                    |
+| `blockLine(from, to)`              | 2つのロケーションを結ぶ線分上のブロック。主軸方向にステップし各軸で丸めるため線はつながり、両端を含みます |
 
 負の半径、または円柱の高さが0以下では、何も
 描かれません。
@@ -1069,10 +1069,10 @@ _形状 × フィル_ として合成する一括ワールド
 スタックの型、型名、ブロックの型——で素材に
 解決されます）:
 
-| TS ビルダー | フィル |
-|---|---|
-| `uniformFill(item)` | そのアイテムの素材を全位置に |
-| `mixFill([[item, weight], ...], seed?)` | 位置ごとに、累積ウェイトで1つのエントリを選択 |
+| TS ビルダー                                         | フィル                                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------ |
+| `uniformFill(item)`                                 | そのアイテムの素材を全位置に                                             |
+| `mixFill([[item, weight], ...], seed?)`             | 位置ごとに、累積ウェイトで1つのエントリを選択                            |
 | `noiseFill(base, spot, { scale?, amount?, seed? })` | シード付きバリューノイズが高い位置に spot の素材、それ以外に base の素材 |
 
 - **決定性が契約です**: ミックスとノイズの
