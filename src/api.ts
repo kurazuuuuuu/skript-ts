@@ -489,6 +489,8 @@ const FUNCTION_TYPES: ReadonlySet<string> = new Set([
   "entity",
   "timespan",
   "timespans",
+  "date",
+  "dates",
 ]);
 
 function requireFunctionName(name: string): string {
@@ -2803,6 +2805,52 @@ export function setFishingBiteTime(value: Expr): Stmt {
 /** Sets the current fishing hook's approach-angle bound (phase 23). */
 export function setFishingApproachAngle(bound: "min" | "max", value: Expr): Stmt {
   return withLoc({ kind: "setFishingApproachAngle", bound: requireFishingBound(bound), value });
+}
+
+// ---------------------------------------------------------------------------
+// Core language (feedback C3): dates — the current time, unix
+// timestamps and differences between times
+//
+// A date is an instant in time with millisecond precision.
+// now() is the moment the expression evaluates (the original's
+// `now`); a date prints in the original's configured date
+// format and stores in variables like any other value.
+// unixTimestamp(date) reads a date as seconds since the unix
+// epoch (a fractional number — the milliseconds ride along as
+// the fraction), and dateFromUnix(seconds) (the original's
+// `unix date of ...`) builds the date back; the pair
+// round-trips at millisecond precision.
+// differenceBetween(a, b) is the original's `difference
+// between ... and ...`: two dates yield the absolute gap as a
+// timespan, two timespans yield a timespan, two numbers yield a
+// number; any other pairing has no value. A date plus or minus
+// a timespan (the phase-11 plus / minus builders) is the date
+// shifted by that span — asymmetrically: a timespan plus a
+// date, a date minus a date and a date plus a number all have
+// no value in the original. Shifting is how deadlines are
+// written:
+// store plus(now(), timespan(90, "seconds")), then read the
+// remaining time as differenceBetween(deadline, now()).
+// ---------------------------------------------------------------------------
+
+/** The current date and time (feedback C3): the moment this expression evaluates. */
+export function now(): Expr {
+  return { kind: "now" };
+}
+
+/** A date as seconds since the unix epoch, fractional at millisecond precision (feedback C3); a non-date operand has no value. */
+export function unixTimestamp(date: Expr): Expr {
+  return { kind: "unixTimestamp", date };
+}
+
+/** The date at the given number of seconds since the unix epoch (feedback C3); a non-number operand has no value. */
+export function dateFromUnix(seconds: Expr): Expr {
+  return { kind: "dateFromUnix", seconds };
+}
+
+/** The absolute difference between two dates (a timespan), two timespans, or two numbers (feedback C3); other pairings have no value. */
+export function differenceBetween(left: Expr, right: Expr): Expr {
+  return { kind: "difference", left, right };
 }
 
 // ---------------------------------------------------------------------------

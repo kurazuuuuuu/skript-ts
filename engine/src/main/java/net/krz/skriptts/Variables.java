@@ -43,6 +43,7 @@ final class Variables {
     private static final String LOCATION_TAG = "__location";
     private static final String ITEM_TAG = "__item";
     private static final String TIMESPAN_TAG = "__timespan";
+    private static final String DATE_TAG = "__date";
     private static final String KEYED_BOSS_BAR_TAG = "__keyedbossbar";
 
     private final Map<String, Object> values = new LinkedHashMap<>();
@@ -232,6 +233,14 @@ final class Variables {
             m.put("eternal", timespan.eternal);
             return m;
         }
+        // Dates are plain data too (feedback C3): the epoch
+        // millisecond count, exact in a double up to 2^53.
+        if (value instanceof SkriptDate date) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put(DATE_TAG, Boolean.TRUE);
+            m.put("ms", (double) date.epochMs);
+            return m;
+        }
         return value;
     }
 
@@ -295,6 +304,9 @@ final class Variables {
                 return Timespan.ETERNAL;
             }
             return Timespan.ofMs((long) num(map.get("ms")));
+        }
+        if (value instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get(DATE_TAG))) {
+            return SkriptDate.ofEpochMs((long) num(map.get("ms")));
         }
         if (value instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get(KEYED_BOSS_BAR_TAG))) {
             NamespacedKey nk = NamespacedKey.fromString(String.valueOf(map.get("key")));

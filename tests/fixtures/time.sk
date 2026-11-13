@@ -1,0 +1,119 @@
+function timeUnixOf(d: date) :: number:
+    return unix timestamp of {_d}
+
+function timeNowFn() :: date:
+    return now
+
+function timeCount(ds: dates) :: number:
+    set {_n} to 0
+    loop {_ds::*}:
+        add 1 to {_n}
+    return {_n}
+
+command /timenow:
+    trigger:
+        set {_n} to now
+        set {_u} to unix timestamp of {_n}
+        broadcast "TIME now=[%{_n}%]"
+        broadcast "TIME unix=[%{_u}%]"
+
+command /timecalc:
+    trigger:
+        set {_u} to unix timestamp of now
+        set {_d} to unix date of {_u}
+        set {_u2} to unix timestamp of {_d}
+        set {_delta} to ({_u2} - {_u})
+        if {_delta} is greater than -0.01:
+            if {_delta} is less than 0.01:
+                broadcast "TIME roundtrip=true"
+            else:
+                broadcast "TIME roundtrip=false"
+        else:
+            broadcast "TIME roundtrip=false"
+        set {_fd} to unix date of 1700000000
+        broadcast "TIME fixed=[%{_fd}%]"
+        set {_fu} to unix timestamp of {_fd}
+        broadcast "TIME fixedunix=[%{_fu}%]"
+        set {_n} to now
+        set {_self} to difference between {_n} and {_n}
+        broadcast "TIME diffself=[%{_self}%]"
+        set {_nd} to difference between 10 and 3
+        broadcast "TIME numdiff=[%{_nd}%]"
+        set {_td} to difference between 90 seconds and 30 seconds
+        broadcast "TIME tsdiff=[%{_td}%]"
+        set {_a} to now
+        wait 2 seconds
+        set {_b} to now
+        set {_fwd} to difference between {_b} and {_a}
+        set {_rev} to difference between {_a} and {_b}
+        if {_fwd} is {_rev}:
+            broadcast "TIME diffabs=true"
+        else:
+            broadcast "TIME diffabs=false"
+        if {_fwd} is greater than 1 seconds:
+            if {_fwd} is less than 4 seconds:
+                broadcast "TIME diffwindow=true"
+            else:
+                broadcast "TIME diffwindow=false"
+        else:
+            broadcast "TIME diffwindow=false"
+        set {_base} to now
+        set {_deadline} to ({_base} + 90 seconds)
+        set {_gap} to difference between {_deadline} and {_base}
+        if {_gap} is greater than 80 seconds:
+            if {_gap} is less than 100 seconds:
+                broadcast "TIME dateplus=true"
+            else:
+                broadcast "TIME dateplus=false"
+        else:
+            broadcast "TIME dateplus=false"
+        set {_earlier} to ({_base} - 5 seconds)
+        set {_gap2} to difference between {_base} and {_earlier}
+        if {_gap2} is greater than 3 seconds:
+            if {_gap2} is less than 7 seconds:
+                broadcast "TIME dateminus=true"
+            else:
+                broadcast "TIME dateminus=false"
+        else:
+            broadcast "TIME dateminus=false"
+        set {_tp} to (5 seconds + {_base})
+        broadcast "TIME tsplus=[%{_tp}%]"
+        set {_dd} to ({_b} - {_a})
+        broadcast "TIME datediff=[%{_dd}%]"
+        set {_fu2} to timeUnixOf(now)
+        set {_du} to unix timestamp of now
+        if {_fu2} is greater than ({_du} - 2):
+            if {_fu2} is less than ({_du} + 2):
+                broadcast "TIME fn=true"
+            else:
+                broadcast "TIME fn=false"
+        else:
+            broadcast "TIME fn=false"
+        set {_fn} to timeNowFn()
+        set {_fdiff} to difference between {_fn} and {_base}
+        if {_fdiff} is less than 30 seconds:
+            broadcast "TIME fnnow=true"
+        else:
+            broadcast "TIME fnnow=false"
+        add now to {_ds::*}
+        add {_a} to {_ds::*}
+        set {_cnt} to timeCount({_ds::*})
+        broadcast "TIME fncount=[%{_cnt}%]"
+
+command /cdstart:
+    trigger:
+        set {cduntil::%player%} to (now + 5 seconds)
+        send "TIME cd started" to player
+
+command /cdleft:
+    trigger:
+        set {_until} to {cduntil::%player%}
+        if {_until} is {_until}:
+            set {_n} to now
+            if {_n} is greater than {_until}:
+                send "TIME cd state=ready" to player
+            else:
+                set {_left} to difference between {_until} and {_n}
+                send "TIME cd state=cooling left=[%{_left}%]" to player
+        else:
+            send "TIME cd state=none" to player

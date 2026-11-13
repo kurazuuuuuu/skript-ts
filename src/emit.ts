@@ -297,6 +297,14 @@ function emitValue(e: Expr): string {
       return `"${emitStringParts(e.parts)}"`;
     case "timespan":
       return emitTimespan(e);
+    case "now":
+      return "now";
+    case "unixTimestamp":
+      return `unix timestamp of ${emitValue(e.date)}`;
+    case "dateFromUnix":
+      return `unix date of ${emitValue(e.seconds)}`;
+    case "difference":
+      return `difference between ${emitValue(e.left)} and ${emitValue(e.right)}`;
     case "fishingWaitTime":
       return `${e.bound} fishing wait time`;
     case "fishingBiteTime":
@@ -447,6 +455,10 @@ function emitString(e: Expr): string {
     case "bossBarStyleOf":
     case "eventBossBar":
     case "timespan":
+    case "now":
+    case "unixTimestamp":
+    case "dateFromUnix":
+    case "difference":
     case "fishingWaitTime":
     case "fishingBiteTime":
     case "fishingApproachAngle":
