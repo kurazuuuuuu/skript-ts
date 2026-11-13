@@ -1212,3 +1212,72 @@ a PNG-sourced coin texture, the custom item, and a coin glyph in the
 pack font — and `tests/resourcepack.test.ts` pins the validation,
 the exact generated JSON, the PNG pixels, the zip structure and the
 manifest hash.
+
+## Resource packs: model assignment and giving (RP-2)
+
+Scripts hand players the pack's items by reference, and the build
+assigns every defined item a CustomModelData number from a
+persisted registry.
+
+| TS builder                | Meaning                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `customItem(ref)`         | an item expression for a pack item: the id as written (a bare path resolves against the pack namespace) or the `ItemDef` itself |
+| `itemModelOf(item)`       | the item's `item_model` component id as text; no value when unset                                                               |
+| `customModelDataOf(item)` | the item's first CustomModelData float as a number; 0 when unset                                                                |
+
+Semantics, pinned by probes against the real Skript 2.17.1 (the
+suffix forms and read-backs) and by the behavior suite:
+
+- **Resolution happens at project-build time.** A `customItem`
+  node starts unresolved (only the ref); `buildProject` resolves
+  it against the project's pack — filling the resolved item id
+  (the `item_model` component value), the base item, the registry
+  number and the defined display name — before emit and IR. A ref
+  that names no pack item, or any `customItem` in a project with
+  no pack, is a build error; emitting an unresolved node throws.
+- **The emitted form is one suffix chain** (probed):
+  `<base> with item model "<id>" with custom model data <n> named
+  "<name>"` (the last two parts only when present). It composes
+  with the phase-17 suffixes (`3 of ...` via `withAmount`) and
+  with `giveItem`. The engine materializes the same stack
+  natively (item model, CustomModelData floats[0], display name).
+- **The registry** (`resourcepack-registry.json` at the project
+  root, `{ "version": 1, "items": { "<ns>:<path>": <number> } }`)
+  persists name → number assignments. Allocation is
+  **append-only** (max + 1, never the smallest free slot); entries
+  are never removed, so a deleted definition's number stays
+  reserved forever and re-registering the same name restores its
+  original number. A definition may request an explicit number
+  (`customModelData` on `defineItem`); a request that collides
+  with any existing assignment — including a reserved one — or
+  that renumbers an existing name is a build error. The registry
+  is written back only when a build allocates something new.
+- **The manifest gains an `items` array** (declaration order):
+  each entry records the resolved `id`, `baseItem`, the `model`
+  used in the item definition JSON, and the allocated
+  `customModelData`. This is the contract the distribution phase
+  (RP-3: R2 + per-join signed URL + SHA-1) reads — the zip's
+  SHA-1 and size fields are unchanged from RP-1.
+- **Client-side note**: a numeric CustomModelData does not by
+  itself switch models in the vanilla item-definition format
+  (numeric dispatch would need `range_dispatch` plus a copy of
+  the base definition). Display is carried by the `item_model`
+  component — a stack carrying it ignores the base definition —
+  and the number is the compatibility record: the registry
+  assignment, the stack's floats[0], and the manifest entry.
+- **Equality and persistence follow phase 17**: the item model
+  and the first CustomModelData float join the both-carry rule
+  (each decides equality only when both stacks carry it), and
+  the engine's variable store persists both components with the
+  stack. Reading the model of a stack without one yields no
+  value; reading its custom model data yields 0 — for item
+  targets; a non-item target yields no value for both.
+
+`examples/customitems.ts` exercises the flow end to end (store
+the gem in a variable, give it, read the components back), and
+`examples/behavior/customitems.behavior.ts` pins both runtimes:
+the given shard carries `item_model "example:gem"`, CustomModelData
+1 and the defined name, and the script's read-back agrees.
+`tests/packregistry.test.ts` pins the allocation rules,
+`tests/customitems.test.ts` pins resolution and emission, and the
+manifest entries are pinned in `tests/resourcepack.test.ts`.
