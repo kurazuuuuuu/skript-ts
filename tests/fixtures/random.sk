@@ -1,0 +1,63 @@
+command /roll:
+    trigger:
+        send "roll: %random integer between 1 and 6%" to player
+
+command /coinflip:
+    trigger:
+        if chance of 0.5:
+            send "flip: heads" to player
+        else:
+            send "flip: tails" to player
+
+command /antiflip:
+    trigger:
+        if chance of 0.5:
+            send "anti: draw" to player
+        else:
+            send "anti: no draw" to player
+
+command /jackpot:
+    trigger:
+        if chance of 0.25:
+            send "jackpot: won" to player
+        else:
+            send "jackpot: lost" to player
+
+command /spanroll:
+    trigger:
+        set {_v} to random number between 1 and 2
+        send "span: %{_v}%" to player
+
+command /dicebattery:
+    trigger:
+        set {_tally::%"1"%} to 0
+        set {_tally::%"2"%} to 0
+        set {_tally::%"3"%} to 0
+        loop 100 times:
+            set {_v} to random integer between 1 and 3
+            set {_tally::%{_v}%} to ({_tally::%{_v}%} + 1)
+        set {_c1} to {_tally::%"1"%}
+        set {_c2} to {_tally::%"2"%}
+        set {_c3} to {_tally::%"3"%}
+        broadcast "battery: c1=%{_c1}% c2=%{_c2}% c3=%{_c3}%"
+
+command /chancebattery:
+    trigger:
+        set {_t} to 0
+        loop 100 times:
+            if chance of 0.5:
+                add 1 to {_t}
+        broadcast "chancebattery: true=%{_t}%"
+
+command /chancebounds:
+    trigger:
+        set {_zero} to 0
+        set {_one} to 1
+        set {_never} to 0
+        set {_always} to 0
+        loop 50 times:
+            if chance of {_zero}:
+                add 1 to {_never}
+            if chance of {_one}:
+                add 1 to {_always}
+        broadcast "chancebounds: never=%{_never}% always=%{_always}%"
