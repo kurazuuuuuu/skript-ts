@@ -1,0 +1,38 @@
+on damage with priority monitor:
+    if event is cancelled:
+        broadcast "[prio] monitor saw cancelled for %victim%"
+    else:
+        broadcast "[prio] monitor ran for %victim%"
+
+on damage:
+    broadcast "[prio] legacy ran for %victim%"
+
+on damage with priority high:
+    if event is cancelled:
+        broadcast "[prio] xp skipped for %victim%"
+    else:
+        broadcast "[prio] xp granted for %victim%"
+
+on damage with priority normal:
+    broadcast "[prio] normal-1 ran for %victim%"
+
+on damage with priority low:
+    if "%victim%" is "GuardBot":
+        broadcast "[prio] guard cancelled for %victim%"
+        cancel event
+        if event is cancelled:
+            broadcast "[prio] guard confirms cancelled for %victim%"
+        else:
+            broadcast "[prio] guard FAILED to cancel for %victim%"
+
+on damage with priority normal:
+    broadcast "[prio] normal-2 ran for %victim%"
+
+on damage with priority highest:
+    broadcast "[prio] highest ran for %victim%"
+
+on damage with priority lowest:
+    if event is cancelled:
+        broadcast "[prio] lowest saw cancelled for %victim%"
+    else:
+        broadcast "[prio] lowest ran for %victim%"
