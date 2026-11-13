@@ -136,6 +136,12 @@ final class Variables {
     }
 
     private static Object encode(Object value) {
+        if (value instanceof Paint.Shape || value instanceof Paint.Fill) {
+            // Runtime-only values (world paint family): geometry
+            // and material distributions are code, not data; they
+            // are dropped on save like a data source.
+            return null;
+        }
         if (value instanceof Database.DataSource) {
             // Runtime-only value: never written to variables.json, so
             // credentials inside a data source URL stay out of the file.
