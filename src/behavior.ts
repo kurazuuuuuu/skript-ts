@@ -99,8 +99,13 @@ export interface BehaviorBot {
   windowTitle(): string | null;
   /** The item in a window slot, or null for an empty slot / no window. */
   windowSlotItem(slot: number): WindowSlotItem | null;
-  /** Left-click a window slot (raw window index: top inventory first, then the player's own inventory). */
-  clickWindowSlot(slot: number): Promise<void>;
+  /** Click a window slot (raw window index: top inventory first, then the player's own inventory). Left-click by default; `button` 1 is a right click. */
+  clickWindowSlot(slot: number, button?: number): Promise<void>;
+  // Phase 28 controls: the cursor item and drag clicks.
+  /** The item on the cursor (the carried item), or null when the cursor is empty. */
+  cursorItem(): WindowSlotItem | null;
+  /** Drag the carried item across the given raw window slots in order (a left or right drag). */
+  dragWindowSlots(slots: number[], side: "left" | "right"): Promise<void>;
   // Phase 21 controls: display packets — enough to exercise
   // the title / action bar / boss bar effects by what the
   // client actually received, not by script readbacks alone.
@@ -256,6 +261,20 @@ interface RawSoundPacket {
   pitch?: number;
 }
 
+/**
+ * The raw set_cursor_item packet shape on the wire (phase 28):
+ * the server's authoritative carried item. mineflayer 4.39 has
+ * no listener for this packet, so its window.selectedItem never
+ * reflects server-side cursor changes.
+ */
+interface RawCursorItemPacket {
+  contents?: {
+    itemCount?: number;
+    itemId?: number;
+    components?: { type?: unknown; data?: unknown }[];
+  };
+}
+
 /** The raw display packet shapes on the wire (phase 21): text fields are chat components in NBT form. */
 interface RawTextPacket {
   text?: unknown;
@@ -322,6 +341,8 @@ class MineflayerBehaviorBot implements BehaviorBot {
   private readonly titleClearLog: boolean[] = [];
   private readonly actionBarLog: string[] = [];
   private readonly bossBarLog: BossBarPacket[] = [];
+  private serverCursor: WindowSlotItem | null = null;
+  private serverCursorFresh = false;
   private readonly waiters: {
     pattern: RegExp | string;
     resolve: (msg: string) => void;
@@ -386,6 +407,18 @@ class MineflayerBehaviorBot implements BehaviorBot {
         color: typeof p.color === "number" ? p.color : null,
         dividers: typeof p.dividers === "number" ? p.dividers : null,
       });
+    });
+    // Raw cursor packet (phase 28): the server's authoritative
+    // carried item. mineflayer does not consume set_cursor_item,
+    // so its selectedItem only ever reflects the bot's own click
+    // predictions; server-side cursor changes (the engine's
+    // setCursorItem, a drag's distribution or restoration) would
+    // be invisible to cursorItem() without this capture. A local
+    // click or drag invalidates the capture (see clickWindowSlot
+    // / dragWindowSlots) until the server re-syncs.
+    displayClient.on<RawCursorItemPacket>("set_cursor_item", (p) => {
+      this.serverCursor = readCursorPacketItem(this.bot, p);
+      this.serverCursorFresh = true;
     });
     this.bot.on("messagestr", (raw) => {
       const msg = stripColor(raw);
@@ -907,34 +940,124 @@ class MineflayerBehaviorBot implements BehaviorBot {
   windowSlotItem(slot: number): WindowSlotItem | null {
     const win = this.bot.currentWindow;
     if (!win) return null;
-    const item = win.slots[slot];
-    if (!item) return null;
-    // Custom name / lore travel as item components (1.20.5+):
-    // an array of {type, data} entries whose data is a chat
-    // component (a bare string or an object with a text/value).
-    // (prismarine-item's typings lag the component model, so the
-    // property is read through an unknown cast.)
-    let customName: string | null = null;
-    let lore: string[] = [];
-    const components: unknown = (item as unknown as { components?: unknown }).components;
-    if (Array.isArray(components)) {
-      for (const entry of components as { type?: unknown; data?: unknown }[]) {
-        if (entry.type === "custom_name") {
-          customName = componentText(entry.data);
-        } else if (entry.type === "lore" && Array.isArray(entry.data)) {
-          lore = entry.data.map((line) => componentText(line) ?? "");
-        }
-      }
-    }
-    return { name: item.name, count: item.count, customName, lore };
+    return readWindowItem(win.slots[slot]);
   }
 
-  async clickWindowSlot(slot: number): Promise<void> {
+  async clickWindowSlot(slot: number, button = 0): Promise<void> {
     if (!this.bot.currentWindow) {
       throw new Error("cannot click a window slot: no window is open");
     }
-    await this.bot.clickWindow(slot, 0, 0);
+    // A local click takes over the cursor prediction; the
+    // captured server cursor is stale from here until the
+    // server's next set_cursor_item re-syncs it.
+    this.serverCursorFresh = false;
+    await this.bot.clickWindow(slot, button, 0);
   }
+
+  cursorItem(): WindowSlotItem | null {
+    // The server's last set_cursor_item packet wins over
+    // mineflayer's locally predicted selectedItem: the packet is
+    // the only channel that reports server-side cursor changes.
+    if (this.serverCursorFresh) return this.serverCursor;
+    const win = this.bot.currentWindow ?? this.bot.inventory;
+    if (!win) return null;
+    const selected: unknown = (win as unknown as { selectedItem?: unknown }).selectedItem;
+    return readWindowItem(selected);
+  }
+
+  /**
+   * Drag the carried item across the given raw window slots in
+   * order. prismarine-windows' `Window.acceptClick` throws for
+   * click mode 5 (its drag path is unimplemented), and mineflayer
+   * calls it before writing the packet — so the window instance's
+   * method is shadowed with a no-op for the duration of the drag.
+   * mineflayer still writes correct window_click packets (window
+   * id, state id and the cursor item are its own bookkeeping);
+   * the server's slot updates then correct the client state, so
+   * callers poll windowSlotItem / cursorItem for the outcome
+   * rather than trusting instant state.
+   */
+  async dragWindowSlots(slots: number[], side: "left" | "right"): Promise<void> {
+    const win = this.bot.currentWindow;
+    if (!win) {
+      throw new Error("cannot drag window slots: no window is open");
+    }
+    // Same invalidation as clickWindowSlot: the drag's outcome
+    // arrives as the server's set_cursor_item at drag end.
+    this.serverCursorFresh = false;
+    const target = win as unknown as { acceptClick?: (...args: unknown[]) => unknown };
+    const originalAcceptClick = target.acceptClick;
+    target.acceptClick = () => [];
+    try {
+      const startButton = side === "left" ? 0 : 4;
+      const slotButton = side === "left" ? 1 : 5;
+      const endButton = side === "left" ? 2 : 6;
+      await this.bot.clickWindow(-999, startButton, 5);
+      await sleep(150);
+      for (const slot of slots) {
+        await this.bot.clickWindow(slot, slotButton, 5);
+        await sleep(150);
+      }
+      await this.bot.clickWindow(-999, endButton, 5);
+    } finally {
+      target.acceptClick = originalAcceptClick;
+    }
+  }
+}
+
+/**
+ * Convert a raw set_cursor_item packet to a WindowSlotItem via
+ * the bot's registry (the packet carries a numeric item id, not
+ * a name). An empty carried item (count 0) reads as null.
+ */
+function readCursorPacketItem(bot: Bot, packet: RawCursorItemPacket): WindowSlotItem | null {
+  const contents = packet.contents;
+  if (contents === undefined) return null;
+  const count = contents.itemCount;
+  const itemId = contents.itemId;
+  if (typeof count !== "number" || count <= 0 || typeof itemId !== "number") return null;
+  const registry = (
+    bot as unknown as { registry?: { items?: Record<number, { name?: unknown }> } }
+  ).registry;
+  const name = registry?.items?.[itemId]?.name;
+  if (typeof name !== "string") return null;
+  let customName: string | null = null;
+  let lore: string[] = [];
+  if (Array.isArray(contents.components)) {
+    for (const entry of contents.components) {
+      if (entry.type === "custom_name") {
+        customName = componentText(entry.data);
+      } else if (entry.type === "lore" && Array.isArray(entry.data)) {
+        lore = entry.data.map((line) => componentText(line) ?? "");
+      }
+    }
+  }
+  return { name, count, customName, lore };
+}
+
+/** Read a prismarine item (a window slot's content or the cursor's carried item) as a WindowSlotItem. */
+function readWindowItem(item: unknown): WindowSlotItem | null {
+  if (typeof item !== "object" || item === null) return null;
+  const record = item as { name?: unknown; count?: unknown; components?: unknown };
+  if (typeof record.name !== "string" || typeof record.count !== "number") return null;
+  // Custom name / lore travel as item components (1.20.5+):
+  // an array of {type, data} entries whose data is a chat
+  // component (a bare string or an object with a text/value).
+  // (prismarine-item's typings lag the component model, so the
+  // property is read through an unknown cast.)
+  let customName: string | null = null;
+  let lore: string[] = [];
+  const components: unknown = record.components;
+  if (Array.isArray(components)) {
+    for (const entry of components as { type?: unknown; data?: unknown }[]) {
+      if (entry.type === "custom_name") {
+        customName = componentText(entry.data);
+      } else if (entry.type === "lore" && Array.isArray(entry.data)) {
+        lore = entry.data.map((line) => componentText(line) ?? "");
+      }
+    }
+  }
+  return { name: record.name, count: record.count, customName, lore };
 }
 
 /** Read the plain text out of a chat-component-shaped value (a bare string, or an object holding text/value). */

@@ -474,8 +474,12 @@ export function listVar(name: string): ListExpr {
   return { kind: "variableList", name };
 }
 
-/** Construct a list-size expression: the number of entries in the list (0 when unset). */
-export function listSize(list: AnyListExpr): Expr {
+/**
+ * Construct a list-size expression: the number of entries in the
+ * list (0 when unset). Accepts a list variable or any list-valued
+ * expression (phase 28: draggedSlots()).
+ */
+export function listSize(list: Expr): Expr {
   return { kind: "listSize", list };
 }
 
@@ -509,8 +513,13 @@ export function deleteVar(target: VarTarget): Stmt {
   return withLoc({ kind: "deleteVar", target });
 }
 
-/** Construct a loop over a list variable's entries, exposing loopValue() and loopIndex(). */
-export function loopList(list: AnyListExpr, body: readonly Stmt[]): Stmt {
+/**
+ * Construct a loop over a list's entries, exposing loopValue()
+ * and loopIndex(). The list may be a list variable (entries are
+ * visited as a snapshot) or any list-valued expression (phase
+ * 28: draggedSlots()); expression lists are indexed 1-based.
+ */
+export function loopList(list: Expr, body: readonly Stmt[]): Stmt {
   return withLoc({ kind: "loopList", list, body });
 }
 
@@ -2150,6 +2159,150 @@ export function onInventoryClick(body: readonly Stmt[], options?: EventOptions):
 /** Construct an inventory-close event: fires when a player closes an inventory view. */
 export function onInventoryClose(body: readonly Stmt[], options?: EventOptions): TopLevel {
   return withLoc(plainEvent("inventoryClose", body, options, "onInventoryClose"));
+}
+
+// ---------------------------------------------------------------------------
+// Core language (phase 28): GUI slice 2 — drags, slot add/remove,
+// cursor, enchantments
+//
+// Semantics mirror the real Skript 2.17.1, verified against the
+// sandbox server with hand-written probe scripts (seven rounds)
+// and mineflayer bot drags of a real GUI (see the development
+// log):
+//
+// - onInventoryDrag fires for inventory drags. Cancelling a drag
+//   stops the distribution, while cancelling clicks does NOT
+//   stop drags (a real GUI must cancel both). Inside,
+//   eventItem() is the cursor item AFTER the drag (an air item
+//   of amount 0 when the drag empties the cursor — not no
+//   value), eventInventory() is the view's top inventory, and
+//   draggedSlots() loops the slots that actually receive
+//   items: incompatible slots are excluded, each slot's index
+//   counts within its own inventory, and the order is
+//   unspecified.
+// - add/remove on slots and whole inventories take item
+//   operands only — the original rejects a bare number operand
+//   outright ('3' can't be added to a slot because the former
+//   is neither an item type nor an item stack); counts ride on
+//   the item (withAmount). Slot add merges into a similar
+//   stack (similarity = type plus the both-carry meta rule,
+//   keeping the slot stack's meta) up to the material's max
+//   stack size, sets an empty slot (capped at 99, possibly
+//   above the material max), and silently drops whatever does
+//   not fit or does not match. Slot remove matches by type
+//   only. Inventory add merges similar partial stacks in slot
+//   order, then fills empty slots, and silently drops the
+//   rest; inventory remove subtracts by type in slot order.
+//   An emptied slot reads back as an air item of amount 0.
+// - clickedClickType() yields the click's type as text in
+//   inventory click events ("left mouse button", "right mouse
+//   button", "left mouse button with shift", ...).
+// - The original has NO cursor syntax at all (probed: every
+//   candidate spelling is rejected), so eventCursor() /
+//   setCursorItem() are engine-only builtins: inside inventory
+//   click and drag events the cursor is the item the player is
+//   carrying (for a click, the pre-click item); setCursorItem
+//   replaces it (during a click/drag event the replacement is
+//   applied as the event completes — the event's own cursor
+//   setter does not survive Paper's click resolution).
+// - Enchantments: withEnchantment applies only to item type
+//   literals (the original's `of <enchantment> <level>` suffix
+//   lives in item literals; levels are literal integers; level
+//   0 means no enchantment; incompatible enchantments and
+//   levels above the vanilla cap are accepted). enchantItem /
+//   enchantSlot are the effect forms for variables and slots.
+//   enchantmentLevelOf yields no value for an unenchanted
+//   item; enchantmentsOf yields the print forms ("sharpness
+//   5") as a text list, no value when there are none. Stack
+//   equality extends the both-carry rule: two enchanted stacks
+//   need the exact same enchantment set; a stack enchanted on
+//   only one side differs UNLESS the enchanted stack also
+//   carries a name or lore, in which case the enchantment
+//   difference is ignored.
+// ---------------------------------------------------------------------------
+
+/** Construct an item-with-enchantment expression: the item with an enchantment at a literal level. The base must be an item literal (the original's suffix exists only in item type literals). */
+export function withEnchantment(base: Expr, enchant: string, level: number): Expr {
+  if (!Number.isInteger(level) || level < 0) {
+    throw new RangeError("withEnchantment: level must be a non-negative integer");
+  }
+  return { kind: "itemWithEnchantment", base, enchant, level };
+}
+
+/** Construct an enchantment-level expression: the level of an enchantment on an item (no value when the item lacks it). */
+export function enchantmentLevelOf(target: Expr, enchant: string): Expr {
+  return { kind: "enchantmentLevelOf", target, enchant };
+}
+
+/** Construct an enchantments expression: an item's enchantments in print form ("sharpness 5") as a text list (no value when there are none). */
+export function enchantmentsOf(target: Expr): Expr {
+  return { kind: "enchantmentsOf", target };
+}
+
+/** Construct a dragged-slots expression: the slot values a drag distributes into (inventory drag events), for use with a list loop and slotIndexOf. */
+export function draggedSlots(): Expr {
+  return { kind: "draggedSlots" };
+}
+
+/** Construct a slot-index expression: a slot value's index within the inventory it belongs to. */
+export function slotIndexOf(target: Expr): Expr {
+  return { kind: "slotIndexOf", target };
+}
+
+/** Construct a clicked-click-type expression: the click's type as text (inventory click events). */
+export function clickedClickType(): Expr {
+  return { kind: "clickedClickType" };
+}
+
+/** Construct an event-cursor expression: the item on the event player's cursor (inventory click/drag events). Engine-only: the original has no cursor syntax. */
+export function eventCursor(): Expr {
+  return { kind: "eventCursor" };
+}
+
+/** Construct an add-to-slot statement: add an item into a 0-based slot of an inventory, merging with a similar stack; whatever does not fit or match is silently dropped. */
+export function addToSlot(inventory: Expr, slot: Expr, itemValue: Expr): Stmt {
+  return withLoc({ kind: "addToSlot", inventory, slot, item: itemValue });
+}
+
+/** Construct a remove-from-slot statement: subtract an item from a 0-based slot of an inventory, matching by type only. */
+export function removeFromSlot(inventory: Expr, slot: Expr, itemValue: Expr): Stmt {
+  return withLoc({ kind: "removeFromSlot", inventory, slot, item: itemValue });
+}
+
+/** Construct an add-to-inventory statement: add an item to an inventory (merge similar partial stacks, then empty slots); the rest is silently dropped. */
+export function addToInventory(inventory: Expr, itemValue: Expr): Stmt {
+  return withLoc({ kind: "addToInventory", inventory, item: itemValue });
+}
+
+/** Construct a remove-from-inventory statement: subtract an item from an inventory by type, in slot order. */
+export function removeFromInventory(inventory: Expr, itemValue: Expr): Stmt {
+  return withLoc({ kind: "removeFromInventory", inventory, item: itemValue });
+}
+
+/** Construct an enchant-item statement: apply an enchantment at a literal level to the item a scalar variable holds. */
+export function enchantItem(target: ScalarVarExpr, enchant: string, level: number): Stmt {
+  if (!Number.isInteger(level) || level < 0) {
+    throw new RangeError("enchantItem: level must be a non-negative integer");
+  }
+  return withLoc({ kind: "enchantItem", target, enchant, level });
+}
+
+/** Construct an enchant-slot statement: apply an enchantment at a literal level to the item in a 0-based slot of an inventory. */
+export function enchantSlot(inventory: Expr, slot: Expr, enchant: string, level: number): Stmt {
+  if (!Number.isInteger(level) || level < 0) {
+    throw new RangeError("enchantSlot: level must be a non-negative integer");
+  }
+  return withLoc({ kind: "enchantSlot", inventory, slot, enchant, level });
+}
+
+/** Construct a set-cursor-item statement: replace the item on a player's cursor. Engine-only: the original has no cursor syntax. */
+export function setCursorItem(target: Expr, itemValue: Expr): Stmt {
+  return withLoc({ kind: "setCursorItem", target, item: itemValue });
+}
+
+/** Construct an inventory-drag event: fires for every drag in an inventory view, with eventItem (the post-drag cursor) / eventInventory / dragged slots set. */
+export function onInventoryDrag(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "inventoryDrag", body });
 }
 
 // ---------------------------------------------------------------------------

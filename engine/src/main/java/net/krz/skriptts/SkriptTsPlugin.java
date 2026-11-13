@@ -18,8 +18,11 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDropItemEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.Material;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerBedLeaveEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -30,6 +33,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -895,6 +899,8 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         Engine.Ctx ctx = baseCtx(player);
         ctx.eventInventory = event.getInventory();
         ctx.eventItem = normalizeItem(event.getCurrentItem());
+        ctx.cursorItem = normalizeItem(event.getCursor());
+        ctx.clickType = clickTypeName(event.getClick());
         ctx.clickedSlot = (double) event.getSlot();
         ctx.clickedRawSlot = (double) event.getRawSlot();
         ctx.cancellable = event;
@@ -907,6 +913,56 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         Engine.Ctx ctx = baseCtx(player);
         ctx.eventInventory = event.getInventory();
         engine.fireEvent("inventoryClose", ctx, false);
+    }
+
+    /** The original's print form of a Bukkit click type (probed against the real Skript 2.17.1). */
+    private static String clickTypeName(ClickType clickType) {
+        return switch (clickType) {
+            case LEFT -> "left mouse button";
+            case RIGHT -> "right mouse button";
+            case SHIFT_LEFT -> "left mouse button with shift";
+            case SHIFT_RIGHT -> "right mouse button with shift";
+            case MIDDLE -> "middle mouse button";
+            case DROP -> "drop key";
+            case NUMBER_KEY -> "number key";
+            // Unprobed forms (DOUBLE_CLICK, CONTROL_DROP, CREATIVE,
+            // SWAP_OFFHAND, WINDOW_BORDER_*, UNKNOWN): the enum name
+            // in words, as a best-effort fallback.
+            default -> clickType.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        };
+    }
+
+    // ------------------------------------------------------------------
+    // Inventory drags (phase 28): the event-item is the POST-drag
+    // cursor and stays an item value even when empty (an air stack
+    // of amount 0 — the original prints "0 airs"), unlike clicks,
+    // where an empty event-item is no value. The affected slots are
+    // the new-items map's keys, so slots the drag skips (an
+    // incompatible item already sitting there) never appear.
+    // Cancelling the drag stops the distribution; cancelling
+    // clicks does NOT stop drags (probed live), so a GUI guard
+    // has to cancel both events.
+    // ------------------------------------------------------------------
+
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventInventory = event.getInventory();
+        ItemStack cursor = event.getCursor();
+        ctx.eventItem = cursor == null ? new ItemStack(Material.AIR, 0) : cursor.clone();
+        ctx.cursorItem = normalizeItem(event.getOldCursor());
+        List<Object> draggedSlots = new ArrayList<>();
+        int topSize = event.getView().getTopInventory().getSize();
+        for (int rawSlot : event.getNewItems().keySet()) {
+            Inventory inv = rawSlot < topSize
+                    ? event.getView().getTopInventory()
+                    : event.getView().getBottomInventory();
+            draggedSlots.add(new Engine.SlotRef(inv, event.getView().convertSlot(rawSlot)));
+        }
+        ctx.draggedSlots = draggedSlots;
+        ctx.cancellable = event;
+        engine.fireEvent("inventoryDrag", ctx, false);
     }
 
     /**

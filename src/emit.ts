@@ -187,6 +187,25 @@ function emitValue(e: Expr): string {
       return "index of event-slot";
     case "clickedRawSlotIndex":
       return "raw index of event-slot";
+    case "draggedSlots":
+      return "event-slots";
+    case "slotIndexOf":
+      return e.target.kind === "arith"
+        ? `index of (${emitValue(e.target)})`
+        : `index of ${emitValue(e.target)}`;
+    case "clickedClickType":
+      return "click type";
+    case "itemWithEnchantment":
+      return emitEnchantedItem(e);
+    case "enchantmentLevelOf":
+      requireEnchantmentName(e.enchant, undefined);
+      return e.target.kind === "arith"
+        ? `${e.enchant} level of (${emitValue(e.target)})`
+        : `${e.enchant} level of ${emitValue(e.target)}`;
+    case "enchantmentsOf":
+      return e.target.kind === "arith"
+        ? `enchantments of (${emitValue(e.target)})`
+        : `enchantments of ${emitValue(e.target)}`;
     case "blockAt":
       return `block at ${emitValue(e.location)}`;
     case "locationAt":
@@ -358,9 +377,10 @@ function emitValue(e: Expr): string {
     case "uniformFill":
     case "mixFill":
     case "noiseFill":
-      // Engine-builtin expressions (phases 6-10, 26 and the
-      // world paint family) exist only in the engine jar; there
-      // is no Skript text form to emit.
+    case "eventCursor":
+      // Engine-builtin expressions (phases 6-10, 26, the
+      // world paint family and phase 28's cursor) exist only
+      // in the engine jar; there is no Skript text form to emit.
       throw new Error(
         `Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -451,6 +471,12 @@ function emitString(e: Expr): string {
     case "slotItem":
     case "clickedSlotIndex":
     case "clickedRawSlotIndex":
+    case "draggedSlots":
+    case "slotIndexOf":
+    case "clickedClickType":
+    case "itemWithEnchantment":
+    case "enchantmentLevelOf":
+    case "enchantmentsOf":
     case "blockAt":
     case "locationAt":
     case "xOf":
@@ -527,6 +553,7 @@ function emitString(e: Expr): string {
     case "uniformFill":
     case "mixFill":
     case "noiseFill":
+    case "eventCursor":
       throw new Error(
         `Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -834,6 +861,142 @@ function requireBossBarFlag(value: string, loc?: SourceLoc): void {
   if (!EMIT_BOSS_BAR_FLAGS.has(value)) {
     throw invalidNameError("boss bar flag name", value, loc);
   }
+}
+
+// The original's enchantment names (phase 28): the vanilla
+// registry in space form, as used by the item-literal suffix
+// (`diamond sword of fire aspect 2`), the enchant effect and
+// the level-of expression. Underscore forms are rejected by
+// the original (probed).
+const EMIT_ENCHANTMENT_NAMES: ReadonlySet<string> = new Set([
+  "aqua affinity",
+  "bane of arthropods",
+  "blast protection",
+  "breach",
+  "channeling",
+  "binding curse",
+  "vanishing curse",
+  "density",
+  "depth strider",
+  "efficiency",
+  "feather falling",
+  "fire aspect",
+  "fire protection",
+  "flame",
+  "fortune",
+  "frost walker",
+  "impaling",
+  "infinity",
+  "knockback",
+  "looting",
+  "loyalty",
+  "luck of the sea",
+  "lure",
+  "mending",
+  "multishot",
+  "piercing",
+  "power",
+  "projectile protection",
+  "protection",
+  "punch",
+  "quick charge",
+  "respiration",
+  "riptide",
+  "sharpness",
+  "silk touch",
+  "smite",
+  "soul speed",
+  "sweeping edge",
+  "swift sneak",
+  "thorns",
+  "unbreaking",
+  "wind burst",
+]);
+
+function requireEnchantmentName(value: string, loc?: SourceLoc): void {
+  if (!EMIT_ENCHANTMENT_NAMES.has(value)) {
+    throw invalidNameError("enchantment name", value, loc);
+  }
+}
+
+/**
+ * Lower an itemWithEnchantment chain to the original's
+ * item-literal suffix form: `diamond sword of sharpness 5 and
+ * unbreaking 3`. The suffix exists only inside item type
+ * literals in the original — applying it to a variable-held
+ * item is a load error there (probed) — so the chain's base
+ * must be an item literal chain; anything else is a build
+ * error pointing at enchantItem instead.
+ */
+function emitEnchantedItem(e: Extract<Expr, { kind: "itemWithEnchantment" }>): string {
+  const pairs: Array<[string, number]> = [];
+  let cur: Expr = e;
+  while (cur.kind === "itemWithEnchantment") {
+    pairs.push([cur.enchant, cur.level]);
+    cur = cur.base;
+  }
+  // The remaining base must be an item literal chain (item,
+  // counted, named, lored, in any nesting). The wrappers are
+  // re-assembled around the enchantment suffix in the original's
+  // canonical order — count prefix, item, enchantments, name,
+  // lore — because the suffix order matters there (probed:
+  // "diamond sword of sharpness 7 named ""Keepsake""" reads back
+  // fully, while "diamond sword named ""Keepsake"" of sharpness
+  // 7" parses but silently evaluates to no value).
+  let amount: Expr | null = null;
+  let name: Expr | null = null;
+  let lore: readonly Expr[] | null = null;
+  let node: Expr = cur;
+  while (node.kind !== "item") {
+    if (node.kind === "itemWithAmount" && amount === null) {
+      amount = node.amount;
+      node = node.base;
+    } else if (node.kind === "itemWithName" && name === null) {
+      name = node.name;
+      node = node.base;
+    } else if (node.kind === "itemWithLore" && lore === null) {
+      lore = node.lines;
+      node = node.base;
+    } else {
+      throw new Error(
+        "withEnchantment requires an item literal base (the original's enchantment suffix exists only in item type literals); apply enchantItem to a variable instead",
+      );
+    }
+  }
+  for (const [enchantName] of pairs) requireEnchantmentName(enchantName);
+  pairs.reverse();
+  let out = `${emitValue(node)} of ${pairs.map(([enchantName, level]) => `${enchantName} ${level}`).join(" and ")}`;
+  if (name !== null) out = `${out} named ${emitValue(name)}`;
+  if (lore !== null) out = `${out} with lore ${andList(lore.map((l) => emitValue(l)))}`;
+  if (amount !== null) out = `${emitValue(amount)} of ${out}`;
+  return out;
+}
+
+/**
+ * The slot / inventory add-remove statements take item operands
+ * only: the original rejects a bare number at load ("'3' can't
+ * be added to a slot because the former is neither an item type
+ * nor an item stack", probed), so the emitter rejects it at
+ * build time with the same reason.
+ */
+function requireItemOperand(
+  kind: "addToSlot" | "removeFromSlot" | "addToInventory" | "removeFromInventory",
+  item: Expr,
+  loc?: SourceLoc,
+): void {
+  if (item.kind !== "number") return;
+  const phrase =
+    kind === "addToSlot"
+      ? "added to a slot"
+      : kind === "removeFromSlot"
+        ? "removed from a slot"
+        : kind === "addToInventory"
+          ? "added to an inventory"
+          : "removed from an inventory";
+  const location = loc ? ` (at ${loc.file}:${loc.line}:${loc.column})` : "";
+  throw new Error(
+    `a bare number can't be ${phrase} because it is neither an item type nor an item stack; wrap the count with withAmount(item(...), n)${location}`,
+  );
 }
 
 function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
@@ -1160,9 +1323,48 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
       return [
         own(`${prefix}${s.name}(${s.args.map((a) => emitValue(a)).join(", ")})`, path, s.loc),
       ];
+    case "addToSlot":
+      requireItemOperand("addToSlot", s.item, s.loc);
+      return [
+        own(
+          `${prefix}add ${emitValue(s.item)} to slot ${emitValue(s.slot)} of ${emitValue(s.inventory)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "removeFromSlot":
+      requireItemOperand("removeFromSlot", s.item, s.loc);
+      return [
+        own(
+          `${prefix}remove ${emitValue(s.item)} from slot ${emitValue(s.slot)} of ${emitValue(s.inventory)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "addToInventory":
+      requireItemOperand("addToInventory", s.item, s.loc);
+      return [own(`${prefix}add ${emitValue(s.item)} to ${emitValue(s.inventory)}`, path, s.loc)];
+    case "removeFromInventory":
+      requireItemOperand("removeFromInventory", s.item, s.loc);
+      return [
+        own(`${prefix}remove ${emitValue(s.item)} from ${emitValue(s.inventory)}`, path, s.loc),
+      ];
+    case "enchantItem":
+      requireEnchantmentName(s.enchant, s.loc);
+      return [own(`${prefix}enchant ${emitValue(s.target)} with ${s.enchant} ${s.level}`, path, s.loc)];
+    case "enchantSlot":
+      requireEnchantmentName(s.enchant, s.loc);
+      return [
+        own(
+          `${prefix}enchant slot ${emitValue(s.slot)} of ${emitValue(s.inventory)} with ${s.enchant} ${s.level}`,
+          path,
+          s.loc,
+        ),
+      ];
     case "wsConnect":
     case "wsSend":
     case "wsDisconnect":
+    case "setCursorItem":
     case "setBorderSize":
     case "setBorderCenter":
     case "timerCreate":
@@ -1288,6 +1490,8 @@ function eventHeaderBase(t: Extract<TopLevel, { kind: "event" }>): string {
       return "on inventory click";
     case "inventoryClose":
       return "on inventory close";
+    case "inventoryDrag":
+      return "on inventory drag";
     default:
       // Engine-only events (ws / timer / papiRequest) are
       // rejected by emitTop before the header is computed.

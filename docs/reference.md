@@ -759,12 +759,20 @@ clicking through a live GUI; see the development log):
   swords`), plus ` named <name>` when it carries a
   custom name. Lore never prints.
 - **Equality**: two stacks compare by type + amount plus
-  the meta fields **both** stacks carry — a named stack
-  equals a plain one, two differently named stacks
-  differ, names compare case-**sensitively**, and lore
-  compares line by line. A stack compared against an
-  item _literal_ (or a type name) still compares by type
-  only, so `eventItem() is item("stone")` ignores meta.
+  a **directional** meta match: the right-hand stack is
+  a pattern, and every meta field it specifies — a name
+  (compared case-**sensitively**), lore lines, an
+  enchantment set — must be matched exactly by the
+  left-hand stack, while fields it does not specify
+  leave the left free. So an enchanted, named stack
+  `is` a plain one, but not the other way round; and
+  when the pattern is enchanted, extra enchantments on
+  the left fail the match too. A stack compared against
+  an item _literal_ (or a type name) specifies no meta,
+  so `eventItem() is item("stone")` ignores meta
+  entirely. (A phase-17 summary described this rule as
+  symmetric both-carry; direction probes in phase 28
+  corrected it.)
 - **Meta reads**: `nameOf(item)` is the custom name — no
   value when the item is unnamed (for an inventory it is
   the title; for a player, their name). `loreOf(item)`
@@ -798,7 +806,9 @@ clicking through a live GUI; see the development log):
   when nothing is open, as in the original);
   `eventInventory()` is the top inventory of an
   inventory event. `slotItem(inv, slot)` reads a
-  0-based slot (an empty slot has no value) and
+  0-based slot — an in-range empty slot reads as an
+  **air item of amount 0** (it is set, its type is air;
+  an out-of-range slot has no value) — and
   `setSlot(inv, slot, item)` writes one — a player used
   as the inventory means their own inventory, and a
   valueless item clears the slot. `openInventory(player,
@@ -834,11 +844,94 @@ through the whole flow under both runtimes, including
 the cancelled click that keeps the GUI's diamond out
 of the bot's inventory.
 
-Out of scope for this slice (recorded, not forgotten):
-inventory drag events (a drag can still move items in
-a GUI whose clicks are cancelled), slot add/remove
-forms, the cursor slot, and enchantment / other meta
-beyond name, lore and amount.
+Phase 28 (GUI slice 2) adds drags, slot add/remove and
+enchantments, all probed against the real Skript
+2.17.1:
+
+- **Drag events**: `onInventoryDrag` fires for every
+  inventory drag. `eventInventory()` is the view's top
+  inventory (even for bottom-only drags) and
+  `eventItem()` is the cursor item as it will be
+  **after** the drag — an air item of amount 0, never
+  no-value, when the drag distributes everything.
+  `draggedSlots()` is the list of slot values that
+  actually receive items, loopable with `loopList`;
+  `slotIndexOf(slotValue)` is a slot's index within
+  its own inventory (bottom slots use the player
+  inventory's numbering). `cancelEvent()` stops the
+  distribution — but cancelling **clicks** does not: a
+  GUI whose click handler cancels everything still
+  lets drags through (the original has the same hole,
+  and the behavior test pins it). No event value
+  exposes the drag's button or mode in the original.
+  `clickedClickType()` reads a click event's type
+  (`left mouse button`, `left mouse button with
+  shift`, `drop key`, …).
+- **Slot / inventory add and remove**:
+  `addToSlot(inv, slot, item)`, `removeFromSlot(inv,
+  slot, item)`, `addToInventory(inv, item)` and
+  `removeFromInventory(inv, item)` are the original's
+  generic add/remove changers, restricted to item
+  operands (a bare number is a build-time error, like
+  the original's load error). Slot add onto an empty
+  slot is a set: it may exceed the material max and is
+  uncapped in a player inventory, but caps at 99 in a
+  chest-like inventory. Onto an occupied slot it
+  merges only similar stacks — similarity is the
+  symmetric both-carry rule over name, lore and
+  enchantments, and the result keeps the slot stack's
+  meta — capped at the material max, which can shrink
+  an over-max stack; anything else silently drops the
+  operand. Inventory add merges similar partial stacks
+  in slot order, then fills empty slots at the
+  material max, then silently drops the remainder.
+  Removes match by material only (meta is ignored on
+  both sides) and empty the slot they drain.
+- **Enchantments**: `withEnchantment(itemLiteral,
+  name, level)` composes the literal suffix
+  (`diamond sword of sharpness 5`); in a literal chain
+  the suffix order is count, item, enchantments, name,
+  lore — the name-first order parses but silently
+  evaluates to no value. Names are the space forms
+  (`fire aspect`, `binding curse`); the level is a
+  build-time integer. `enchantItem(var, name, level)`
+  and `enchantSlot(inv, slot, name, level)` are the
+  effect form for variable-held and slotted items:
+  incompatible enchantments and over-cap levels apply,
+  and level 0 removes. `enchantmentLevelOf(item,
+  name)` reads a level (no value when absent) and
+  `enchantmentsOf(item)` the print forms as a list
+  (`sharpness 5`; the curses print as `curse of
+  binding` / `curse of vanishing`). Enchanted items in
+  variables persist across a server restart in both
+  runtimes. List machinery is not limited to list
+  variables: `loopList` and `listSize` accept any
+  list-valued expression, such as `draggedSlots()`.
+- **Cursor (engine-only)**: the original has no cursor
+  syntax at all — every spelling is a parse error, and
+  the click / drag events reject the cursor
+  event-value — so `eventCursor()` (a click or drag
+  event's pre-click / pre-drag cursor item, no value
+  when empty) and `setCursorItem(player, item)` are
+  engine builtins: building such a script for Skript
+  is a build-time error. Inside a click or drag event
+  the replacement is applied as the event completes —
+  the event's own cursor setter does not survive the
+  click's resolution on Paper (probed: the server sent
+  the replacement, then a resync whose carried item
+  was the vanilla click outcome), so the engine sets
+  the clicker's cursor a tick later; anywhere else it
+  sets the player's cursor directly.
+
+`examples/gui2.ts` and `examples/behavior/gui2.behavior.ts`
+cover all of it under both runtimes;
+`examples/gui2cursor.ts` and its behavior test cover
+the cursor slice under the engine.
+
+Still out of scope (recorded, not forgotten):
+meta beyond name, lore, amount and enchantments
+(durability, item flags, custom model data), and the
+drag's button/mode (not exposed by the original).
 
 ## World operations and periodical events
 

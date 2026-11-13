@@ -92,6 +92,8 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "mixFill",
   "noiseFill",
   "paint",
+  "eventCursor",
+  "setCursorItem",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
