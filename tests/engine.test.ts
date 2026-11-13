@@ -168,9 +168,7 @@ describe("engine jar resolution (feedback A3)", () => {
 
       installEngine(bare, serverDir);
       expect(
-        readFileSync(join(serverDir, "plugins", "skript-ts.jar")).equals(
-          readFileSync(packaged),
-        ),
+        readFileSync(join(serverDir, "plugins", "skript-ts.jar")).equals(readFileSync(packaged)),
       ).toBe(true);
     },
   );

@@ -784,9 +784,11 @@ async function main(): Promise<number> {
         scripts: build.scripts,
         engineScriptsDir: join(serverDir, "plugins", "skript-ts", "scripts"),
       });
-      const set = installEngine(rootDir, serverDir, {
-        ...(opts.engineJar !== null ? { jarPath: resolve(rootDir, opts.engineJar) } : {}),
-      });
+      const set = installEngine(
+        rootDir,
+        serverDir,
+        opts.engineJar !== null ? { jarPath: resolve(rootDir, opts.engineJar) } : {},
+      );
       const removedNote = res.removed.length > 0 ? `、${res.removed.length} 件削除` : "";
       return { note: `IR ${res.deployed.length} ファイル${removedNote}、${set.note}` };
     });
@@ -964,7 +966,9 @@ async function main(): Promise<number> {
           null,
         );
         const slowestNote =
-          slowest !== null ? `、最長 ${slowest.name} ${(slowest.durationMs / 1000).toFixed(1)}s` : "";
+          slowest !== null
+            ? `、最長 ${slowest.name} ${(slowest.durationMs / 1000).toFixed(1)}s`
+            : "";
         if (opts.fast) {
           return {
             note: `${selected.length}/${files.length} 件合格（--fast 決定的サブサンプル${slowestNote}）`,
