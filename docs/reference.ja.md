@@ -200,6 +200,8 @@ places = 0 の規則で整数へ丸められ、その整数が同じ規則で
 | TypeScript                                        | Skript                                |
 | ------------------------------------------------- | ------------------------------------- |
 | `hasPermission(target, "node")`                   | `<target> has permission "node"`      |
+| `hasItem(target, item)`                           | `<target> has <item>`                 |
+| `canHoldItem(target, item)`                       | `<target> can hold <item>`            |
 | `isOp(target)`                                    | `<target> is op`                      |
 | `equals(a, b)`                                    | `<a> is <b>`                          |
 | `notEquals(a, b)`                                 | `<a> is not <b>`                      |
@@ -809,6 +811,35 @@ Skript（生成された `.sk`）でもエンジン jar でも動きます。
   守りで、キャンセルされたクリックは何も動かしません。
   `onInventoryClose` は、スクリプトからでもプレイヤーの
   操作でも、表示が閉じた時に発火します。
+- **インベントリ操作**: `hasItem(target, item)` は、対象の
+  インベントリがアイテムパターンの個数以上を持っているかを
+  判定します（`<target> has <item>`、否定形は
+  `<target> does not have <item>`）。`itemCountIn(target,
+  item)` は一致するアイテムの総数を数えます
+  （`amount of <item> in <target>`）。マッチは上記「等価性」の
+  方向性ルールです。素のパターンは名前付きスタックにも一致し、
+  名前付きパターンは自分のスタックにだけ一致します。対象が
+  プレイヤーの場合はインベントリ全体（メインストレージ・
+  防具・オフハンドすべて）が数に入ります。
+  `removeItem(target, item)` はパターンの個数までをスロット
+  順に取り除き、`removeAllItems(target, item)` は一致する
+  ものを全て取り除きます（`remove <item> from <target>` /
+  `remove all <item> from <target>`）。所持数を超えた削除は
+  部分削除となり、ある分だけを取り除いて失敗することは
+  ありません。`canHoldItem(target, item)`（`<target> can
+  hold <item>`、否定形は `can't hold`）は、これとは別の
+  厳しい容量ルールに従います。ストレージ36スロットだけが
+  対象で（防具・オフハンドは入らない）、空きスロットには
+  パターン素材の最大スタック分が入り、埋まりかけの
+  スロットには完全に同一（メタが双方向に一致）のスタック
+  分だけが入ります。空のインベントリならダイヤモンドは
+  2304個、ダイヤモンドの剣は36本です。
+  `freeSpaceFor(target, item)` はその容量を数で返しますが、
+  本家にはこれに当たる式が**ありません**（空き容量系の
+  式はプローブで全てパース不可でした）。そのため
+  **エンジン専用**で、使うスクリプトは IR のみで配備
+  されます。以上はすべて実 Skript 2.17.1 でプローブ
+  済みです。
 
 テキストと同様のモデル境界が1つあります。表示名と lore は
 Skript ではコンポーネント、エンジンでは § コード文字列で、

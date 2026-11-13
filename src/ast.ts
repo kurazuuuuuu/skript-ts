@@ -319,6 +319,29 @@ export type Expr =
   | { kind: "nameOf"; target: Expr }
   | { kind: "loreOf"; target: Expr }
   | { kind: "amountOf"; target: Expr }
+  // Inventory operations (feedback lane D, 2026-11-13), semantics
+  // probed against the real Skript 2.17.1 (probe rounds recorded
+  // in the lane's probe notes):
+  // - itemCountIn counts the stacks in a target inventory whose
+  //   type equals the item pattern's type AND whose meta matches
+  //   the pattern directionally (metaCompatible: fields the
+  //   pattern specifies must match exactly, unspecified fields
+  //   are free). A player target reads the player's whole
+  //   inventory INCLUDING armor and the offhand; an inventory
+  //   value target reads that inventory. The pattern's own amount
+  //   is ignored (the count is of matching stacks' amounts).
+  //   Skript form: `amount of <item> in <target>`.
+  // - freeSpaceFor is ENGINE-ONLY: the original has no expression
+  //   for it (every free-space / empty-slot amount form failed to
+  //   parse). It returns how many more of the pattern fit into
+  //   the target's STORAGE slots: an empty slot contributes the
+  //   pattern material's max stack size, a slot holding a stack
+  //   exactly similar to the pattern (Bukkit isSimilar — meta
+  //   must match BOTH ways, unlike the directional counting
+  //   match) contributes the room left in that stack, anything
+  //   else contributes 0. Armor and the offhand never count.
+  | { kind: "itemCountIn"; target: Expr; item: Expr }
+  | { kind: "freeSpaceFor"; target: Expr; item: Expr }
   | { kind: "toolOf"; target: Expr }
   | { kind: "offHandToolOf"; target: Expr }
   | { kind: "chestInventory"; rows: Expr; title?: Expr }
@@ -591,6 +614,25 @@ export type Cond =
   // context with no event at all (a command, a function) the
   // engine reads false; Skript has no event there to ask about.
   | { kind: "eventCancelled" }
+  // Inventory operations (feedback lane D, 2026-11-13), probed
+  // against the real Skript 2.17.1:
+  // - hasItem: the target inventory holds at least the pattern
+  //   item's amount (its stack size; a bare item means 1) of
+  //   stacks matching the pattern under the directional
+  //   metaCompatible rule — see itemCountIn. Player targets
+  //   include armor and the offhand. Native negated .sk form:
+  //   `<target> does not have <item>` (probed; `doesn't have`
+  //   parses too). Skript form: `<target> has <item>`.
+  // - canHoldItem: at least the pattern's amount fits into the
+  //   target's storage slots under the exact-similarity capacity
+  //   rule — see freeSpaceFor. Identical in truth value to the
+  //   original's `has space for` spelling in every probed state;
+  //   the emitter uses `can hold`. Native negated form:
+  //   `<target> can't hold <item>` (probed; `cannot hold`
+  //   parses too, `can not hold` does not). Both are leaf
+  //   conditions usable in while heads.
+  | { kind: "hasItem"; target: Expr; item: Expr }
+  | { kind: "canHoldItem"; target: Expr; item: Expr }
   // Core-language randomness (phase 28): the draw succeeds with
   // the given probability. The value is a FRACTION — chance(0.5)
   // is a 50% chance — which is the original's own percent model
@@ -867,6 +909,23 @@ export type Stmt =
   | { kind: "openInventory"; target: Expr; inventory: Expr; loc?: SourceLoc }
   | { kind: "openGui"; target: Expr; rows: Expr; title?: Expr; loc?: SourceLoc }
   | { kind: "closeInventory"; target: Expr; loc?: SourceLoc }
+  // Inventory operations (feedback lane D, 2026-11-13), probed
+  // against the real Skript 2.17.1:
+  // - removeItem removes up to the pattern item's amount (a bare
+  //   item means 1) of matching stacks from the target, walking
+  //   the inventory in slot order — main storage first, then
+  //   armor, then the offhand for a player. A shortfall is NOT an
+  //   error: what exists is removed and the rest is silently
+  //   skipped (have 5, remove 10 -> 0 left). Matching is the
+  //   directional metaCompatible rule, so a bare pattern strips
+  //   named stacks too. Skript form: `remove <item> from
+  //   <target>`.
+  // - removeAllItems removes every matching stack regardless of
+  //   the pattern's amount: `remove all <item> from <target>`.
+  //   The builder rejects an amount-carrying pattern (the
+  //   original has no `remove all <n> of` form).
+  | { kind: "removeItem"; target: Expr; item: Expr; loc?: SourceLoc }
+  | { kind: "removeAllItems"; target: Expr; item: Expr; loc?: SourceLoc }
   // Phase 28: GUI slice 2 — slot/inventory add/remove, cursor and enchantment effects.
   | { kind: "addToSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }
   | { kind: "removeFromSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }

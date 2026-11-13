@@ -175,6 +175,8 @@ function emitValue(e: Expr): string {
       return e.target.kind === "arith"
         ? `amount of (${emitValue(e.target)})`
         : `amount of ${emitValue(e.target)}`;
+    case "itemCountIn":
+      return `amount of ${emitValue(e.item)} in ${emitValue(e.target)}`;
     case "chestInventory":
       return `chest inventory with ${emitValue(e.rows)} rows${e.title !== undefined ? ` named ${emitValue(e.title)}` : ""}`;
     case "currentInventory":
@@ -378,9 +380,12 @@ function emitValue(e: Expr): string {
     case "mixFill":
     case "noiseFill":
     case "eventCursor":
+    case "freeSpaceFor":
       // Engine-builtin expressions (phases 6-10, 26, the
-      // world paint family and phase 28's cursor) exist only
-      // in the engine jar; there is no Skript text form to emit.
+      // world paint family, phase 28's cursor and the
+      // inventory free-space count, which the original has
+      // no expression for) exist only in the engine jar;
+      // there is no Skript text form to emit.
       throw new Error(
         `Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -465,6 +470,7 @@ function emitString(e: Expr): string {
     case "nameOf":
     case "loreOf":
     case "amountOf":
+    case "itemCountIn":
     case "chestInventory":
     case "currentInventory":
     case "eventInventory":
@@ -554,6 +560,7 @@ function emitString(e: Expr): string {
     case "mixFill":
     case "noiseFill":
     case "eventCursor":
+    case "freeSpaceFor":
       throw new Error(
         `Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -607,6 +614,20 @@ function emitLeafCond(c: Cond, negated: boolean): string {
       return negated
         ? `${emitValue(c.target)} does not have permission "${escapeText(c.permission)}"`
         : `${emitValue(c.target)} has permission "${escapeText(c.permission)}"`;
+    case "hasItem":
+      // Both negations parse on the real Skript 2.17.1
+      // (probed); "does not have" matches the house style of
+      // the permission form above.
+      return negated
+        ? `${emitValue(c.target)} does not have ${emitValue(c.item)}`
+        : `${emitValue(c.target)} has ${emitValue(c.item)}`;
+    case "canHoldItem":
+      // Negated form probed on the real Skript 2.17.1:
+      // "can't hold" (and "cannot hold") parse; "can not
+      // hold" does not.
+      return negated
+        ? `${emitValue(c.target)} can't hold ${emitValue(c.item)}`
+        : `${emitValue(c.target)} can hold ${emitValue(c.item)}`;
     case "isOp":
       return negated ? `${emitValue(c.target)} is not op` : `${emitValue(c.target)} is op`;
     case "equals":
@@ -1189,6 +1210,12 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
       ];
     case "giveItem":
       return [own(`${prefix}give ${emitValue(s.item)} to ${emitValue(s.target)}`, path, s.loc)];
+    case "removeItem":
+      return [own(`${prefix}remove ${emitValue(s.item)} from ${emitValue(s.target)}`, path, s.loc)];
+    case "removeAllItems":
+      return [
+        own(`${prefix}remove all ${emitValue(s.item)} from ${emitValue(s.target)}`, path, s.loc),
+      ];
     case "setItemName":
       return [
         own(`${prefix}set name of ${emitValue(s.target)} to ${emitValue(s.name)}`, path, s.loc),

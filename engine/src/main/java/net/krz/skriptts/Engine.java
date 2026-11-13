@@ -1575,6 +1575,23 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "removeItem", "removeAllItems" -> {
+                // Inventory operations (feedback lane D): remove
+                // matching items in slot order under the
+                // directional meta match. removeItem takes up to
+                // the pattern's amount (partial on a shortfall,
+                // as probed); removeAllItems takes everything.
+                Inventory inv = inventoryOf(evalExpr(node(stmt.get("target")), ctx));
+                ItemStack pattern = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                if (inv != null && pattern != null) {
+                    int amount =
+                            "removeAllItems".equals(kind(stmt))
+                                    ? Integer.MAX_VALUE
+                                    : Math.max(0, pattern.getAmount());
+                    removeMatching(inv, pattern, amount);
+                }
+                cont.run();
+            }
             case "teleport" -> {
                 Object target = evalExpr(node(stmt.get("target")), ctx);
                 Object loc = evalExpr(node(stmt.get("location")), ctx);
@@ -2841,6 +2858,26 @@ final class Engine {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && p.hasPermission(str(cond.get("permission")));
             }
+            // Inventory operations (feedback lane D): has counts
+            // matching stacks (directional meta match, armor and
+            // offhand included for players) against the pattern's
+            // amount; can hold compares the exact-similarity
+            // storage capacity with the pattern's amount. Both
+            // mirror the probed Skript 2.17.1 semantics.
+            case "hasItem" -> {
+                Inventory inv = inventoryOf(evalExpr(node(cond.get("target")), ctx));
+                ItemStack pattern = toItemStack(evalExpr(node(cond.get("item")), ctx));
+                yield inv != null
+                        && pattern != null
+                        && countMatching(inv, pattern) >= Math.max(0, pattern.getAmount());
+            }
+            case "canHoldItem" -> {
+                Inventory inv = inventoryOf(evalExpr(node(cond.get("target")), ctx));
+                ItemStack pattern = toItemStack(evalExpr(node(cond.get("item")), ctx));
+                yield inv != null
+                        && pattern != null
+                        && storageCapacity(inv, pattern) >= Math.max(0, pattern.getAmount());
+            }
             case "isOp" -> {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && p.isOp();
@@ -3516,6 +3553,21 @@ final class Engine {
                 if (target instanceof ItemStack stack) yield (double) stack.getAmount();
                 if (target instanceof List<?> listValue) yield (double) listValue.size();
                 yield null;
+            }
+            // Inventory operations (feedback lane D): the count
+            // of matching items in a target inventory, and the
+            // engine-only free-space count (the original has no
+            // expression for it). A target or pattern with no
+            // value reads as no value, like amountOf above.
+            case "itemCountIn" -> {
+                Inventory inv = inventoryOf(evalExpr(node(expr.get("target")), ctx));
+                ItemStack pattern = toItemStack(evalExpr(node(expr.get("item")), ctx));
+                yield inv == null || pattern == null ? null : (double) countMatching(inv, pattern);
+            }
+            case "freeSpaceFor" -> {
+                Inventory inv = inventoryOf(evalExpr(node(expr.get("target")), ctx));
+                ItemStack pattern = toItemStack(evalExpr(node(expr.get("item")), ctx));
+                yield inv == null || pattern == null ? null : (double) storageCapacity(inv, pattern);
             }
             case "chestInventory" -> {
                 Object rows = evalExpr(node(expr.get("rows")), ctx);
@@ -4986,6 +5038,90 @@ final class Engine {
         Float bCmd = cmdFirstFloat(b);
         if (bCmd != null && !bCmd.equals(cmdFirstFloat(a))) return false;
         return true;
+    }
+
+    /**
+     * The inventory a value refers to for the inventory
+     * operations (feedback lane D): a player means their own
+     * inventory, an inventory value stands for itself, anything
+     * else has none.
+     */
+    private static Inventory inventoryOf(Object value) {
+        if (value instanceof Player p) return p.getInventory();
+        if (value instanceof Inventory inv) return inv;
+        return null;
+    }
+
+    /**
+     * Count the items in an inventory matching a pattern under
+     * the original's directional item match (probed against the
+     * real Skript 2.17.1): the stack's type must equal the
+     * pattern's and the pattern's specified meta must match
+     * exactly (metaCompatible). A player inventory's contents
+     * include armor and the offhand, as the original's count
+     * does.
+     */
+    private static int countMatching(Inventory inv, ItemStack pattern) {
+        int total = 0;
+        for (ItemStack stack : inv.getContents()) {
+            if (stack == null || stack.getType().isAir()) continue;
+            if (stack.getType() == pattern.getType() && metaCompatible(stack, pattern)) {
+                total += stack.getAmount();
+            }
+        }
+        return total;
+    }
+
+    /**
+     * How many more of the pattern fit into an inventory's
+     * storage slots under the original's can-hold rule (probed):
+     * an empty slot fits a full max-size stack of the pattern's
+     * material; a slot holding a stack exactly similar to the
+     * pattern (Bukkit isSimilar — meta equal BOTH ways, unlike
+     * the directional counting match) fits the room left in that
+     * stack; anything else fits nothing. Player inventories
+     * count their 36 storage slots only — armor and the offhand
+     * are excluded, as in the original.
+     */
+    private static int storageCapacity(Inventory inv, ItemStack pattern) {
+        ItemStack[] slots =
+                inv instanceof PlayerInventory pi ? pi.getStorageContents() : inv.getContents();
+        int max = pattern.getType().getMaxStackSize();
+        int total = 0;
+        for (ItemStack stack : slots) {
+            if (stack == null || stack.getType().isAir()) {
+                total += max;
+            } else if (stack.isSimilar(pattern)) {
+                total += Math.max(0, max - stack.getAmount());
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Remove up to `amount` items matching the pattern, walking
+     * the slots in inventory order (a player: main storage, then
+     * armor, then the offhand). The original's remove is partial
+     * (probed): a shortfall removes what exists and silently
+     * skips the rest.
+     */
+    private static void removeMatching(Inventory inv, ItemStack pattern, int amount) {
+        int remaining = amount;
+        ItemStack[] contents = inv.getContents();
+        for (int i = 0; i < contents.length && remaining > 0; i++) {
+            ItemStack stack = contents[i];
+            if (stack == null || stack.getType().isAir()) continue;
+            if (stack.getType() != pattern.getType() || !metaCompatible(stack, pattern)) continue;
+            int take = Math.min(remaining, stack.getAmount());
+            remaining -= take;
+            if (take >= stack.getAmount()) {
+                inv.setItem(i, null);
+            } else {
+                ItemStack rest = stack.clone();
+                rest.setAmount(stack.getAmount() - take);
+                inv.setItem(i, rest);
+            }
+        }
     }
 
     /** The stack's item_model component as a `ns:path` string, or null when unset. */
