@@ -712,8 +712,13 @@ enchantments, all probed against the real Skript
   when empty) and `setCursorItem(player, item)` are
   engine builtins: building such a script for Skript
   is a build-time error. Inside a click or drag event
-  the replacement goes through the event's own cursor;
-  anywhere else it sets the player's cursor directly.
+  the replacement is applied as the event completes —
+  the event's own cursor setter does not survive the
+  click's resolution on Paper (probed: the server sent
+  the replacement, then a resync whose carried item
+  was the vanilla click outcome), so the engine sets
+  the clicker's cursor a tick later; anywhere else it
+  sets the player's cursor directly.
 
 `examples/gui2.ts` and `examples/behavior/gui2.behavior.ts`
 cover all of it under both runtimes;

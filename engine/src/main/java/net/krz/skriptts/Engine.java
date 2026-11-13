@@ -1782,16 +1782,36 @@ final class Engine {
                 // Replace a player's cursor item (phase 28,
                 // engine-only: the original has no cursor
                 // syntax). Inside a click / drag event the
-                // event's own cursor setter is the one that
-                // sticks; anywhere else the player's cursor is
-                // set directly. A valueless or air item clears.
+                // replacement is applied as the event
+                // completes, one tick later: the event's own
+                // cursor setter does not survive the click's
+                // resolution on Paper (probed in phase 28 —
+                // the server sent set_cursor_item for the
+                // replacement, then a window resync whose
+                // carried item was the vanilla click outcome,
+                // so the next click saw an empty cursor).
+                // Anywhere else the player's cursor is set
+                // directly. A valueless or air item clears.
                 ItemStack stack = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                ItemStack replacement = stack == null || stack.getType().isAir() ? null : stack;
                 if (ctx.cancellable instanceof InventoryClickEvent clickEvent) {
-                    clickEvent.setCursor(stack == null ? new ItemStack(Material.AIR) : stack);
+                    if (clickEvent.getWhoClicked() instanceof Player who) {
+                        if (delayHost == null) {
+                            logger.warning("skript-ts: setCursorItem in a click event without a delay host installed");
+                        } else {
+                            delayHost.runLater(1, () -> who.setItemOnCursor(replacement));
+                        }
+                    }
                 } else if (ctx.cancellable instanceof InventoryDragEvent dragEvent) {
-                    dragEvent.setCursor(stack == null ? new ItemStack(Material.AIR) : stack);
+                    if (dragEvent.getWhoClicked() instanceof Player who) {
+                        if (delayHost == null) {
+                            logger.warning("skript-ts: setCursorItem in a drag event without a delay host installed");
+                        } else {
+                            delayHost.runLater(1, () -> who.setItemOnCursor(replacement));
+                        }
+                    }
                 } else if (evalExpr(node(stmt.get("target")), ctx) instanceof Player player) {
-                    player.setItemOnCursor(stack == null || stack.getType().isAir() ? null : stack);
+                    player.setItemOnCursor(replacement);
                 }
                 cont.run();
             }

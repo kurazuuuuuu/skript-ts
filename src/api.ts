@@ -1880,8 +1880,9 @@ export function onInventoryClose(body: readonly Stmt[]): TopLevel {
 //   setCursorItem() are engine-only builtins: inside inventory
 //   click and drag events the cursor is the item the player is
 //   carrying (for a click, the pre-click item); setCursorItem
-//   replaces it (during a click/drag event it rewrites the
-//   event's cursor).
+//   replaces it (during a click/drag event the replacement is
+//   applied as the event completes — the event's own cursor
+//   setter does not survive Paper's click resolution).
 // - Enchantments: withEnchantment applies only to item type
 //   literals (the original's `of <enchantment> <level>` suffix
 //   lives in item literals; levels are literal integers; level
