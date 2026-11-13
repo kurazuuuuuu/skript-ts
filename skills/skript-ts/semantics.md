@@ -35,6 +35,21 @@ questions is the same: probe, don't guess (see
 - There is **no infix remainder**: use `remainder(a, b)`,
   which emits `mod(a, b)` with mathematical-modulo semantics
   (sign of the divisor).
+- Random draws (`randomNumber(a, b)` / `randomInteger(a, b)`)
+  draw fresh on every evaluation — there is no seed. Bounds
+  must be numbers (a missing or non-number bound yields no
+  value) and reversed bounds are swapped. The integer draw is
+  uniform over the whole numbers inside the closed range
+  (lower bound fits up, upper fits down):
+  `randomInteger(1.5, 3.5)` draws from {2, 3}, and a range
+  holding no whole number (1.2 to 1.8) yields no value.
+- `chance(p)` takes a **fraction**: `chance(0.5)` succeeds
+  half the time (this is the original's percent model — its
+  `50%` literal is the number 0.5). 1 or more always succeeds;
+  negative, missing, or non-number never does. There is no
+  negated chance form: `not(chance(...))` needs an `else`
+  branch to lower by branch swap, and a `whileLoop` head
+  rejects it.
 
 ## Logic
 

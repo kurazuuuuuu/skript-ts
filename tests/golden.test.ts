@@ -31,6 +31,7 @@ import {
   call,
   callStmt,
   cancelEvent,
+  chance,
   charAt,
   chatMessage,
   chestInventory,
@@ -141,6 +142,8 @@ import {
   player,
   playSound,
   plus,
+  randomInteger,
+  randomNumber,
   relativeBlock,
   remainder,
   remove,
@@ -236,6 +239,7 @@ import { timespanScript } from "../examples/timespan.js";
 import { timeScript } from "../examples/time.js";
 import { uuidvarsScript } from "../examples/uuidvars.js";
 import { priorityScript } from "../examples/priority.js";
+import { randomScript } from "../examples/random.js";
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), "utf8");
@@ -304,6 +308,52 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("uuidvars", () => {
     expect(emit(uuidvarsScript)).toBe(fixture("uuidvars.sk"));
+  });
+  it("random", () => {
+    expect(emit(randomScript)).toBe(fixture("random.sk"));
+  });
+});
+
+describe("randomness (phase 28)", () => {
+  const y = [broadcast(str("y"))];
+  const n = [broadcast(str("n"))];
+  it("the sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(randomScript)).toBe(false);
+  });
+  it("draws emit in value position and inside strings", () => {
+    expect(
+      emit(script(onJoin([set(variable("v"), randomInteger(num(1), num(6)))]))),
+    ).toBe("on join:\n    set {v} to random integer between 1 and 6\n");
+    expect(
+      emit(script(onJoin([set(variable("v"), randomNumber(variable("lo"), variable("hi")))]))),
+    ).toBe("on join:\n    set {v} to random number between {lo} and {hi}\n");
+    expect(
+      emit(script(onJoin([broadcast(fmt("roll ", randomInteger(num(1), num(6))))]))),
+    ).toBe('on join:\n    broadcast "roll %random integer between 1 and 6%"\n');
+  });
+  it("chance emits the fraction as a plain number", () => {
+    expect(emit(script(onJoin([ifElse(chance(num(0.5)), y)])))).toBe(
+      'on join:\n    if chance of 0.5:\n        broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([ifElse(chance(variable("p")), y)])))).toBe(
+      'on join:\n    if chance of {p}:\n        broadcast "y"\n',
+    );
+  });
+  it("not(chance) with an else swaps the branches", () => {
+    expect(emit(script(onJoin([ifElse(not(chance(num(0.5))), y, n)])))).toBe(
+      'on join:\n    if chance of 0.5:\n        broadcast "n"\n    else:\n        broadcast "y"\n',
+    );
+  });
+  it("not(chance) without an else has no .sk form and throws", () => {
+    expect(() => emit(script(onJoin([ifElse(not(chance(num(0.5))), y)])))).toThrow(
+      /no negated \.sk form/,
+    );
+  });
+  it("chance heads a while loop; its negation is rejected", () => {
+    expect(
+      emit(script(onJoin([whileLoop(chance(num(0.5)), [broadcast(str("tick"))])]))),
+    ).toBe('on join:\n    while chance of 0.5:\n        broadcast "tick"\n');
+    expect(() => whileLoop(not(chance(num(0.5))), [])).toThrow(RangeError);
   });
 });
 

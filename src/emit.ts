@@ -301,6 +301,10 @@ function emitValue(e: Expr): string {
       return e.op === "mod"
         ? `mod(${emitValue(e.left)}, ${emitValue(e.right)})`
         : `(${emitValue(e.left)} ${e.op} ${emitValue(e.right)})`;
+    case "randomNumber":
+      return `random number between ${emitValue(e.min)} and ${emitValue(e.max)}`;
+    case "randomInteger":
+      return `random integer between ${emitValue(e.min)} and ${emitValue(e.max)}`;
     case "format":
       return `"${emitStringParts(e.parts)}"`;
     case "timespan":
@@ -482,6 +486,8 @@ function emitString(e: Expr): string {
     case "fishingApproachAngle":
       return `%${emitValue(e)}%`;
     case "arith":
+    case "randomNumber":
+    case "randomInteger":
       return `%${emitValue(e)}%`;
     case "format":
       return emitStringParts(e.parts);
@@ -607,6 +613,21 @@ function emitLeafCond(c: Cond, negated: boolean): string {
         : `${emitValue(c.target)} ends with ${emitValue(c.suffix)}`;
     case "eventCancelled":
       return negated ? "event is not cancelled" : "event is cancelled";
+    case "chance":
+      // The original has no negated chance form (probed: a
+      // general `not` is rejected, and there is no "does not"
+      // pattern), so a negation here can only come from a
+      // not(...) if WITHOUT an else branch or a negated while
+      // head — both are rejected by the builders / lowering
+      // before this point for API-built scripts. Throw rather
+      // than emit text the original cannot parse.
+      if (negated) {
+        throw new Error(
+          "Unhandled Cond in emitCond: 'chance' has no negated .sk form; " +
+            "give the if an else branch so not(chance(...)) can swap branches",
+        );
+      }
+      return `chance of ${emitValue(c.value)}`;
     case "bossBarDarkensSky":
       return negated
         ? `${emitValue(c.bar)} does not darken the sky`
