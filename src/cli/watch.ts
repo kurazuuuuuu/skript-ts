@@ -28,6 +28,10 @@ export interface WatchOptions {
   json: boolean;
   yes: boolean;
   debounceMs: number;
+  /** Explicit engine jar path (--engine-jar), already absolute; null = default resolution. */
+  engineJar: string | null;
+  /** --no-engine-jar: never place the engine jar; the server's plugin set is managed elsewhere. */
+  noEngineJar: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -421,8 +425,18 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
   // --- startup ------------------------------------------------------------
   try {
-    const installed = installEngine(rootDir, serverDir);
-    humanStream.write(`${installed.note}\n`);
+    if (opts.noEngineJar) {
+      // The jar (and the Skript.jar disabling that comes with it) is
+      // the operator's own business: watch only deploys IR and asks
+      // for reloads. Feedback A3: startup used to overwrite the
+      // running server's jar unconditionally.
+      humanStream.write("エンジン jar は配置しません（--no-engine-jar）\n");
+    } else {
+      const installed = installEngine(rootDir, serverDir, {
+        ...(opts.engineJar !== null ? { jarPath: opts.engineJar } : {}),
+      });
+      humanStream.write(`${installed.note}\n`);
+    }
 
     // ESM cache busting: the loader hook appends the current token to every
     // file URL under the watched src root, so each round re-imports modules.

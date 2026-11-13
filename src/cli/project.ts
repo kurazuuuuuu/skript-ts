@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import {
   copyFileSync,
   existsSync,
@@ -23,6 +22,7 @@ import {
   type CustomModelDataRequest,
 } from "../packregistry.js";
 import { parseResourceId, type PackDef } from "../resourcepack.js";
+import { typescriptBinPath } from "./toolchain.js";
 import { buildCustomItemTable, resolveCustomItems, type ResolvedCustomItem } from "../resolve.js";
 import type { SourceMapFile } from "../source-map.js";
 
@@ -327,8 +327,10 @@ function buildPacks(
 
 /** Run the project's TypeScript compiler in noEmit mode. */
 export function runTypecheck(rootDir: string): { ok: boolean; output: string } {
-  const require = createRequire(join(rootDir, "package.json"));
-  const tscBin = require.resolve("typescript/bin/tsc");
+  // The compiler binary comes from the toolchain resolution
+  // (package first, project fallback — feedback A2); only the
+  // tsconfig is the project's own.
+  const tscBin = typescriptBinPath(rootDir);
   const res = spawnSync(
     process.execPath,
     [tscBin, "--noEmit", "-p", join(rootDir, "tsconfig.json")],

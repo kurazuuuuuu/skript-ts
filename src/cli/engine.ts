@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
+import { packageRootDir } from "./toolchain.js";
 
 /**
  * Server plugin-set management for the two verify modes.
@@ -44,6 +45,49 @@ export function engineJarPath(rootDir: string): string {
 }
 
 /**
+ * The engine directory in effect for a project: the project's own
+ * `engine/` when it carries a built jar (the contributor flow,
+ * where the project IS skript-ts), otherwise the skript-ts
+ * package's `engine/`. The directory is chosen as a unit — jar and
+ * pinned libs always come from the same place — which is what lets
+ * a consumer project use the CLI from a submodule checkout without
+ * bridge-copying the jar into its own root (feedback A3), while a
+ * project that builds its own engine keeps full control (including
+ * running without the PlaceholderAPI companion).
+ */
+function pickEngineDir(rootDir: string): string {
+  const project = join(rootDir, "engine");
+  const packaged = join(packageRootDir(), "engine");
+  if (project === packaged) return project;
+  if (existsSync(join(project, "build", "skript-ts.jar"))) return project;
+  if (existsSync(join(packaged, "build", "skript-ts.jar"))) return packaged;
+  return project;
+}
+
+/**
+ * Which engine jar to deploy. An explicit path (the CLI's
+ * --engine-jar) always wins; otherwise the jar from the engine
+ * directory in effect. When nothing is built yet, the
+ * project-conventional path is returned so the caller's error
+ * message names the documented location.
+ */
+export function resolveEngineJar(rootDir: string, explicit?: string): string {
+  if (explicit !== undefined) return explicit;
+  return join(pickEngineDir(rootDir), "build", "skript-ts.jar");
+}
+
+/** The pinned PlaceholderAPI jar from the engine directory in effect; null when absent. */
+export function resolvePapiLib(rootDir: string): string | null {
+  const candidate = join(pickEngineDir(rootDir), "libs", PAPI_LIBS_JAR);
+  return existsSync(candidate) ? candidate : null;
+}
+
+export interface InstallEngineOptions {
+  /** Explicit engine jar path (--engine-jar); wins over every default location. */
+  jarPath?: string;
+}
+
+/**
  * Re-verify a jar in `engine/libs/` against the SHA-512 pinned next
  * to it (`<jar>.sha512`, the same pin `engine/fetch-libs.sh` checks
  * after downloading). Fetching verified the bits once; this catches
@@ -73,8 +117,12 @@ export function verifyPinnedJar(jarPath: string): void {
 }
 
 /** Put the server into engine mode: install skript-ts.jar, disable Skript.jar. */
-export function installEngine(rootDir: string, serverDir: string): PluginSetResult {
-  const built = engineJarPath(rootDir);
+export function installEngine(
+  rootDir: string,
+  serverDir: string,
+  opts: InstallEngineOptions = {},
+): PluginSetResult {
+  const built = resolveEngineJar(rootDir, opts.jarPath);
   if (!existsSync(built)) {
     throw new Error(
       `engine jar not found at ${built} — build it first with engine/build.sh (see README)`,
@@ -82,9 +130,8 @@ export function installEngine(rootDir: string, serverDir: string): PluginSetResu
   }
   // Verify the PlaceholderAPI pin before touching the plugin set,
   // so a bad jar fails the run with the sandbox exactly as it was.
-  const papiLib = join(rootDir, "engine", "libs", PAPI_LIBS_JAR);
-  const papiPresent = existsSync(papiLib);
-  if (papiPresent) verifyPinnedJar(papiLib);
+  const papiLib = resolvePapiLib(rootDir);
+  if (papiLib !== null) verifyPinnedJar(papiLib);
   const pluginsDir = join(serverDir, "plugins");
   const changes: string[] = [];
   const skriptJar = join(pluginsDir, "Skript.jar");
@@ -96,7 +143,7 @@ export function installEngine(rootDir: string, serverDir: string): PluginSetResu
   }
   copyFileSync(built, join(pluginsDir, "skript-ts.jar"));
   changes.push("skript-ts.jar を配置");
-  if (papiPresent) {
+  if (papiLib !== null) {
     copyFileSync(papiLib, join(pluginsDir, PAPI_SANDBOX_JAR));
     changes.push("PlaceholderAPI.jar を配置");
   } else {

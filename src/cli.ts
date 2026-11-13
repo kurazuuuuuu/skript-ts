@@ -2,15 +2,17 @@
 /**
  * skript-ts CLI.
  *
- *   skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--server-dir <dir>] [--json]
+ *   skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--engine-jar <path>]
+ *                    [--server-dir <dir>] [--json]
  *   skript-ts verify [--src <dir>] [--out <dir>] [--server-dir <dir>] [--java <path>]
- *                    [--engine] [--no-behavior] [--no-fresh] [--fast] [--json]
+ *                    [--engine] [--engine-jar <path>] [--no-behavior] [--no-fresh] [--fast] [--json]
  *   skript-ts probe start  [--server-dir <dir>] [--java <path>] [--json]
  *   skript-ts probe run <probe-dir> [--commands <file>] [--out <file>]
  *                    [--pace-ms <n>] [--settle-ms <n>] [--server-dir <dir>] [--json]
  *   skript-ts probe stop   [--server-dir <dir>] [--json]
  *   skript-ts probe status [--server-dir <dir>] [--json]
- *   skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>] [--json]
+ *   skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>]
+ *                    [--engine-jar <path>] [--no-engine-jar] [--json]
  *   skript-ts skills install [--dir <dir>] [--json]
  *
  * build:  typecheck -> transpile -> deploy (with --deploy)
@@ -33,6 +35,11 @@
  *         server — save -> typecheck -> transpile -> deploy IR ->
  *         the engine reloads via marker files. Watch never starts
  *         or stops the server; it only deploys into it.
+ * --engine-jar <path>: use this engine jar instead of the default
+ *         resolution (project's engine/build/skript-ts.jar, then
+ *         the jar inside the skript-ts package itself). Watch's
+ *         --no-engine-jar skips jar placement entirely, for servers
+ *         whose plugin set is managed outside the CLI.
  * skills: installs the bundled agent skill pack (the skills/skript-ts
  *         directory of this package) into an agent's skills
  *         directory — ~/.claude/skills by default, --dir to choose
@@ -47,7 +54,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createBehaviorContext, type BehaviorTest } from "./behavior.js";
+import type { BehaviorTest } from "./behavior.js";
 import { selectBehaviorSuites } from "./cli/behavior-select.js";
 import { installEngine, uninstallEngine } from "./cli/engine.js";
 import { readProbeState, runProbeRound, startProbeServer, stopProbeServer } from "./cli/probe.js";
@@ -76,12 +83,16 @@ interface CliOptions {
   json: boolean;
   deploy: boolean;
   engine: boolean;
+  /** Explicit engine jar path (--engine-jar); null = default resolution. */
+  engineJar: string | null;
   behavior: boolean;
   fresh: boolean;
   fast: boolean;
   // watch only
   yes: boolean;
   debounceMs: number;
+  /** Watch only: do not place the engine jar at all (--no-engine-jar). */
+  noEngineJar: boolean;
   probeAction: "start" | "run" | "stop" | "status";
   probeDir: string | null;
   commandsFile: string | null;
@@ -119,15 +130,17 @@ interface RunResult {
 }
 
 const USAGE = `usage:
-  skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--server-dir <dir>] [--json]
+  skript-ts build  [--src <dir>] [--out <dir>] [--deploy] [--engine] [--engine-jar <path>]
+                   [--server-dir <dir>] [--json]
   skript-ts verify [--src <dir>] [--out <dir>] [--server-dir <dir>] [--java <path>]
-                   [--engine] [--no-behavior] [--no-fresh] [--fast] [--json]
+                   [--engine] [--engine-jar <path>] [--no-behavior] [--no-fresh] [--fast] [--json]
   skript-ts probe start  [--server-dir <dir>] [--java <path>] [--json]
   skript-ts probe run <probe-dir> [--commands <file>] [--out <file>] [--pace-ms <n>] [--settle-ms <n>]
                    [--server-dir <dir>] [--json]
   skript-ts probe stop   [--server-dir <dir>] [--json]
   skript-ts probe status [--server-dir <dir>] [--json]
-  skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>] [--json]
+  skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>]
+                   [--engine-jar <path>] [--no-engine-jar] [--json]
   skript-ts skills install [--dir <dir>] [--json]`;
 
 function parseNonNegativeNumber(flag: string, raw: string): number {
@@ -208,6 +221,12 @@ function parseWatchArgs(rest: string[], opts: CliOptions): void {
         opts.serverDir = value();
         opts.serverDirExplicit = true;
         break;
+      case "--engine-jar":
+        opts.engineJar = value();
+        break;
+      case "--no-engine-jar":
+        opts.noEngineJar = true;
+        break;
       case "--json":
         opts.json = true;
         break;
@@ -280,11 +299,13 @@ function parseArgs(argv: string[]): CliOptions {
     json: false,
     deploy: false,
     engine: false,
+    engineJar: null,
     behavior: true,
     fresh: true,
     fast: false,
     yes: false,
     debounceMs: 400,
+    noEngineJar: false,
     probeAction: "status",
     probeDir: null,
     commandsFile: null,
@@ -335,6 +356,9 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       case "--engine":
         opts.engine = true;
+        break;
+      case "--engine-jar":
+        opts.engineJar = value();
         break;
       case "--no-behavior":
         opts.behavior = false;
@@ -678,6 +702,8 @@ async function main(): Promise<number> {
       json: opts.json,
       yes: opts.yes,
       debounceMs: opts.debounceMs,
+      engineJar: opts.engineJar !== null ? resolve(rootDir, opts.engineJar) : null,
+      noEngineJar: opts.noEngineJar,
     });
   }
 
@@ -758,7 +784,11 @@ async function main(): Promise<number> {
         scripts: build.scripts,
         engineScriptsDir: join(serverDir, "plugins", "skript-ts", "scripts"),
       });
-      const set = installEngine(rootDir, serverDir);
+      const set = installEngine(
+        rootDir,
+        serverDir,
+        opts.engineJar !== null ? { jarPath: resolve(rootDir, opts.engineJar) } : {},
+      );
       const removedNote = res.removed.length > 0 ? `、${res.removed.length} 件削除` : "";
       return { note: `IR ${res.deployed.length} ファイル${removedNote}、${set.note}` };
     });
@@ -873,6 +903,10 @@ async function main(): Promise<number> {
               .sort()
           : [];
         if (files.length === 0) return { note: "テストなし（スキップ扱い）" };
+        // Loaded only here: behavior.js pulls in mineflayer (lazily,
+        // at connect), and no other command should pay for it
+        // (feedback A2).
+        const { createBehaviorContext } = await import("./behavior.js");
         const ctx = createBehaviorContext({
           host: "127.0.0.1",
           port: readServerPort(serverDir),

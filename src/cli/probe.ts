@@ -20,6 +20,7 @@ import {
 import { join } from "node:path";
 import { stripAnsi } from "./ansi.js";
 import { SkriptLogParser, type SkriptParseError } from "./skript-log.js";
+import { tsxLoaderUrl } from "./toolchain.js";
 
 export type { SkriptParseError } from "./skript-log.js";
 
@@ -187,7 +188,10 @@ export async function startProbeServer(opts: {
     process.execPath,
     [
       "--import",
-      "tsx",
+      // Package-anchored loader URL: the bare specifier "tsx" would
+      // resolve from the child's CWD (the project root), leaking the
+      // dependency into consumer projects (feedback A2).
+      tsxLoaderUrl(),
       join(rootDir, "src", "cli", "probe-host.ts"),
       "--state-dir",
       stateDir,
