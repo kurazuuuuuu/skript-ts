@@ -38,6 +38,24 @@ export const PACK_FORMAT: readonly [number, number] = [75, 0];
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/**
+ * One generated item, as recorded in the manifest (RP-2). The
+ * distribution phase (RP-3) and script-side tooling read this to
+ * learn what a stack must carry: the `id` is the `item_model`
+ * component value and `customModelData` is the registry number the
+ * item's stacks carry in their CustomModelData floats[0].
+ */
+export interface PackManifestItem {
+  /** Resolved item id (`ns:path`); also the item model (`item_model` component target). */
+  id: string;
+  /** Resolved base item id. */
+  baseItem: string;
+  /** Resolved model id used in the generated item definition JSON. */
+  model: string;
+  /** Allocated registry number; omitted when the item has none. */
+  customModelData?: number;
+}
+
 export interface PackManifest {
   namespace: string;
   description: string;
@@ -51,6 +69,8 @@ export interface PackManifest {
   packFormat: readonly [number, number];
   /** Zip entry paths, sorted. */
   contents: string[];
+  /** Generated item manifest entries, in pack declaration order. */
+  items: PackManifestItem[];
 }
 
 export interface GeneratedPack {
@@ -140,7 +160,14 @@ function lookupTexture(
   return found;
 }
 
-export function generatePack(pack: PackDef, readPngFile: (path: string) => Buffer): GeneratedPack {
+export function generatePack(
+  pack: PackDef,
+  readPngFile: (path: string) => Buffer,
+  opts?: {
+    /** Registry allocations by resolved item id (`ns:path`), from packregistry. */
+    customModelData?: ReadonlyMap<string, number>;
+  },
+): GeneratedPack {
   const namespace = pack.namespace;
   const textures = collectTextures(pack);
   const files = new Map<string, Buffer>();
@@ -179,6 +206,22 @@ export function generatePack(pack: PackDef, readPngFile: (path: string) => Buffe
 
   const zip = buildZip(files);
   const sha1 = createHash("sha1").update(zip).digest("hex");
+  const manifestItems: PackManifestItem[] = pack.items.map((item) => {
+    const itemId = parseResourceId(item.id, namespace);
+    const id = `${itemId.namespace}:${itemId.path}`;
+    const modelId =
+      item.model !== undefined
+        ? parseResourceId(item.model, namespace)
+        : { namespace: itemId.namespace, path: `item/${itemId.path}` };
+    const baseId = parseResourceId(item.baseItem, namespace);
+    const customModelData = opts?.customModelData?.get(id);
+    return {
+      id,
+      baseItem: `${baseId.namespace}:${baseId.path}`,
+      model: `${modelId.namespace}:${modelId.path}`,
+      ...(typeof customModelData === "number" ? { customModelData } : {}),
+    };
+  });
   const manifest: PackManifest = {
     namespace,
     description: pack.description,
@@ -188,6 +231,7 @@ export function generatePack(pack: PackDef, readPngFile: (path: string) => Buffe
     size: zip.length,
     packFormat: PACK_FORMAT,
     contents: [...files.keys()].sort(),
+    items: manifestItems,
   };
   return { files, zip, sha1, manifest };
 }

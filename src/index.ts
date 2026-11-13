@@ -7,3 +7,4 @@ export { toIr, emitIr, isEngineOnlyScript } from "./ir.js";
 export type { IrNode } from "./ir.js";
 export * from "./source-map.js";
 export * from "./resourcepack.js";
+export * from "./packregistry.js";
