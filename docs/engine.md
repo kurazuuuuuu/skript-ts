@@ -33,8 +33,48 @@ both runtimes must satisfy; engine builtins (below) add their own
 engine-only tests.
 Documented interpretation choices where the subset leaves
 room: a first join fires both `on first join` and `on join` handlers
-(as under Skript); player-keyed variables use the player's name;
-whole numbers render without a fraction (`1`, not `1.0`).
+(as under Skript); player-keyed variables use the player's UUID (see
+"Variable keys and player identity" below); whole numbers render
+without a fraction (`1`, not `1.0`).
+
+### Variable keys and player identity
+
+A variable index that is a player — `{growth::%player%}` — is
+stored under the player's **UUID** (`growth::e5240337-...`), so a
+player who renames keeps their data. Only the storage key
+differs: a player still displays as their name in messages, in
+`nameOf`, and everywhere else a player is rendered as text.
+
+The legacy name form stays available for stores written before
+UUID keying: `"variables": {"playerKeysUseUuid": false}` in
+`plugins/skript-ts/config.json` keys player indices by name
+again. Note the trade-off that makes it legacy: under name
+keying, a rename orphans the player's data under their old name.
+
+While UUID keying is in effect, the engine migrates a loaded
+store once per startup: every index segment (the part after the
+variable name — a player only ever appears as an index) that
+exactly equals a known player's name is rewritten to that
+player's UUID. The
+name → UUID map comes from the server's own offline-player
+records and only includes names belonging to exactly one UUID —
+a name that changed hands is ambiguous in the old format and is
+left alone. Nothing is deleted: an entry whose UUID key already
+exists stays name-keyed (counted in the startup log line), and
+entries whose player cannot be resolved stay name-keyed too;
+both remain reachable by switching the legacy option on. A plain
+text index that merely equals a player's name is
+indistinguishable from a player index in the store format and
+migrates with it.
+
+In `.sk` mode the transpiled text is the same `{growth::%player%}`
+either way; which key form is used is Skript's own config
+setting, `use player UUIDs in variable names` in
+`plugins/Skript/config.sk`.
+
+Sample: `examples/uuidvars.ts`; verified by
+`examples/behavior/uuidvars.behavior.ts`, which reads the stored
+key segment back in-game and asserts it is the bot's UUID.
 
 ### Building the jar
 

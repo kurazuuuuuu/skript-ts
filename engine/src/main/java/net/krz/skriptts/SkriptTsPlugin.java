@@ -3,6 +3,7 @@ package net.krz.skriptts;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandMap;
 import org.bukkit.command.CommandSender;
@@ -41,9 +42,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -78,12 +83,85 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     // loop after it deploys new IR, and answers with `reload.status`.
     private BukkitTask reloadPollTask;
 
+    /**
+     * Carry name-keyed variable entries over to UUID keys after
+     * the store loads (UUID keying is the default). The name →
+     * UUID map comes from the server's own offline-player records
+     * and only keeps names that belong to exactly one UUID: a
+     * name that changed hands is ambiguous in the old store
+     * format, so its entries are left name-keyed rather than
+     * handed to the wrong player. Unresolvable names likewise
+     * stay untouched. Nothing is deleted; the outcome is logged.
+     */
+    private void migrateVariableKeysToUuid() {
+        Map<String, String> nameToUuid = new HashMap<>();
+        Set<String> ambiguous = new HashSet<>();
+        for (OfflinePlayer offline : getServer().getOfflinePlayers()) {
+            String name = offline.getName();
+            if (name == null) continue;
+            String key = name.toLowerCase(Locale.ROOT);
+            String uuid = offline.getUniqueId().toString();
+            if (ambiguous.contains(key)) continue;
+            String previous = nameToUuid.putIfAbsent(key, uuid);
+            if (previous != null && !previous.equals(uuid)) {
+                nameToUuid.remove(key);
+                ambiguous.add(key);
+            }
+        }
+        int[] result = variables.migratePlayerNameKeys(nameToUuid);
+        if (result[0] > 0 || result[1] > 0 || !ambiguous.isEmpty()) {
+            getLogger().info("skript-ts: variable key migration (player name -> UUID): moved "
+                    + result[0] + " entries; " + result[1]
+                    + " left name-keyed (a UUID entry already exists); "
+                    + ambiguous.size() + " player name(s) shared by more than one UUID left unmapped."
+                    + " Entries whose player could not be resolved stay name-keyed and remain"
+                    + " reachable with variables.playerKeysUseUuid=false.");
+        }
+    }
+
     @Override
     public void onEnable() {
         Path dataDir = getDataFolder().toPath();
+        // config.json is read once, up front: the variables
+        // section decides the variable key form before the store
+        // loads and migrates, and the http section feeds the
+        // client setup further down.
+        Map<?, ?> configMap = null;
+        Path configPath = dataDir.resolve("config.json");
+        if (Files.exists(configPath)) {
+            try {
+                Object parsed = Json.parse(Files.readString(configPath, StandardCharsets.UTF_8));
+                if (parsed instanceof Map<?, ?> map) configMap = map;
+            } catch (Exception e) {
+                getLogger().warning("skript-ts: could not read config.json: " + e.getMessage());
+            }
+        }
+        // Player variable keys use UUIDs by default (a rename
+        // keeps the player's data). variables.playerKeysUseUuid=
+        // false in config.json selects the legacy name form.
+        boolean playerKeysUseUuid = true;
+        if (configMap != null
+                && configMap.get("variables") instanceof Map<?, ?> variablesConfig
+                && variablesConfig.get("playerKeysUseUuid") instanceof Boolean useUuid) {
+            playerKeysUseUuid = useUuid;
+        }
+        boolean allowPrivateAddresses = false;
+        if (configMap != null
+                && configMap.get("http") instanceof Map<?, ?> httpConfig
+                && httpConfig.get("allowPrivateAddresses") instanceof Boolean allow) {
+            allowPrivateAddresses = allow;
+        }
         variables = new Variables(dataDir.resolve("variables.json"), getLogger());
         variables.load();
+        if (playerKeysUseUuid) {
+            migrateVariableKeysToUuid();
+        } else {
+            getLogger().info("skript-ts: variables.playerKeysUseUuid is false in config.json —"
+                    + " player variable keys use player NAMES (legacy form)."
+                    + " A player who renames will not reach data stored under their old name.");
+        }
         engine = new Engine(variables, getLogger());
+        engine.setPlayerKeysUseUuid(playerKeysUseUuid);
         websockets = new WebSockets(new WebSockets.Events() {
             @Override
             public void onOpen(String id) {
@@ -121,22 +199,9 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
                 websockets.disconnect(id);
             }
         });
-        // HTTP client (phase 26): config.json may opt in to private /
-        // loopback targets (for trusted local services only).
-        boolean allowPrivateAddresses = false;
-        Path configPath = dataDir.resolve("config.json");
-        if (Files.exists(configPath)) {
-            try {
-                Object config = Json.parse(Files.readString(configPath, StandardCharsets.UTF_8));
-                if (config instanceof Map<?, ?> configMap
-                        && configMap.get("http") instanceof Map<?, ?> httpMap
-                        && httpMap.get("allowPrivateAddresses") instanceof Boolean allow) {
-                    allowPrivateAddresses = allow;
-                }
-            } catch (Exception e) {
-                getLogger().warning("skript-ts: could not read config.json: " + e.getMessage());
-            }
-        }
+        // HTTP client (phase 26): config.json's http section (read
+        // at the top of onEnable) may opt in to private / loopback
+        // targets (for trusted local services only).
         if (allowPrivateAddresses) {
             getLogger().warning("skript-ts: WARNING http.allowPrivateAddresses is ON in config.json — private/loopback HTTP targets and all ports are allowed. Do not use this setting on a production server.");
         }

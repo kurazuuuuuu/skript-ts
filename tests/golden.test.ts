@@ -225,6 +225,7 @@ import { commandsScript } from "../examples/commands.js";
 import { displayScript } from "../examples/display.js";
 import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
+import { uuidvarsScript } from "../examples/uuidvars.js";
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), "utf8");
@@ -284,6 +285,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("display", () => {
     expect(emit(displayScript)).toBe(fixture("display.sk"));
+  });
+  it("uuidvars", () => {
+    expect(emit(uuidvarsScript)).toBe(fixture("uuidvars.sk"));
   });
 });
 

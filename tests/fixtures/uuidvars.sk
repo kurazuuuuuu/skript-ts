@@ -1,0 +1,14 @@
+command /uvset <number>:
+    trigger:
+        set {uvgrowth::%player%} to arg-1
+        send "uv set to %arg-1%" to player
+
+command /uvget:
+    trigger:
+        send "uv=%{uvgrowth::%player%}%" to player
+
+command /uvkeys:
+    trigger:
+        loop {uvgrowth::*}:
+            send "uvkey=%loop-index% val=%loop-value%" to player
+        send "uvkeys done" to player
