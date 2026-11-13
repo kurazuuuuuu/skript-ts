@@ -1,0 +1,67 @@
+command /invsetup:
+    trigger:
+        give 5 of diamond to player
+        give 2 of diamond named "Gem" to player
+        give 3 of iron ingot to player
+        send "invsetup: done" to player
+
+command /invcheck:
+    trigger:
+        send "invcheck: count=%amount of diamond in player% gem=%amount of diamond named "Gem" in player%" to player
+        if player has 7 of diamond:
+            send "invcheck: has7 yes" to player
+        else:
+            send "invcheck: has7 no" to player
+        if player has 8 of diamond:
+            send "invcheck: has8 yes" to player
+        else:
+            send "invcheck: has8 no" to player
+        if player has 3 of diamond named "Gem":
+            send "invcheck: hasgem3 yes" to player
+        else:
+            send "invcheck: hasgem3 no" to player
+        if player does not have emerald:
+            send "invcheck: noemerald yes" to player
+        if player can hold 2171 of diamond:
+            send "invcheck: can2171 yes" to player
+        else:
+            send "invcheck: can2171 no" to player
+        if player can hold 2172 of diamond:
+            send "invcheck: can2172 yes" to player
+        else:
+            send "invcheck: can2172 no" to player
+        if player can hold 33 of diamond sword:
+            send "invcheck: swords33 yes" to player
+        else:
+            send "invcheck: swords33 no" to player
+        if player can hold 34 of diamond sword:
+            send "invcheck: swords34 yes" to player
+        else:
+            send "invcheck: swords34 no" to player
+
+command /invcount:
+    trigger:
+        send "invcount: count=%amount of diamond in player%" to player
+        if player can hold 2240 of diamond:
+            send "invcount: can2240 yes" to player
+        else:
+            send "invcount: can2240 no" to player
+        if player can hold 2241 of diamond:
+            send "invcount: can2241 yes" to player
+        else:
+            send "invcount: can2241 no" to player
+
+command /invremove:
+    trigger:
+        remove 4 of diamond from player
+        send "invremove: count=%amount of diamond in player% gem=%amount of diamond named "Gem" in player%" to player
+
+command /invpartial:
+    trigger:
+        remove 100 of diamond from player
+        send "invpartial: count=%amount of diamond in player%" to player
+
+command /invremoveall:
+    trigger:
+        remove all diamond from player
+        send "invremoveall: count=%amount of diamond in player% iron=%amount of iron ingot in player%" to player

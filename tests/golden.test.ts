@@ -33,6 +33,7 @@ import {
   call,
   callStmt,
   cancelEvent,
+  canHoldItem,
   chance,
   charAt,
   chatMessage,
@@ -83,6 +84,8 @@ import {
   giveItem,
   greaterOrEqual,
   greaterThan,
+  freeSpaceFor,
+  hasItem,
   hasPermission,
   heal,
   healthOf,
@@ -91,6 +94,7 @@ import {
   toIr,
   isOp,
   item,
+  itemCountIn,
   joinText,
   lastChars,
   lastSpawnedEntity,
@@ -143,7 +147,9 @@ import {
   enchantSlot,
   enchantmentLevelOf,
   enchantmentsOf,
+  removeAllItems,
   removeFromInventory,
+  removeItem,
   removeFromSlot,
   onInventoryClose,
   onJoin,
@@ -262,6 +268,8 @@ import { timeScript } from "../examples/time.js";
 import { uuidvarsScript } from "../examples/uuidvars.js";
 import { priorityScript } from "../examples/priority.js";
 import { randomScript } from "../examples/random.js";
+import { inventoryScript } from "../examples/inventory.js";
+import { invspaceScript } from "../examples/invspace.js";
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), "utf8");
@@ -336,6 +344,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("random", () => {
     expect(emit(randomScript)).toBe(fixture("random.sk"));
+  });
+  it("inventory", () => {
+    expect(emit(inventoryScript)).toBe(fixture("inventory.sk"));
   });
 });
 
@@ -2418,5 +2429,65 @@ describe("GUI slice 2: drags, slot add/remove, enchantments (phase 28)", () => {
     expect(
       isEngineOnlyScript(script(onInventoryDrag([broadcast(str("x"))]))),
     ).toBe(false);
+  });
+});
+
+describe("inventory operations (feedback lane D)", () => {
+  const y = [broadcast(str("y"))];
+  const n = [broadcast(str("n"))];
+  it("the core sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(inventoryScript)).toBe(false);
+  });
+  it("has emits for player and inventory targets, with the native negation", () => {
+    expect(
+      emit(script(onJoin([ifElse(hasItem(player(), withAmount(item("diamond"), num(3))), y, n)]))),
+    ).toBe(
+      "on join:\n    if player has 3 of diamond:\n        broadcast \"y\"\n    else:\n        broadcast \"n\"\n",
+    );
+    expect(
+      emit(script(onJoin([ifElse(hasItem(currentInventoryOf(player()), item("diamond")), y)]))),
+    ).toBe("on join:\n    if player's current inventory has diamond:\n        broadcast \"y\"\n");
+    expect(emit(script(onJoin([ifElse(not(hasItem(player(), item("diamond"))), y)])))).toBe(
+      "on join:\n    if player does not have diamond:\n        broadcast \"y\"\n",
+    );
+  });
+  it("count emits in value position and inside strings", () => {
+    expect(
+      emit(script(onJoin([broadcast(fmt("n=", itemCountIn(player(), item("diamond"))))]))),
+    ).toBe('on join:\n    broadcast "n=%amount of diamond in player%"\n');
+  });
+  it("remove and remove-all emit; remove-all rejects a counted pattern", () => {
+    expect(
+      emit(script(onJoin([removeItem(player(), withAmount(item("diamond"), num(2)))]))),
+    ).toBe("on join:\n    remove 2 of diamond from player\n");
+    expect(emit(script(onJoin([removeAllItems(player(), item("diamond"))])))).toBe(
+      "on join:\n    remove all diamond from player\n",
+    );
+    expect(() => removeAllItems(player(), withAmount(item("diamond"), num(2)))).toThrow(
+      RangeError,
+    );
+  });
+  it("can hold emits with the probed native negation, and both conditions head while loops", () => {
+    expect(emit(script(onJoin([ifElse(canHoldItem(player(), item("diamond")), y, n)])))).toBe(
+      "on join:\n    if player can hold diamond:\n        broadcast \"y\"\n    else:\n        broadcast \"n\"\n",
+    );
+    expect(emit(script(onJoin([ifElse(not(canHoldItem(player(), item("diamond"))), y)])))).toBe(
+      "on join:\n    if player can't hold diamond:\n        broadcast \"y\"\n",
+    );
+    expect(
+      emit(script(onJoin([whileLoop(hasItem(player(), item("diamond")), [broadcast(str("x"))])]))),
+    ).toBe("on join:\n    while player has diamond:\n        broadcast \"x\"\n");
+    expect(
+      emit(
+        script(onJoin([whileLoop(not(canHoldItem(player(), item("diamond"))), y)])),
+      ),
+    ).toBe("on join:\n    while player can't hold diamond:\n        broadcast \"y\"\n");
+  });
+  it("freeSpaceFor is engine-only: no .sk form, IR only", () => {
+    expect(isEngineOnlyScript(invspaceScript)).toBe(true);
+    expect(() => emit(invspaceScript)).toThrow(/engine-only/);
+    expect(() =>
+      emit(script(onJoin([broadcast(fmt("s=", freeSpaceFor(player(), item("diamond"))))]))),
+    ).toThrow(/engine-only/);
   });
 });
