@@ -341,6 +341,15 @@ scripts and the behavior test):
   events — Skript rejects them at parse time ("There's no
   player in an on damage event"), and the engine mirrors that by
   leaving both unset there.
+- A **projectile damager resolves to its shooter**:
+  `attacker()` is the entity that shot the projectile, never
+  the projectile itself (pinned live: a snow golem's snowballs
+  and a skeleton's arrows both read the shooter as the
+  attacker, the damage header's `by` filter matches the
+  shooter, and a death by projectile credits the shooter).
+  The engine mirrors this for entity shooters; a projectile
+  from a non-entity source (a dispenser) keeps the projectile
+  itself as the attacker.
 - `damageAmount()` is the event's _current_ amount: it reflects
   `setDamage()` writes made earlier in the same handler. The
   amount itself is the server's computation (a fist hit is `1`
@@ -349,7 +358,10 @@ scripts and the behavior test):
 - `damageCause()` is the cause as a text. Most causes read as
   their lowercase name (`fall`, `lava`), but Skript's names are
   not a mechanical transform: an entity attack prints as
-  `attack` (pinned live), and `FIRE_TICK` reads `burning`.
+  `attack` (pinned live), and `FIRE_TICK` reads `burning`. A
+  mob's **arrow** hit also reads `attack`, while a snow
+  golem's **snowball** hit reads `projectile` (both pinned
+  live).
 - `cancelEvent()` flags the underlying event cancelled — the
   block stays, the damage is not applied — and
   `uncancelEvent()` undoes a cancellation made earlier in the
@@ -1039,7 +1051,10 @@ skeleton:`. Inside, `victim()` is the dead entity and
 when that cause was an entity attack — _any_ entity, probed:
 a zombie killed by an iron golem reads attacker
 `iron golem`, a command kill reads no attacker, a player's
-sword kill reads `player`. Three honest limits, all probed:
+sword kill reads `player`. A projectile killing blow
+resolves to the shooter, exactly as in damage events: a
+snow golem shot dead by a skeleton reads attacker
+`skeleton` (pinned live). Three honest limits, all probed:
 the header has **no attacker filter** (`on death … by
 player:` does not parse in the original, so none is
 offered); `player` does not exist in a death event in the

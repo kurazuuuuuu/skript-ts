@@ -77,6 +77,36 @@ async function waitHurt(
   }
 }
 
+// Like waitHurt, but the damage cause is a parameter and the
+// participants are mobs (their labels are type names, identical
+// under both runtimes: the engine stringifies a non-player
+// entity by its type name, as does the original).
+async function waitHurtCause(
+  bot: BehaviorBot,
+  mark: number,
+  victim: string,
+  attacker: string,
+  cause: string,
+  timeoutMs = 15_000,
+): Promise<number> {
+  const re = new RegExp(
+    `^${victim} was hurt by ${attacker}: ([0-9.]+) damage \\(${cause}\\)$`,
+  );
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    for (const msg of bot.messages.slice(mark)) {
+      const hit = re.exec(msg);
+      if (hit !== null) return Number(hit[1]);
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `timed out after ${timeoutMs}ms waiting for "${victim} was hurt by ${attacker} (${cause})"; fresh messages: ${bot.messages.slice(mark).join(" | ") || "(none)"}`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 export default defineBehavior(async (t) => {
   // ---------------------------------------------------------------
   // Blocks and clicks (one bot, on the flat sandbox surface)
@@ -176,6 +206,11 @@ export default defineBehavior(async (t) => {
   // ---------------------------------------------------------------
   // Damage (an attacker bot and three victim bots, in sequence)
   // ---------------------------------------------------------------
+  // Pin the difficulty: an earlier suite may leave the world
+  // on peaceful, where a fist hit fires the damage event (and
+  // its broadcast) but the applied damage is nullified, so the
+  // health assertions below would read a full 20.
+  await t.console("difficulty easy");
   await t.console("time set 1000");
   await t.console("kill @e[type=minecraft:slime]");
   const attacker = await t.connect("AttackBot");
@@ -238,5 +273,61 @@ export default defineBehavior(async (t) => {
     }
   } finally {
     attacker.disconnect();
+  }
+  await t.sleep(1000); // let the player slot free up
+
+  // ---------------------------------------------------------------
+  // Projectile attacker resolution (B1), with console-driven
+  // mobs on a roofed pad (the roof keeps the undead from
+  // burning in daylight). Probed against the real Skript: a
+  // projectile damager resolves to its shooter — a skeleton's
+  // arrows read attacker "skeleton" (never "arrow") — while a
+  // melee hit reads the damager itself. The observer watches
+  // from a sealed pocket under the pad, out of every mob's
+  // line of sight (a visible bot draws the skeleton's target).
+  // ---------------------------------------------------------------
+  await t.console("difficulty easy");
+  await t.console("time set 1000");
+  const watcher = await t.connect("BowBot");
+  try {
+    await t.console("tp BowBot 200.5 -60 216.5");
+    await t.sleep(800);
+    await t.console("fill 199 -65 215 201 -64 216 stone");
+    await t.console("fill 199 -63 215 201 -62 216 air");
+    await t.console("tp BowBot 200.5 -63 216.5");
+    await t.sleep(400);
+    await t.console("fill 191 -61 208 209 -61 224 stone");
+    await t.console("fill 191 -60 208 209 -56 224 air");
+    await t.console("fill 191 -55 208 209 -55 224 stone");
+    // A two-high rim keeps the mobs on the pad (a strafing
+    // skeleton otherwise backs off the edge mid-fight).
+    await t.console("fill 191 -60 208 209 -59 208 stone");
+    await t.console("fill 191 -60 224 209 -59 224 stone");
+    await t.console("fill 191 -60 209 191 -59 223 stone");
+    await t.console("fill 209 -60 209 209 -59 223 stone");
+    await t.sleep(600);
+    await t.console("kill @e[type=minecraft:zombie,x=191,y=-61,z=208,dx=18,dy=6,dz=16]");
+    await t.console("kill @e[type=minecraft:skeleton,x=191,y=-61,z=208,dx=18,dy=6,dz=16]");
+
+    // Projectile: a fence row the skeleton cannot cross (the
+    // golem stands 7 blocks past it, far beyond melee reach)
+    // forces arrow hits. The original reads an arrow hit's
+    // cause as "attack" (a snowball reads "projectile"
+    // instead — both probed), and the attacker as the
+    // skeleton that shot it. (The melee control case — the
+    // attacker is the damager itself — is covered by the bot
+    // fist-fight sections above and by events3's Death B; a
+    // mob-melee pair here proved too load-sensitive to keep.)
+    await t.console("fill 200 -60 213 200 -60 219 oak_fence");
+    await t.console("summon iron_golem 207.5 -60 216.5 {NoAI:1b,PersistenceRequired:1b}");
+    let m = watcher.messages.length;
+    await t.console("summon skeleton 193.5 -60 216.5 {PersistenceRequired:1b}");
+    await waitHurtCause(watcher, m, "iron golem", "skeleton", "attack", 30_000);
+    await t.console("kill @e[type=minecraft:skeleton]");
+    await t.console("kill @e[type=minecraft:iron_golem]");
+    await t.console("kill @e[type=minecraft:arrow]");
+    await t.console("fill 200 -60 213 200 -60 219 air");
+  } finally {
+    watcher.disconnect();
   }
 });
