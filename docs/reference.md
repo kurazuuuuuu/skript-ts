@@ -215,6 +215,8 @@ below, not by load checks.
 | TypeScript                                        | Skript                                    |
 | ------------------------------------------------- | ----------------------------------------- |
 | `hasPermission(target, "node")`                   | `<target> has permission "node"`          |
+| `hasItem(target, item)`                           | `<target> has <item>`                     |
+| `canHoldItem(target, item)`                       | `<target> can hold <item>`                |
 | `isOp(target)`                                    | `<target> is op`                          |
 | `equals(a, b)`                                    | `<a> is <b>`                              |
 | `notEquals(a, b)`                                 | `<a> is not <b>`                          |
@@ -840,6 +842,38 @@ clicking through a live GUI; see the development log):
   guard: a cancelled click moves nothing.
   `onInventoryClose` fires when a view closes, by
   script or by the player.
+- **Inventory operations**: `hasItem(target, item)`
+  tests whether an inventory holds at least the item
+  pattern's amount (`<target> has <item>`; negated
+  `<target> does not have <item>`), and
+  `itemCountIn(target, item)` counts the matching
+  items (`amount of <item> in <target>`). Matching is
+  the directional rule from Equality above: a bare
+  pattern matches named stacks, a named pattern
+  matches only its own. A player target reads the
+  player's whole inventory — main storage, armor and
+  offhand all count. `removeItem(target, item)`
+  removes up to the pattern's amount in slot order
+  and `removeAllItems(target, item)` removes every
+  match (`remove <item> from <target>` / `remove all
+  <item> from <target>`); a remove that asks for more
+  than the inventory holds is partial — it removes
+  what exists and never fails. `canHoldItem(target,
+  item)` (`<target> can hold <item>`; negated `can't
+  hold`) applies the original's stricter capacity
+  rule instead: only the 36 storage slots count
+  (armor and offhand never do), an empty slot fits a
+  full max-size stack of the pattern's material, and
+  a partial stack only takes more of an exactly
+  similar stack (meta equal both ways) — an empty
+  inventory holds 2304 diamonds but only 36 diamond
+  swords. `freeSpaceFor(target, item)` returns that
+  capacity as a number, but the original has **no
+  expression** for it (every free-space amount form
+  failed to parse in probes), so it is
+  **engine-only**: scripts using it deploy IR-only.
+  All of the above was probed against the real
+  Skript 2.17.1.
 
 One model boundary, as with texts: display names and
 lore are components in Skript and §-coded strings in
