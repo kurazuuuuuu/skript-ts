@@ -2563,6 +2563,19 @@ final class Engine {
             case "not" -> !evalCond(node(cond.get("cond")), ctx);
             case "contains" -> evalContains(
                     evalExpr(node(cond.get("container")), ctx), evalExpr(node(cond.get("item")), ctx));
+            case "chance" -> {
+                // The chance condition (phase 28), as probed
+                // against the real Skript 2.17.1: the value is a
+                // fraction (the original's percent model — its
+                // 50% literal is the number 0.5); a fresh draw is
+                // compared against it on every check. A missing
+                // or non-number value never succeeds, a value of
+                // 1 or more always does, and NaN never does (the
+                // comparison is false), matching the original.
+                Object v = evalExpr(node(cond.get("value")), ctx);
+                yield v instanceof Number n
+                        && java.util.concurrent.ThreadLocalRandom.current().nextDouble() < n.doubleValue();
+            }
             case "startsWith" -> {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 Object prefix = evalExpr(node(cond.get("prefix")), ctx);
@@ -3222,6 +3235,10 @@ final class Engine {
             case "placeholderPrefix" -> ctx.papiPrefix;
             case "arith" -> evalArith(str(expr.get("op")),
                     evalExpr(node(expr.get("left")), ctx), evalExpr(node(expr.get("right")), ctx));
+            case "randomNumber" -> randomBetween(
+                    evalExpr(node(expr.get("min")), ctx), evalExpr(node(expr.get("max")), ctx), false);
+            case "randomInteger" -> randomBetween(
+                    evalExpr(node(expr.get("min")), ctx), evalExpr(node(expr.get("max")), ctx), true);
             case "format" -> renderParts(list(expr.get("parts")), ctx);
             default -> {
                 logger.warning("skript-ts: unknown expression kind '" + kind(expr) + "'");
@@ -3273,6 +3290,44 @@ final class Engine {
             case "mod" -> x - Math.floor(x / y) * y;
             default -> null;
         };
+    }
+
+    /**
+     * The random draws (phase 28), as probed against the real
+     * Skript 2.17.1: both bounds must be numbers — a missing or
+     * non-number bound yields no value — and reversed bounds are
+     * swapped before drawing. A random number is uniform over
+     * the range (equal bounds yield the bound itself). A random
+     * integer draws uniformly over the whole numbers inside the
+     * closed range — the lower bound fits up (ceil) and the
+     * upper bound fits down (floor): between 1.5 and 3.5 draws
+     * from {2, 3}, between -3.5 and -1.5 from {-3, -2}. When no
+     * whole number fits (between 1.2 and 1.8) the result is no
+     * value, not an error. Every evaluation draws fresh; there
+     * is no seed, exactly like the original.
+     */
+    private static Object randomBetween(Object lo, Object hi, boolean integer) {
+        if (!(lo instanceof Number a) || !(hi instanceof Number b)) return null;
+        double min = a.doubleValue(), max = b.doubleValue();
+        if (Double.isNaN(min) || Double.isNaN(max)) return Double.NaN;
+        if (min > max) {
+            double t = min;
+            min = max;
+            max = t;
+        }
+        java.util.concurrent.ThreadLocalRandom rng = java.util.concurrent.ThreadLocalRandom.current();
+        if (!integer) {
+            return min == max ? min : min + rng.nextDouble() * (max - min);
+        }
+        long loL = (long) Math.ceil(min), hiL = (long) Math.floor(max);
+        if (loL > hiL) return null;
+        if (loL == hiL) return (double) loL;
+        if (hiL == Long.MAX_VALUE) {
+            // nextLong's bound is exclusive and would overflow;
+            // fall back to a double-span draw over the same range.
+            return (double) (loL + (long) (rng.nextDouble() * ((double) hiL - (double) loL + 1.0)));
+        }
+        return (double) rng.nextLong(loL, hiL + 1);
     }
 
     /**

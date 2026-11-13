@@ -73,6 +73,17 @@ export type Expr =
   // expressions. "+" also concatenates when both operands are texts;
   // "mod" is the mathematical remainder (Skript's mod() function).
   | { kind: "arith"; op: ArithOp; left: Expr; right: Expr }
+  // Core-language randomness (phase 28): a fresh draw on every
+  // evaluation — the original has no seed and no reproducibility,
+  // and neither does the engine. randomNumber yields a real number
+  // between the bounds; randomInteger yields a whole number.
+  // Semantics were probed against the real Skript 2.17.1 (see
+  // docs/reference.md): reversed bounds are swapped, the integer
+  // draw fits fractional bounds inward (ceil / floor — see the
+  // engine's randomBetween), and a missing or non-number bound
+  // yields no value.
+  | { kind: "randomNumber"; min: Expr; max: Expr }
+  | { kind: "randomInteger"; min: Expr; max: Expr }
   // Core-language local variables (phase 13): {_name} / {_name::%i%}
   // and the whole local list {_name::*}. Locals live in the current
   // trigger's frame — every event/command body has one, and every
@@ -458,6 +469,16 @@ export type Cond =
   | { kind: "contains"; container: Expr; item: Expr }
   | { kind: "startsWith"; target: Expr; prefix: Expr }
   | { kind: "endsWith"; target: Expr; suffix: Expr }
+  // Core-language randomness (phase 28): the draw succeeds with
+  // the given probability. The value is a FRACTION — chance(0.5)
+  // is a 50% chance — which is the original's own percent model
+  // (its `50%` literal is the number 0.5; probed). A missing or
+  // non-number value never succeeds; a value of 1 or more always
+  // succeeds. Every evaluation draws again (a while head re-draws
+  // per iteration). The original has no negated .sk form for this
+  // condition, so not(chance(...)) only lowers when the if has an
+  // else branch (see emit.ts).
+  | { kind: "chance"; value: Expr }
   // Engine-builtin condition (SharpSK slice, phase 7): a named timer exists.
   | { kind: "timerActive"; name: TextExpr }
   // Engine-builtin condition (skUtilities slice, phase 9): a file or

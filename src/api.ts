@@ -240,6 +240,41 @@ export function remainder(left: Expr, right: Expr): Expr {
   return arith("mod", left, right);
 }
 
+/**
+ * Construct a random-number expression: a fresh real-valued draw
+ * between the two bounds on every evaluation (there is no seed —
+ * the draw is never reproducible). Reversed bounds are swapped;
+ * a missing or non-number bound yields no value.
+ */
+export function randomNumber(min: Expr, max: Expr): Expr {
+  return { kind: "randomNumber", min, max };
+}
+
+/**
+ * Construct a random-integer expression: a fresh whole-number
+ * draw on every evaluation, uniform over the whole numbers
+ * inside the closed range — the lower bound fits up and the
+ * upper bound fits down, so (1.5, 3.5) draws from {2, 3} and
+ * (1, 3) from {1, 2, 3}; a range holding no whole number
+ * (1.2, 1.8) yields no value. Reversed bounds are swapped.
+ * A missing or non-number bound yields no value.
+ */
+export function randomInteger(min: Expr, max: Expr): Expr {
+  return { kind: "randomInteger", min, max };
+}
+
+/**
+ * Construct a chance condition: the draw succeeds with the given
+ * probability, expressed as a fraction — chance(0.5) succeeds
+ * half the time. (This is the original's own percent model: its
+ * `50%` literal is the number 0.5.) A value of 1 or more always
+ * succeeds; a missing or non-number value never does. Every
+ * check draws again.
+ */
+export function chance(value: Expr): Cond {
+  return { kind: "chance", value };
+}
+
 /** Construct a has-permission condition. */
 export function hasPermission(target: Expr, permission: string): Cond {
   return { kind: "hasPermission", target, permission };
@@ -399,6 +434,7 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "contains",
   "startsWith",
   "endsWith",
+  "chance",
   "bossBarDarkensSky",
   "bossBarCreatesFog",
   "bossBarPlaysBossMusic",
@@ -419,6 +455,16 @@ export function whileLoop(cond: Cond, body: readonly Stmt[]): Stmt {
     throw new RangeError(
       "whileLoop condition must be a leaf condition or not(leaf): " +
         "and/or conditions cannot head a while loop in this subset",
+    );
+  }
+  if (cond.kind === "not" && inner.kind === "chance") {
+    // A loop head cannot swap branches the way an if can, and
+    // the original has no negated chance form, so there is no
+    // .sk text for this head. Loop on the positive chance and
+    // structure the body around it instead.
+    throw new RangeError(
+      "whileLoop cannot negate a chance condition: " +
+        "chance has no negated .sk form — loop on chance(...) itself instead",
     );
   }
   return withLoc({ kind: "while", cond, body });
