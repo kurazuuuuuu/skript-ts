@@ -10,11 +10,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  engineJarPath,
   installEngine,
   PAPI_LIBS_JAR,
   PAPI_SANDBOX_JAR,
+  resolveEngineJar,
   verifyPinnedJar,
 } from "../src/cli/engine.js";
+import { packageRootDir } from "../src/cli/toolchain.js";
 
 const ENGINE_JAR_BYTES = Buffer.from("fake engine jar\n");
 const PAPI_JAR_BYTES = Buffer.from("fake placeholderapi jar\n");
@@ -105,6 +108,72 @@ describe("installEngine PlaceholderAPI pin", () => {
     expect(existsSync(join(layout.pluginsDir, PAPI_SANDBOX_JAR))).toBe(false);
     expect(result.note).toContain("プレースホルダ機能は無効");
   });
+});
+
+describe("engine jar resolution (feedback A3)", () => {
+  let tempDir = "";
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "skript-ts-jar-"));
+  });
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("prefers the project's own engine/build jar", () => {
+    const layout = makeLayout(tempDir);
+    expect(resolveEngineJar(layout.rootDir)).toBe(
+      join(layout.rootDir, "engine", "build", "skript-ts.jar"),
+    );
+  });
+
+  it("lets an explicit --engine-jar path win over the project jar", () => {
+    const layout = makeLayout(tempDir);
+    const elsewhere = join(tempDir, "elsewhere.jar");
+    writeFileSync(elsewhere, Buffer.from("explicit jar\n"));
+    expect(resolveEngineJar(layout.rootDir, elsewhere)).toBe(elsewhere);
+
+    const result = installEngine(layout.rootDir, layout.serverDir, { jarPath: elsewhere });
+    expect(readFileSync(join(layout.pluginsDir, "skript-ts.jar")).toString()).toBe(
+      "explicit jar\n",
+    );
+    expect(result.note).toContain("skript-ts.jar を配置");
+  });
+
+  it("reports the project-conventional path when nothing is built yet", () => {
+    const bare = join(tempDir, "bare");
+    mkdirSync(bare, { recursive: true });
+    // Only meaningful when the package itself has no built jar either;
+    // otherwise the package fallback (next test) legitimately wins.
+    if (!existsSync(join(packageRootDir(), "engine", "build", "skript-ts.jar"))) {
+      expect(resolveEngineJar(bare)).toBe(engineJarPath(bare));
+      expect(() => installEngine(bare, join(tempDir, "server"))).toThrow(/engine jar not found/);
+    }
+  });
+
+  // The submodule flow: a consumer root with no engine/ directory at
+  // all still finds the jar built inside the skript-ts package.
+  // Skipped on checkouts where the engine was never built.
+  it.skipIf(!existsSync(join(packageRootDir(), "engine", "build", "skript-ts.jar")))(
+    "falls back to the jar inside the skript-ts package",
+    () => {
+      const bare = join(tempDir, "consumer");
+      const serverDir = join(tempDir, "consumer-server");
+      mkdirSync(join(serverDir, "plugins"), { recursive: true });
+      const packaged = join(packageRootDir(), "engine", "build", "skript-ts.jar");
+      expect(resolveEngineJar(bare)).toBe(packaged);
+
+      installEngine(bare, serverDir);
+      expect(
+        readFileSync(join(serverDir, "plugins", "skript-ts.jar")).equals(
+          readFileSync(packaged),
+        ),
+      ).toBe(true);
+    },
+  );
 });
 
 describe("verifyPinnedJar", () => {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
+import { packageRootDir } from "./toolchain.js";
 
 /**
  * Server plugin-set management for the two verify modes.
@@ -44,6 +45,50 @@ export function engineJarPath(rootDir: string): string {
 }
 
 /**
+ * Engine directories consulted for the built jar and the pinned
+ * libs, in order: the project root first (the contributor flow,
+ * where the project IS skript-ts), then the skript-ts package
+ * itself. The package fallback is what lets a consumer project use
+ * the CLI from a submodule checkout without bridge-copying the jar
+ * into its own root (feedback A3).
+ */
+function engineDirCandidates(rootDir: string): string[] {
+  const project = join(rootDir, "engine");
+  const packaged = join(packageRootDir(), "engine");
+  return project === packaged ? [project] : [project, packaged];
+}
+
+/**
+ * Which engine jar to deploy. An explicit path (the CLI's
+ * --engine-jar) always wins; otherwise the first existing jar in
+ * the candidate order above. When nothing is built yet, the
+ * project-conventional path is returned so the caller's error
+ * message names the documented location.
+ */
+export function resolveEngineJar(rootDir: string, explicit?: string): string {
+  if (explicit !== undefined) return explicit;
+  for (const dir of engineDirCandidates(rootDir)) {
+    const candidate = join(dir, "build", "skript-ts.jar");
+    if (existsSync(candidate)) return candidate;
+  }
+  return engineJarPath(rootDir);
+}
+
+/** The pinned PlaceholderAPI jar, under the same candidate order; null when absent. */
+export function resolvePapiLib(rootDir: string): string | null {
+  for (const dir of engineDirCandidates(rootDir)) {
+    const candidate = join(dir, "libs", PAPI_LIBS_JAR);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+export interface InstallEngineOptions {
+  /** Explicit engine jar path (--engine-jar); wins over every default location. */
+  jarPath?: string;
+}
+
+/**
  * Re-verify a jar in `engine/libs/` against the SHA-512 pinned next
  * to it (`<jar>.sha512`, the same pin `engine/fetch-libs.sh` checks
  * after downloading). Fetching verified the bits once; this catches
@@ -73,8 +118,12 @@ export function verifyPinnedJar(jarPath: string): void {
 }
 
 /** Put the server into engine mode: install skript-ts.jar, disable Skript.jar. */
-export function installEngine(rootDir: string, serverDir: string): PluginSetResult {
-  const built = engineJarPath(rootDir);
+export function installEngine(
+  rootDir: string,
+  serverDir: string,
+  opts: InstallEngineOptions = {},
+): PluginSetResult {
+  const built = resolveEngineJar(rootDir, opts.jarPath);
   if (!existsSync(built)) {
     throw new Error(
       `engine jar not found at ${built} — build it first with engine/build.sh (see README)`,
@@ -82,9 +131,8 @@ export function installEngine(rootDir: string, serverDir: string): PluginSetResu
   }
   // Verify the PlaceholderAPI pin before touching the plugin set,
   // so a bad jar fails the run with the sandbox exactly as it was.
-  const papiLib = join(rootDir, "engine", "libs", PAPI_LIBS_JAR);
-  const papiPresent = existsSync(papiLib);
-  if (papiPresent) verifyPinnedJar(papiLib);
+  const papiLib = resolvePapiLib(rootDir);
+  if (papiLib !== null) verifyPinnedJar(papiLib);
   const pluginsDir = join(serverDir, "plugins");
   const changes: string[] = [];
   const skriptJar = join(pluginsDir, "Skript.jar");
@@ -96,7 +144,7 @@ export function installEngine(rootDir: string, serverDir: string): PluginSetResu
   }
   copyFileSync(built, join(pluginsDir, "skript-ts.jar"));
   changes.push("skript-ts.jar を配置");
-  if (papiPresent) {
+  if (papiLib !== null) {
     copyFileSync(papiLib, join(pluginsDir, PAPI_SANDBOX_JAR));
     changes.push("PlaceholderAPI.jar を配置");
   } else {

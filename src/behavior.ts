@@ -1,4 +1,4 @@
-import { createBot, type Bot } from "mineflayer";
+import type { Bot } from "mineflayer";
 
 /**
  * Behavior tests verify what emitted Skript scripts actually DO on a
@@ -1086,6 +1086,12 @@ export function createBehaviorContext(opts: BehaviorContextOptions): BehaviorCon
   return {
     mode: opts.mode ?? "skript",
     async connect(username: string): Promise<BehaviorBot> {
+      // mineflayer is imported lazily, at first connect: this module
+      // is loaded by the CLI for every command, and an eager import
+      // forced a full dependency install of the skript-ts package
+      // even for build / watch, which never connect a bot
+      // (feedback A2).
+      const { createBot } = await import("mineflayer");
       const bot = createBot({
         host: opts.host,
         port: opts.port,
