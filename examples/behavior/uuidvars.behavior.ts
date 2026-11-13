@@ -78,7 +78,7 @@ export default defineBehavior(async (t) => {
     const uuid = offlineUuid("UuidBot");
     mark = bot.messages.length;
     await chat("/uvkeys");
-    const keyMsg = await waitMsg(mark, /uvkey=/);
+    const keyMsg = await waitMsg(mark, new RegExp(`uvkey=${uuid} val=4242`));
     if (!keyMsg.includes(`uvkey=${uuid} val=4242`)) {
       throw new Error(`expected the key segment to be the bot UUID ${uuid}, got: ${keyMsg}`);
     }
@@ -104,7 +104,9 @@ export default defineBehavior(async (t) => {
     const uuid2 = offlineUuid("UuidBotTwo");
     mark = bot2.messages.length;
     await chat("/uvkeys");
-    const keyMsg = await waitMsg(mark, /uvkey=/);
+    // The store now holds the first bot's entry too, and /uvkeys
+    // lists every entry — wait for THIS bot's line specifically.
+    const keyMsg = await waitMsg(mark, new RegExp(`uvkey=${uuid2} val=7`));
     if (!keyMsg.includes(`uvkey=${uuid2} val=7`)) {
       throw new Error(`expected the key segment to be the bot UUID ${uuid2}, got: ${keyMsg}`);
     }
