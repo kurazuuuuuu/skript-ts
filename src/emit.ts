@@ -130,6 +130,30 @@ function emitValue(e: Expr): string {
       return `${emitValue(e.base)} with lore ${andList(e.lines.map((l) => emitValue(l)))}`;
     case "itemWithAmount":
       return `${emitValue(e.amount)} of ${emitValue(e.base)}`;
+    case "customItem": {
+      // The probed Skript 2.17.1 suffix chain (RP-2 findings):
+      // `<base> with item model "<id>" [with custom model data <n>]
+      // [named "<name>"]` is a single expression.
+      if (e.id === undefined || e.baseItem === undefined) {
+        throw new Error("emit: customItem must be resolved by the project build before emitting");
+      }
+      let text = `${e.baseItem} with item model "${escapeText(e.id)}"`;
+      if (e.customModelData !== undefined) {
+        text += ` with custom model data ${e.customModelData}`;
+      }
+      if (e.displayName !== undefined) {
+        text += ` named "${escapeText(e.displayName)}"`;
+      }
+      return text;
+    }
+    case "itemModelOf":
+      return e.target.kind === "arith"
+        ? `item model of (${emitValue(e.target)})`
+        : `item model of ${emitValue(e.target)}`;
+    case "customModelDataOf":
+      return e.target.kind === "arith"
+        ? `custom model data of (${emitValue(e.target)})`
+        : `custom model data of ${emitValue(e.target)}`;
     case "nameOf":
       // Parenthesize an arithmetic operand, as with typeOf.
       return e.target.kind === "arith"
@@ -379,6 +403,9 @@ function emitString(e: Expr): string {
     case "itemWithName":
     case "itemWithLore":
     case "itemWithAmount":
+    case "customItem":
+    case "itemModelOf":
+    case "customModelDataOf":
     case "nameOf":
     case "loreOf":
     case "amountOf":

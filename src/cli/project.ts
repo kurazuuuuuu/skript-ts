@@ -15,7 +15,15 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { emitIr, emitWithMap, isEngineOnlyScript, type Script } from "../index.js";
 import { generatePack, type PackManifest } from "../packgen.js";
-import type { PackDef } from "../resourcepack.js";
+import {
+  allocateCustomModelData,
+  emptyRegistry,
+  parseRegistry,
+  serializeRegistry,
+  type CustomModelDataRequest,
+} from "../packregistry.js";
+import { parseResourceId, type PackDef } from "../resourcepack.js";
+import { buildCustomItemTable, resolveCustomItems, type ResolvedCustomItem } from "../resolve.js";
 import type { SourceMapFile } from "../source-map.js";
 
 export interface BuiltScript {
@@ -113,6 +121,11 @@ export async function buildProject(opts: {
   const maps = new Map<string, SourceMapFile>();
   const foundPacks: { pack: PackDef; moduleDir: string; relSource: string }[] = [];
 
+  // Pass 1: import every module once, collecting packs and scripts.
+  // The pack must be known before any script is emitted, because
+  // RP-2 `customItem` references resolve against it (and against
+  // the persisted CustomModelData registry) during emission.
+  const loaded: { absFile: string; relSource: string; prog: Script | null }[] = [];
   for (const absFile of listTsFiles(srcDir)) {
     if (opts.ignore.includes(basename(absFile))) continue;
     const relSource = toPosix(relative(rootDir, absFile));
@@ -126,6 +139,7 @@ export async function buildProject(opts: {
     const found = Object.values(mod).filter(isScript);
     if (found.length === 0) {
       skipped.push(relSource);
+      loaded.push({ absFile, relSource, prog: null });
       continue;
     }
     if (found.length > 1) {
@@ -133,7 +147,28 @@ export async function buildProject(opts: {
         `${relSource}: exports ${found.length} Script values; exactly one is required (1 TS file = 1 .sk file)`,
       );
     }
-    const prog = found[0] as Script;
+    loaded.push({ absFile, relSource, prog: found[0] as Script });
+  }
+
+  // RP-2: allocate CustomModelData numbers for the pack's items
+  // (append-only registry, persisted at the project root) and build
+  // the custom-item resolution table. With no pack, scripts are
+  // still walked against an empty table so a stray customItem
+  // reference fails the build instead of emitting unresolved.
+  const packSingle = singlePack(foundPacks);
+  let customItemTable: ReadonlyMap<string, ResolvedCustomItem> = new Map();
+  let customItemNamespace = "minecraft";
+  let packAllocations: ReadonlyMap<string, number> = new Map();
+  if (packSingle !== null) {
+    const allocated = allocatePackItems(rootDir, packSingle.pack, packSingle.relSource);
+    packAllocations = allocated;
+    customItemTable = buildCustomItemTable(packSingle.pack, allocated);
+    customItemNamespace = packSingle.pack.namespace;
+  }
+
+  for (const { absFile, relSource, prog: rawProg } of loaded) {
+    if (rawProg === null) continue;
+    const prog = resolveCustomItems(rawProg, customItemTable, relSource, customItemNamespace);
     const relSk = toPosix(relative(srcDir, absFile)).replace(/\.ts$/, ".sk");
     const irRel = relSk.replace(/\.sk$/, ".ir.json");
     const irPath = join(outDir, irRel);
@@ -178,7 +213,68 @@ export async function buildProject(opts: {
     scripts.push({ rel: relSk, engineOnly: false, skPath, mapPath, map, irRel, irPath });
     maps.set(relSk, map);
   }
-  return { scripts, skipped, maps, packs: buildPacks(foundPacks, outDir) };
+  return { scripts, skipped, maps, packs: buildPacks(foundPacks, outDir, packAllocations) };
+}
+
+/** The project's single pack, or null. Multiple packs are a build error. */
+function singlePack(
+  foundPacks: { pack: PackDef; moduleDir: string; relSource: string }[],
+): { pack: PackDef; moduleDir: string; relSource: string } | null {
+  if (foundPacks.length === 0) return null;
+  if (foundPacks.length > 1) {
+    const sources = foundPacks.map((f) => f.relSource).join(", ");
+    throw new Error(
+      `multiple resource packs exported (${sources}); only one pack per project is supported`,
+    );
+  }
+  return foundPacks[0] as { pack: PackDef; moduleDir: string; relSource: string };
+}
+
+/** File name of the persisted CustomModelData registry at the project root. */
+const REGISTRY_FILE = "resourcepack-registry.json";
+
+/**
+ * Allocate CustomModelData numbers for every item of the pack
+ * (RP-2). The registry persists name -> number assignments at the
+ * project root (`resourcepack-registry.json`): allocations are
+ * append-only, a deleted definition's number stays reserved
+ * forever, and an explicit number in a definition that collides
+ * with any existing assignment is a build error. The registry is
+ * written back only when a new allocation happened.
+ */
+function allocatePackItems(
+  rootDir: string,
+  pack: PackDef,
+  relSource: string,
+): ReadonlyMap<string, number> {
+  const registryPath = join(rootDir, REGISTRY_FILE);
+  let registry = emptyRegistry();
+  if (existsSync(registryPath)) {
+    try {
+      registry = parseRegistry(readFileSync(registryPath, "utf8"));
+    } catch (err) {
+      throw new Error(
+        `${relSource}: cannot use ${REGISTRY_FILE}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  const requests: CustomModelDataRequest[] = pack.items.map((item) => {
+    const id = parseResourceId(item.id, pack.namespace);
+    return {
+      id: `${id.namespace}:${id.path}`,
+      ...(item.customModelData !== undefined ? { customModelData: item.customModelData } : {}),
+    };
+  });
+  let result: ReturnType<typeof allocateCustomModelData>;
+  try {
+    result = allocateCustomModelData(registry, requests);
+  } catch (err) {
+    throw new Error(`${relSource}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (result.changed) {
+    writeFileSync(registryPath, serializeRegistry(result.registry), "utf8");
+  }
+  return result.allocations;
 }
 
 /**
@@ -192,6 +288,7 @@ export async function buildProject(opts: {
 function buildPacks(
   foundPacks: { pack: PackDef; moduleDir: string; relSource: string }[],
   outDir: string,
+  allocations: ReadonlyMap<string, number>,
 ): BuiltPack[] {
   if (foundPacks.length === 0) return [];
   if (foundPacks.length > 1) {
@@ -206,16 +303,20 @@ function buildPacks(
     relSource: string;
   };
   // PNG texture sources resolve against the defining file's directory.
-  const generated = generatePack(pack, (pngPath) => {
-    try {
-      return readFileSync(resolve(moduleDir, pngPath));
-    } catch {
-      throw new Error(
-        `${relSource}: cannot read PNG texture file "${pngPath}" ` +
-          `(resolved against the defining file's directory)`,
-      );
-    }
-  });
+  const generated = generatePack(
+    pack,
+    (pngPath) => {
+      try {
+        return readFileSync(resolve(moduleDir, pngPath));
+      } catch {
+        throw new Error(
+          `${relSource}: cannot read PNG texture file "${pngPath}" ` +
+            `(resolved against the defining file's directory)`,
+        );
+      }
+    },
+    { customModelData: allocations },
+  );
   mkdirSync(outDir, { recursive: true });
   const zipPath = join(outDir, generated.manifest.zipFile);
   writeFileSync(zipPath, generated.zip);
