@@ -3482,6 +3482,7 @@ final class Engine {
                     evalExpr(node(expr.get("min")), ctx), evalExpr(node(expr.get("max")), ctx), false);
             case "randomInteger" -> randomBetween(
                     evalExpr(node(expr.get("min")), ctx), evalExpr(node(expr.get("max")), ctx), true);
+            case "math" -> evalMath(expr, ctx);
             case "format" -> renderParts(list(expr.get("parts")), ctx);
             default -> {
                 logger.warning("skript-ts: unknown expression kind '" + kind(expr) + "'");
@@ -3608,6 +3609,131 @@ final class Engine {
             return (double) (loL + (long) (rng.nextDouble() * ((double) hiL - (double) loL + 1.0)));
         }
         return (double) rng.nextLong(loL, hiL + 1);
+    }
+
+    /**
+     * The built-in math functions (phase 29), as probed against
+     * the real Skript 2.17.1. Every function yields no value when
+     * its operand is missing or not a number — a numeric text
+     * does NOT count as a number here. floor and ceil return
+     * whole numbers (a long, saturating exactly like a Java
+     * {@code (long)} cast of the floored double: floor(NaN) is
+     * 0, floor(Infinity) is Long.MAX_VALUE, floor(1e19) clamps
+     * to Long.MAX_VALUE). abs and sqrt are the plain double
+     * operations; the root of a negative value is NaN.
+     *
+     * <p>min and max consider only their numeric arguments —
+     * missing and non-number arguments drop out silently, so
+     * min(unset, 5) is 5 — and return the winning argument. A
+     * NaN candidate loses to any non-NaN candidate in either
+     * position; if every candidate is NaN the result is NaN;
+     * with no numeric candidate the result has no value.
+     *
+     * <p>round is the subtle one (all rules probed):
+     * <ul>
+     *   <li>The places argument defaults to 0; a missing or
+     *       non-number places counts as 0, and a fractional
+     *       places truncates toward zero (round(1.2345, 2.9)
+     *       rounds at 2 places).</li>
+     *   <li>places == 0 (and the one-argument form):
+     *       {@code Math.floor(x + 0.5)} on doubles — halves round
+     *       toward positive infinity, so round(-2.5) is -2 and
+     *       round(-0.5) is 0; NaN stays NaN and the infinities
+     *       stay infinite.</li>
+     *   <li>places &gt; 0: the value's decimal representation
+     *       (Double.toString) is rounded at that many digits
+     *       with halves away from zero — round(2.675, 2) is
+     *       2.68, round(1.005, 2) is 1.01, round(-0.125, 2) is
+     *       -0.13. Beyond 400 places a double's shortest decimal
+     *       form cannot change, so the value returns as-is.</li>
+     *   <li>places &lt; 0: an integral-typed value (a long)
+     *       passes through unchanged — round(15, -1) is 15.
+     *       Any other value is first rounded to a whole number
+     *       by the places == 0 rule, then that whole number is
+     *       rounded to the 10^|places| place by the same rule:
+     *       round(14.9, -1) is 20, round(123.456, -1) is 120,
+     *       round(-14.9, -1) is -10. Note the engine's own
+     *       number literals and command arguments are doubles,
+     *       so an integral value produced by a literal follows
+     *       the double path here (round(15, -1) evaluates to 20
+     *       under the engine, 15 under Skript, where the literal
+     *       is a long) — the one documented divergence of this
+     *       slice, recorded in docs/reference.md.</li>
+     * </ul>
+     */
+    private Object evalMath(Map<String, Object> expr, Ctx ctx) {
+        String fn = str(expr.get("fn"));
+        if (fn == null) return null;
+        List<Object> argNodes = list(expr.get("args"));
+        List<Object> values = new ArrayList<>(argNodes.size());
+        for (Object argNode : argNodes) {
+            values.add(evalExpr(node(argNode), ctx));
+        }
+        return switch (fn) {
+            case "floor", "ceil", "abs", "sqrt" -> {
+                Object v = values.isEmpty() ? null : values.get(0);
+                if (!(v instanceof Number n)) yield null;
+                double x = n.doubleValue();
+                yield switch (fn) {
+                    case "floor" -> (long) Math.floor(x);
+                    case "ceil" -> (long) Math.ceil(x);
+                    case "abs" -> Math.abs(x);
+                    default -> Math.sqrt(x);
+                };
+            }
+            case "min", "max" -> {
+                boolean isMin = "min".equals(fn);
+                Object best = null;
+                double bestValue = 0;
+                for (Object v : values) {
+                    if (!(v instanceof Number n)) continue;
+                    double candidate = n.doubleValue();
+                    if (best == null
+                            || (Double.isNaN(bestValue) && !Double.isNaN(candidate))
+                            || (!Double.isNaN(candidate)
+                                    && (isMin ? candidate < bestValue : candidate > bestValue))) {
+                        best = v;
+                        bestValue = candidate;
+                    }
+                }
+                yield best;
+            }
+            case "round" -> {
+                Object v = values.isEmpty() ? null : values.get(0);
+                if (!(v instanceof Number n)) yield null;
+                Object p = values.size() > 1 ? values.get(1) : null;
+                int places = p instanceof Number pn ? (int) pn.doubleValue() : 0;
+                yield evalRound(n, places);
+            }
+            default -> null;
+        };
+    }
+
+    /** round() with the probed places rules — see {@link #evalMath}. */
+    private static Object evalRound(Number n, int places) {
+        double x = n.doubleValue();
+        if (places == 0) {
+            return Math.floor(x + 0.5);
+        }
+        if (places > 0) {
+            if (!Double.isFinite(x) || places > 400) return x;
+            return java.math.BigDecimal.valueOf(x)
+                    .setScale(places, java.math.RoundingMode.HALF_UP)
+                    .doubleValue();
+        }
+        // places < 0: integral-typed values pass through; other
+        // values are rounded to a whole number first, then to
+        // the 10^|places| place, both by the places == 0 rule.
+        if (isIntegralNumber(n)) return n;
+        double scale = Math.pow(10, -(double) places);
+        double whole = Math.floor(x + 0.5);
+        return Math.floor(whole / scale + 0.5) * scale;
+    }
+
+    /** Whether a value carries an integral number type (long and friends), as opposed to a double. */
+    private static boolean isIntegralNumber(Number n) {
+        return n instanceof Long || n instanceof Integer || n instanceof Short
+                || n instanceof Byte || n instanceof java.math.BigInteger;
     }
 
     /**
@@ -4108,6 +4234,15 @@ final class Engine {
         if (value instanceof World w) return w.getName();
         if (value instanceof Timespan t) return t.toString();
         if (value instanceof SkriptDate d) return d.toString();
+        if (value instanceof Number n && isIntegralNumber(n)) {
+            // An integral-typed value prints as its exact digits,
+            // as Skript prints a long: formatNumber would switch
+            // to Double.toString (scientific) at 1e15 and lose the
+            // exact form floor/ceil produce at the extremes
+            // (floor(1e19) is 9223372036854775807, phase 29). Below
+            // 1e15 this is identical to formatNumber's output.
+            return n.toString();
+        }
         if (value instanceof Number n) return formatNumber(n.doubleValue());
         if (value instanceof Boolean b) return b.toString();
         if (value instanceof Location l) {

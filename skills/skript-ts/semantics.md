@@ -51,6 +51,34 @@ questions is the same: probe, don't guess (see
   branch to lower by branch swap, and a `whileLoop` head
   rejects it.
 
+## Math functions
+
+- `floor` / `ceil` / `round` / `abs` / `sqrt` / `min` / `max`
+  emit Skript's built-in calls of the same names. A missing or
+  non-number operand yields **no value** (a numeric text does
+  not count, and there is no 0 substitution).
+- `floor` / `ceil` return whole numbers, saturating like a
+  Java `(long)` cast (`floor(NaN)` is 0, `floor(1e19)` clamps
+  to Long.MAX_VALUE). `sqrt` of a negative is NaN.
+- `min` / `max` take one or more arguments (zero throws a
+  RangeError in the builder — Skript would not parse it).
+  Only numeric arguments compete: missing and non-number
+  arguments drop out, a NaN argument loses to any non-NaN
+  one, all-NaN yields NaN, and no numeric argument yields
+  no value.
+- `round` places: defaults to 0 (missing/non-number places
+  counts as 0; fractional places truncates toward zero).
+  At 0 places, halves round toward **positive infinity**
+  (`round(-2.5)` is -2). At positive places, the decimal
+  representation rounds with halves **away from zero**
+  (`round(2.675, 2)` is 2.68). At negative places, a
+  whole-number-typed value passes through unchanged, and
+  any other value is rounded to a whole number first, then
+  at the tens/hundreds place (`round(14.9, -1)` is 20).
+  Under the engine, integral literals are doubles, so
+  `round(15, -1)` is 20 there and 15 under Skript — see
+  docs/reference.md for the full write-up.
+
 ## Logic
 
 - Skript 2.17.1 has no usable textual conjunction, so `and` /

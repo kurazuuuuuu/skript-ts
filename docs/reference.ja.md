@@ -100,6 +100,9 @@
 | `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可）          | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                    |
 | `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%` |
 | `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                          | `%random integer between <a> and <b>%` |
+| `floor(e)` / `ceil(e)` / `abs(e)` / `sqrt(e)`                    | `floor(<e>)` など                                            | `%floor(<e>)%` など                  |
+| `round(e)` / `round(e, places)`                                  | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` など                  |
+| `min(...es)` / `max(...es)`（引数は1つ以上）                      | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` など                   |
 | `fmt(...parts)`                                                  | `"<parts>"`                                                  | 外側の文字列に平坦化                 |
 | `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                    |
 | `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%` |
@@ -140,6 +143,46 @@
 は {-3, -2} から、`randomInteger(1, 3)` は {1, 2, 3} から引く。
 整数を1つも含まない範囲（`randomInteger(1.2, 1.8)`）はエラーでは
 なく「値なし」になる。
+数学関数（フェーズ29。本家 Skript 2.17.1 の実挙動で裏取り済み）:
+7関数はいずれも、被演算子が値なしか数値でなければ「値なし」に
+なります。`"2.5"` のような数値文字列は数値として扱われず、
+中置演算子のような 0 代入もありません。`floor` と `ceil` は
+整数を返します（`floor(2.5)` は `2`、`floor(-2.5)` は `-3`、
+`ceil(-0.5)` は `0`）。極端な値では Java の `(long)` キャストと
+同じ飽和をします（`floor(NaN)` は `0`、`floor(Infinity)` と
+`floor(1e19)` はどちらも `9223372036854775807` にクランプ）。
+`abs` と `sqrt` は素の double 演算です（`abs(-0.5)` は `0.5`、
+`sqrt(2)` は約 `1.41`、負数の平方根は NaN）。`min` と `max` は
+1つ以上の引数を取ります（引数ゼロは Skript のパースエラーに
+なるため、ビルダーは RangeError を投げます）。競合するのは
+数値の引数だけで、値なし・数値でない引数は静かに脱落します
+（`min(未設定, 5)` は `5`）。NaN の候補は、位置によらず
+NaN でない候補に負けます。全候補が NaN なら結果は NaN、
+数値の候補が無ければ結果は値なしです。
+
+`round` は桁数引数（places）によって3つの挙動に分かれます。
+places の既定は 0 で、値なしか数値でない places は 0 として
+扱われ、小数の places はゼロ方向へ切り捨てられます
+（`round(1.2345, 2.9)` は小数第2位で丸める）。places = 0
+（および引数1つの形）では、0.5 の境界はプラス無限大方向へ
+丸まります（`round(2.5)` は `3`、`round(-2.5)` は `-2`、
+`round(-0.5)` は `0`）。（これは Skript 自身の `round()` 関数
+であり、タイトルのタイミング用に別途確定した half-truncate
+の仕様とは無関係です。）places が正の場合は、値の10進表記を
+その桁で丸め、0.5 の境界はゼロから離れる方向へ丸まります
+（`round(2.675, 2)` は `2.68`、`round(1.005, 2)` は `1.01`、
+`round(-0.125, 2)` は `-0.13`）。places が負の場合は、整数型の
+値（long。Skript モードでの整数リテラルなど）はそのまま通過
+します（`round(15, -1)` は `15`）。それ以外の値は、まず
+places = 0 の規則で整数へ丸められ、その整数が同じ規則で
+十の位・百の位へ丸まります（`round(14.9, -1)` は `20`、
+`round(123.456, -1)` は `120`、`round(-14.9, -1)` は `-10`）。
+エンジン側の相違が1つあります。エンジンではリテラルと
+コマンド引数は double として表されるため、整数リテラルは
+エンジンでは double の経路をたどります（`round(15, -1)` は
+エンジンでは `20`、Skript では `15`）。実行時に得た long
+（たとえば変数に入れた `floor()` の結果）は両ランタイムで
+そのまま通過します。
 
 注意: `on death` イベントには `player` が存在せず、Skript にエラーとして
 弾かれます（"There's no player in an on death event"）。死亡したプレイヤーは

@@ -104,6 +104,9 @@ section.
 | `remainder(a, b)` (or `arith(op, a, b)` for any of the five)     | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                    |
 | `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%` |
 | `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                          | `%random integer between <a> and <b>%` |
+| `floor(e)` / `ceil(e)` / `abs(e)` / `sqrt(e)`                    | `floor(<e>)` etc.                                            | `%floor(<e>)%` etc.                  |
+| `round(e)` / `round(e, places)`                                  | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` etc.                  |
+| `min(...es)` / `max(...es)` (one or more arguments)              | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` etc.                   |
 | `fmt(...parts)`                                                  | `"<parts>"`                                                  | flattened into the enclosing string  |
 | `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                    |
 | `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%` |
@@ -150,6 +153,51 @@ fits down — so `randomInteger(1.5, 3.5)` draws from {2, 3},
 `randomInteger(1, 3)` from {1, 2, 3}. A range holding no whole
 number (`randomInteger(1.2, 1.8)`) yields _no value_, not an
 error.
+Math functions (phase 29; verified against the real Skript
+2.17.1). All seven yield _no value_ when an operand is missing
+or not a number — a numeric text such as `"2.5"` does not
+count, and unlike the infix operators there is no 0
+substitution. `floor` and `ceil` return whole numbers:
+`floor(2.5)` is `2`, `floor(-2.5)` is `-3`, `ceil(-0.5)` is
+`0`. At the extremes they saturate like a Java `(long)` cast:
+`floor(NaN)` is `0`, and `floor(Infinity)` and `floor(1e19)`
+both clamp to `9223372036854775807`. `abs` and `sqrt` are the
+plain double operations (`abs(-0.5)` is `0.5`, `sqrt(2)` is
+about `1.41`, the root of a negative is NaN). `min` and `max`
+take one or more arguments — zero arguments is a parse error
+in Skript, so the builders throw a RangeError instead. Only
+the numeric arguments compete: missing and non-number
+arguments drop out silently (`min(unset, 5)` is `5`), and a
+NaN candidate loses to any non-NaN candidate in either
+position; if every candidate is NaN the result is NaN, and
+with no numeric candidate the result has no value.
+
+`round` rounds in three regimes, by its places argument
+(which defaults to 0; a missing or non-number places counts
+as 0, and a fractional places truncates toward zero, so
+`round(1.2345, 2.9)` rounds at 2 places). At 0 places — and
+in the one-argument form — halves round toward positive
+infinity: `round(2.5)` is `3`, `round(-2.5)` is `-2`,
+`round(-0.5)` is `0`. (This is Skript's own `round()`
+function; it is unrelated to the separate half-truncation
+convention settled for title timings.) At positive places
+the value's decimal representation is rounded, halves away
+from zero: `round(2.675, 2)` is `2.68`, `round(1.005, 2)` is
+`1.01`, `round(-0.125, 2)` is `-0.13`. At negative places a
+whole-number-typed value (a long, such as an integer literal
+in Skript mode) passes through unchanged — `round(15, -1)`
+is `15` — while any other value is first rounded to a whole
+number by the 0-places rule and that whole number is then
+rounded at the tens/hundreds place by the same rule:
+`round(14.9, -1)` is `20`, `round(123.456, -1)` is `120`,
+`round(-14.9, -1)` is `-10`. One engine divergence follows
+from the engine's number representation: literals and
+command arguments are doubles under the engine, so an
+integral literal follows the double path there
+(`round(15, -1)` evaluates to `20` under the engine, `15`
+under Skript); a long produced at runtime (for example a
+`floor()` result held in a variable) passes through in both
+runtimes.
 
 Note: in `on death` events there is **no** `player` — Skript rejects it
 ("There's no player in an on death event"). Use `victim()` for the player

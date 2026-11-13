@@ -305,6 +305,12 @@ function emitValue(e: Expr): string {
       return `random number between ${emitValue(e.min)} and ${emitValue(e.max)}`;
     case "randomInteger":
       return `random integer between ${emitValue(e.min)} and ${emitValue(e.max)}`;
+    case "math":
+      // Math functions emit as Skript's built-in function calls,
+      // the same shape as mod() above: floor(2.5), round(2.675, 2),
+      // min(1, 2, 3). A function call binds tightly, so no
+      // parentheses are needed around it as an operand.
+      return `${e.fn}(${e.args.map((arg) => emitValue(arg)).join(", ")})`;
     case "format":
       return `"${emitStringParts(e.parts)}"`;
     case "timespan":
@@ -488,6 +494,7 @@ function emitString(e: Expr): string {
     case "arith":
     case "randomNumber":
     case "randomInteger":
+    case "math":
       return `%${emitValue(e)}%`;
     case "format":
       return emitStringParts(e.parts);
