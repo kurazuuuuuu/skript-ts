@@ -535,6 +535,8 @@ export function loopRange(from: Expr, to: Expr, body: readonly Stmt[]): Stmt {
 
 const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "hasPermission",
+  "hasItem",
+  "canHoldItem",
   "isOp",
   "equals",
   "notEquals",
@@ -2159,6 +2161,92 @@ export function onInventoryClick(body: readonly Stmt[], options?: EventOptions):
 /** Construct an inventory-close event: fires when a player closes an inventory view. */
 export function onInventoryClose(body: readonly Stmt[], options?: EventOptions): TopLevel {
   return withLoc(plainEvent("inventoryClose", body, options, "onInventoryClose"));
+}
+
+// ---------------------------------------------------------------------------
+// Inventory operations (feedback lane D, 2026-11-13): test, count,
+// remove and capacity-check the items in a player's inventory (or
+// an inventory value). All semantics were probed against the real
+// Skript 2.17.1 before designing (five probe rounds; the records
+// live with the lane's notes):
+//
+// - Matching (hasItem / itemCountIn / removeItem /
+//   removeAllItems) is DIRECTIONAL, exactly like the original's
+//   item conditions: a stack matches the pattern when its type
+//   equals the pattern's type and every meta field the pattern
+//   specifies (custom name, lore, ...) matches exactly —
+//   unspecified fields are free. So a bare `diamond` pattern
+//   matches named diamonds too, while a `diamond named "Gem"`
+//   pattern matches only the stacks carrying that name. A
+//   pattern is an item expression: use withAmount(...) to ask
+//   for more than 1; a bare pattern means an amount of 1.
+// - The target is a player (their whole inventory: main storage,
+//   armor AND offhand all count for has / count / remove) or an
+//   inventory value (a chestInventory, currentInventoryOf(...),
+//   eventInventory(), ...). The .sk forms emitted are the
+//   original's own: `<target> has <item>`,
+//   `amount of <item> in <target>`, `remove <item> from
+//   <target>`, `remove all <item> from <target>`.
+// - removeItem is PARTIAL, like the original: asking for more
+//   than the inventory holds removes what exists and silently
+//   skips the rest — it never fails and never goes negative.
+//   Stacks are consumed in slot order (main storage, then armor,
+//   then the offhand).
+// - Capacity (canHoldItem / freeSpaceFor) follows a DIFFERENT,
+//   stricter rule — the original's own: only the 36 storage
+//   slots count (armor and the offhand never do), an empty slot
+//   fits a full max-size stack of the pattern's material, and a
+//   partially filled slot only takes more of a stack EXACTLY
+//   similar to the pattern (meta equal both ways — a plain
+//   diamond stack gives a named pattern no merge room, and vice
+//   versa). An empty inventory therefore holds 36 x 64 = 2304
+//   diamonds but only 36 diamond swords.
+// - freeSpaceFor has NO form in the original (every free-space /
+//   empty-slot amount expression failed to parse), so it is an
+//   ENGINE-ONLY expression: a script using it deploys IR-only,
+//   like the other engine builtins. canHoldItem is the portable
+//   boolean form of the same number.
+// - A target or pattern with no value (an unset item variable, a
+//   non-player target) reads as: has = false, count / free
+//   space = no value, remove = a no-op (engine micro-choice,
+//   mirroring how the other item operations treat missing
+//   values).
+// ---------------------------------------------------------------------------
+
+/** Test whether a target inventory holds at least the pattern item's amount of matching items. */
+export function hasItem(target: Expr, item: Expr): Cond {
+  return { kind: "hasItem", target, item };
+}
+
+/** Read how many items matching the pattern a target inventory holds (armor and offhand included for players). */
+export function itemCountIn(target: Expr, item: Expr): Expr {
+  return { kind: "itemCountIn", target, item };
+}
+
+/** Remove up to the pattern item's amount of matching items from a target, in slot order; a shortfall removes what exists. */
+export function removeItem(target: Expr, item: Expr): Stmt {
+  return withLoc({ kind: "removeItem", target, item });
+}
+
+/** Remove every item matching the pattern from a target, whatever the count. The pattern must not carry an amount. */
+export function removeAllItems(target: Expr, item: Expr): Stmt {
+  if (item.kind === "itemWithAmount") {
+    throw new RangeError(
+      "removeAllItems takes a bare item pattern: 'remove all' has no counted form in Skript — " +
+        "use removeItem with withAmount(...) to remove a fixed number instead",
+    );
+  }
+  return withLoc({ kind: "removeAllItems", target, item });
+}
+
+/** Test whether the pattern item's amount still fits into a target's storage slots (exact-similarity merging; see the section note). */
+export function canHoldItem(target: Expr, item: Expr): Cond {
+  return { kind: "canHoldItem", target, item };
+}
+
+/** Read how many more of the pattern item fit into a target's storage slots. ENGINE-ONLY: Skript has no such expression. */
+export function freeSpaceFor(target: Expr, item: Expr): Expr {
+  return { kind: "freeSpaceFor", target, item };
 }
 
 // ---------------------------------------------------------------------------
