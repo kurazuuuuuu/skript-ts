@@ -42,7 +42,9 @@ submodule) needs no tsx / TypeScript / mineflayer installation of
 its own. The engine jar is resolved in this order: an explicit
 `--engine-jar <path>`, then `<project>/engine/build/skript-ts.jar`,
 then the jar built inside the skript-ts package — so a submodule
-consumer needs no bridge copy of the jar at the project root.
+consumer needs no bridge copy of the jar at the project root. The
+engine directory is chosen as a unit: the pinned PlaceholderAPI
+companion comes from the same directory as the jar.
 
 `verify` runs: typecheck → transpile → deploy → server start → script
 load check (initial load plus `skript reload all`) → behavior tests →

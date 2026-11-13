@@ -45,42 +45,41 @@ export function engineJarPath(rootDir: string): string {
 }
 
 /**
- * Engine directories consulted for the built jar and the pinned
- * libs, in order: the project root first (the contributor flow,
- * where the project IS skript-ts), then the skript-ts package
- * itself. The package fallback is what lets a consumer project use
- * the CLI from a submodule checkout without bridge-copying the jar
- * into its own root (feedback A3).
+ * The engine directory in effect for a project: the project's own
+ * `engine/` when it carries a built jar (the contributor flow,
+ * where the project IS skript-ts), otherwise the skript-ts
+ * package's `engine/`. The directory is chosen as a unit — jar and
+ * pinned libs always come from the same place — which is what lets
+ * a consumer project use the CLI from a submodule checkout without
+ * bridge-copying the jar into its own root (feedback A3), while a
+ * project that builds its own engine keeps full control (including
+ * running without the PlaceholderAPI companion).
  */
-function engineDirCandidates(rootDir: string): string[] {
+function pickEngineDir(rootDir: string): string {
   const project = join(rootDir, "engine");
   const packaged = join(packageRootDir(), "engine");
-  return project === packaged ? [project] : [project, packaged];
+  if (project === packaged) return project;
+  if (existsSync(join(project, "build", "skript-ts.jar"))) return project;
+  if (existsSync(join(packaged, "build", "skript-ts.jar"))) return packaged;
+  return project;
 }
 
 /**
  * Which engine jar to deploy. An explicit path (the CLI's
- * --engine-jar) always wins; otherwise the first existing jar in
- * the candidate order above. When nothing is built yet, the
+ * --engine-jar) always wins; otherwise the jar from the engine
+ * directory in effect. When nothing is built yet, the
  * project-conventional path is returned so the caller's error
  * message names the documented location.
  */
 export function resolveEngineJar(rootDir: string, explicit?: string): string {
   if (explicit !== undefined) return explicit;
-  for (const dir of engineDirCandidates(rootDir)) {
-    const candidate = join(dir, "build", "skript-ts.jar");
-    if (existsSync(candidate)) return candidate;
-  }
-  return engineJarPath(rootDir);
+  return join(pickEngineDir(rootDir), "build", "skript-ts.jar");
 }
 
-/** The pinned PlaceholderAPI jar, under the same candidate order; null when absent. */
+/** The pinned PlaceholderAPI jar from the engine directory in effect; null when absent. */
 export function resolvePapiLib(rootDir: string): string | null {
-  for (const dir of engineDirCandidates(rootDir)) {
-    const candidate = join(dir, "libs", PAPI_LIBS_JAR);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  const candidate = join(pickEngineDir(rootDir), "libs", PAPI_LIBS_JAR);
+  return existsSync(candidate) ? candidate : null;
 }
 
 export interface InstallEngineOptions {
