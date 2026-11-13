@@ -21,6 +21,7 @@ import type {
   TimeUnit,
   TimespanUnit,
   EventFilter,
+  EventPriority,
   RelativeDirection,
   WeatherName,
   GameModeName,
@@ -250,6 +251,24 @@ export function isOp(target: Expr): Cond {
   return { kind: "isOp", target };
 }
 
+/**
+ * Construct an event-cancelled condition: true when the event
+ * being handled has been flagged cancelled. Skript's form is
+ * `event is cancelled` (the native negation `event is not
+ * cancelled` is used for not(...) and while heads). Probed
+ * against the real Skript 2.17.1: because a handler only ever
+ * runs while the event is not cancelled (see the priority
+ * notes on the event builders), the condition reads false on
+ * entry and becomes true after the handler itself calls
+ * cancelEvent() — and false again after uncancelEvent(). In
+ * an event that cannot be cancelled (respawn, bed leave) it
+ * always reads false; outside an event (a command, a function
+ * body) the engine reads false too.
+ */
+export function eventCancelled(): Cond {
+  return { kind: "eventCancelled" };
+}
+
 /** Construct a send statement. The message may be any expression; text expressions emit as quoted strings. */
 export function send(target: Expr, message: Expr): Stmt {
   return withLoc({ kind: "send", target, message });
@@ -399,6 +418,7 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "contains",
   "startsWith",
   "endsWith",
+  "eventCancelled",
   "bossBarDarkensSky",
   "bossBarCreatesFog",
   "bossBarPlaysBossMusic",
@@ -579,28 +599,29 @@ export function stopTrigger(): Stmt {
 }
 
 /** Construct an on-join event. */
-export function onJoin(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "join", body });
+export function onJoin(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("join", body, options, "onJoin"));
 }
 
 /** Construct an on-first-join event. */
-export function onFirstJoin(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "firstJoin", body });
+export function onFirstJoin(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("firstJoin", body, options, "onFirstJoin"));
 }
 
 /** Construct an on-quit event. */
-export function onQuit(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "quit", body });
+export function onQuit(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("quit", body, options, "onQuit"));
 }
 
 /** Construct an on-chat event. */
-export function onChat(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "chat", body });
+export function onChat(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("chat", body, options, "onChat"));
 }
 
 /** Filter options for onDeath: the victim types of the "of" slot — the death header's only slot (phase 22). */
 export interface DeathEventFilter {
   victim?: TypeNameFilter;
+  priority?: EventPriority;
 }
 
 /**
@@ -619,10 +640,10 @@ export interface DeathEventFilter {
  * victim types ("on death of zombie").
  */
 export function onDeath(body: readonly Stmt[], filter?: DeathEventFilter): TopLevel {
-  requireFilterKeys(filter, ["victim"], "onDeath");
+  requireFilterKeys(filter, ["victim", "priority"], "onDeath");
   const f: EventFilter = {};
   if (filter?.victim !== undefined) f.victimTypes = requireTypeNames(filter.victim, "victim");
-  return withLoc(eventWithFilter("death", body, f));
+  return withLoc(eventWithFilter("death", body, f, requirePriority(filter?.priority, "onDeath")));
 }
 
 // ---------------------------------------------------------------------------
@@ -656,6 +677,23 @@ export function onDeath(body: readonly Stmt[], filter?: DeathEventFilter): TopLe
 // - cancelEvent() prevents the action the event describes (the
 //   block stays, the damage is not applied); uncancelEvent()
 //   undoes a cancellation made earlier in the same event.
+// - Cancellation state and handler priority (probed against
+//   the real Skript 2.17.1, 2026-11-13): a builder's `priority`
+//   option emits Skript's `with priority <level>` header suffix
+//   (after any filter slots). Handlers for one event run from
+//   the lowest slot to monitor; handlers in the same slot run
+//   in declaration order. Probed subtlety (r7): a handler with
+//   NO priority declared dispatches in the HIGH slot, not the
+//   normal one — only an explicit "normal" lands in the normal
+//   slot — and the engine's dispatch mirrors that exactly.
+//   Once the event is cancelled, NO later handler runs at all
+//   (monitor included): a handler only ever starts while the
+//   event is un-cancelled, which is what makes a late-priority
+//   guard pattern work — put the XP/reward handler at a late
+//   priority and a protection handler (or plugin) cancelling
+//   earlier keeps it from ever running. eventCancelled() reads
+//   the live state inside a handler (true after its own
+//   cancelEvent(), false again after uncancelEvent()).
 // - typeOf() yields a value's Skript type name; comparing it
 //   against item("...") literals is the supported way to test
 //   what a block or item is. A missing value has no type.
@@ -663,32 +701,60 @@ export function onDeath(body: readonly Stmt[], filter?: DeathEventFilter): TopLe
 
 /** Construct an on-block-break event: a player breaks a block. The optional filter restricts it to the named block types ("on break of stone"). */
 export function onBlockBreak(body: readonly Stmt[], filter?: BlockEventFilter): TopLevel {
-  return withLoc(eventWithFilter("blockBreak", body, blockFilter(filter, "onBlockBreak")));
+  return withLoc(
+    eventWithFilter(
+      "blockBreak",
+      body,
+      blockFilter(filter, "onBlockBreak"),
+      requirePriority(filter?.priority, "onBlockBreak"),
+    ),
+  );
 }
 
 /** Construct an on-block-place event: a player places a block. The optional filter restricts it to the named block types ("on place of stone"). */
 export function onBlockPlace(body: readonly Stmt[], filter?: BlockEventFilter): TopLevel {
-  return withLoc(eventWithFilter("blockPlace", body, blockFilter(filter, "onBlockPlace")));
+  return withLoc(
+    eventWithFilter(
+      "blockPlace",
+      body,
+      blockFilter(filter, "onBlockPlace"),
+      requirePriority(filter?.priority, "onBlockPlace"),
+    ),
+  );
 }
 
 /** Construct an on-right-click event: a player right-clicks a block, an entity, or air. The optional filter restricts it by clicked block, clicked entity and/or held item ("on right click on a villager with a stick"). */
 export function onRightClick(body: readonly Stmt[], filter?: ClickEventFilter): TopLevel {
-  return withLoc(eventWithFilter("rightClick", body, clickFilter(filter, "onRightClick")));
+  return withLoc(
+    eventWithFilter(
+      "rightClick",
+      body,
+      clickFilter(filter, "onRightClick"),
+      requirePriority(filter?.priority, "onRightClick"),
+    ),
+  );
 }
 
 /** Construct an on-left-click event: a player left-clicks a block or air (attacking an entity is the damage event, not a click). The optional filter restricts it like onRightClick's. */
 export function onLeftClick(body: readonly Stmt[], filter?: ClickEventFilter): TopLevel {
-  return withLoc(eventWithFilter("leftClick", body, clickFilter(filter, "onLeftClick")));
+  return withLoc(
+    eventWithFilter(
+      "leftClick",
+      body,
+      clickFilter(filter, "onLeftClick"),
+      requirePriority(filter?.priority, "onLeftClick"),
+    ),
+  );
 }
 
 /** Construct an on-damage event: an entity takes damage from any cause. The optional filter restricts it by victim and/or attacker type ("on damage of player by zombie"; either side may be filtered alone). */
 export function onDamage(body: readonly Stmt[], filter?: DamageEventFilter): TopLevel {
-  requireFilterKeys(filter, ["victim", "attacker"], "onDamage");
+  requireFilterKeys(filter, ["victim", "attacker", "priority"], "onDamage");
   const f: EventFilter = {};
   if (filter?.victim !== undefined) f.victimTypes = requireTypeNames(filter.victim, "victim");
   if (filter?.attacker !== undefined)
     f.attackerTypes = requireTypeNames(filter.attacker, "attacker");
-  return withLoc(eventWithFilter("damage", body, f));
+  return withLoc(eventWithFilter("damage", body, f, requirePriority(filter?.priority, "onDamage")));
 }
 
 // ---------------------------------------------------------------------------
@@ -730,15 +796,28 @@ export function onDamage(body: readonly Stmt[], filter?: DamageEventFilter): Top
 /** A Skript type name ("stone", "zombie") or a list of names, for one event filter slot. */
 export type TypeNameFilter = string | readonly string[];
 
+/**
+ * Header options for event builders that take no filter: the
+ * handler priority (see EventPriority in ast.ts). Every event
+ * builder accepts a priority — the filtered builders carry it
+ * inside their filter object, the unfiltered ones take this
+ * options object as their second parameter.
+ */
+export interface EventOptions {
+  priority?: EventPriority;
+}
+
 /** Filter options for onBlockBreak / onBlockPlace: the block types of the "of" slot. */
 export interface BlockEventFilter {
   block?: TypeNameFilter;
+  priority?: EventPriority;
 }
 
 /** Filter options for onDamage: the victim types of the "of" slot and the attacker types of the "by" slot. */
 export interface DamageEventFilter {
   victim?: TypeNameFilter;
   attacker?: TypeNameFilter;
+  priority?: EventPriority;
 }
 
 /** Filter options for onRightClick / onLeftClick: the clicked block types ("on"), the clicked entity types ("on") and the held item types ("with"). Block and entity are mutually exclusive — a click has either a block or an entity target. */
@@ -746,11 +825,49 @@ export interface ClickEventFilter {
   block?: TypeNameFilter;
   entity?: TypeNameFilter;
   item?: TypeNameFilter;
+  priority?: EventPriority;
 }
 
 /** Filter options for onPickup / onDrop: the item types of the "of" slot. */
 export interface ItemEventFilter {
   item?: TypeNameFilter;
+  priority?: EventPriority;
+}
+
+const EVENT_PRIORITIES: readonly EventPriority[] = [
+  "lowest",
+  "low",
+  "normal",
+  "high",
+  "highest",
+  "monitor",
+];
+
+/** Validate a builder's priority option: one of the six level names (an unknown name is a Skript parse error, so it is rejected here instead). */
+function requirePriority(
+  priority: EventPriority | undefined,
+  what: string,
+): EventPriority | undefined {
+  if (priority === undefined) return undefined;
+  if (!EVENT_PRIORITIES.includes(priority)) {
+    throw new RangeError(
+      `${what}: unknown event priority "${priority}" (expected one of ${EVENT_PRIORITIES.join(", ")})`,
+    );
+  }
+  return priority;
+}
+
+/** Build an unfiltered event top-level, carrying the priority option when one was given. */
+function plainEvent(
+  event: Extract<TopLevel, { kind: "event" }>["event"],
+  body: readonly Stmt[],
+  options: EventOptions | undefined,
+  what: string,
+): TopLevel {
+  const priority = requirePriority(options?.priority, what);
+  return priority === undefined
+    ? { kind: "event", event, body }
+    : { kind: "event", event, body, priority };
 }
 
 function requireTypeNames(value: TypeNameFilter, slot: string): readonly string[] {
@@ -793,21 +910,23 @@ function eventWithFilter(
     | "entityDrop",
   body: readonly Stmt[],
   filter: EventFilter,
+  priority?: EventPriority,
 ): TopLevel {
-  return Object.keys(filter).length === 0
-    ? { kind: "event", event, body }
-    : { kind: "event", event, body, filter };
+  const top: Extract<TopLevel, { kind: "event" }> = { kind: "event", event, body };
+  if (Object.keys(filter).length !== 0) top.filter = filter;
+  if (priority !== undefined) top.priority = priority;
+  return top;
 }
 
 function blockFilter(filter: BlockEventFilter | undefined, what: string): EventFilter {
-  requireFilterKeys(filter, ["block"], what);
+  requireFilterKeys(filter, ["block", "priority"], what);
   const f: EventFilter = {};
   if (filter?.block !== undefined) f.ofTypes = requireTypeNames(filter.block, "block");
   return f;
 }
 
 function clickFilter(filter: ClickEventFilter | undefined, what: string): EventFilter {
-  requireFilterKeys(filter, ["block", "entity", "item"], what);
+  requireFilterKeys(filter, ["block", "entity", "item", "priority"], what);
   if (filter?.block !== undefined && filter?.entity !== undefined) {
     throw new RangeError(`${what}: a click filter cannot name both a block and an entity target`);
   }
@@ -820,18 +939,18 @@ function clickFilter(filter: ClickEventFilter | undefined, what: string): EventF
 
 /** Construct an on-pickup event: a player picks up an item from the ground. The optional filter restricts it to the named item types ("on pick up of wheat"). */
 export function onPickup(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
-  requireFilterKeys(filter, ["item"], "onPickup");
+  requireFilterKeys(filter, ["item", "priority"], "onPickup");
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
-  return withLoc(eventWithFilter("pickup", body, f));
+  return withLoc(eventWithFilter("pickup", body, f, requirePriority(filter?.priority, "onPickup")));
 }
 
 /** Construct an on-drop event: a player drops an item from their inventory. The optional filter restricts it to the named item types ("on drop of an egg"); cancelling it keeps the item. */
 export function onDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
-  requireFilterKeys(filter, ["item"], "onDrop");
+  requireFilterKeys(filter, ["item", "priority"], "onDrop");
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
-  return withLoc(eventWithFilter("drop", body, f));
+  return withLoc(eventWithFilter("drop", body, f, requirePriority(filter?.priority, "onDrop")));
 }
 
 // ---------------------------------------------------------------------------
@@ -884,63 +1003,67 @@ export function onDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLeve
 
 /** Construct an entity-pickup event: ANY entity (a mob, or a player too) picks up an item. The optional filter restricts it to the named item types ("on entity pick up of wheat"). */
 export function onEntityPickup(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
-  requireFilterKeys(filter, ["item"], "onEntityPickup");
+  requireFilterKeys(filter, ["item", "priority"], "onEntityPickup");
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
-  return withLoc(eventWithFilter("entityPickup", body, f));
+  return withLoc(
+    eventWithFilter("entityPickup", body, f, requirePriority(filter?.priority, "onEntityPickup")),
+  );
 }
 
 /** Construct an entity-drop event: a NON-player entity drops an item (a chicken laying an egg). Player drops are the bare onDrop form. The optional filter restricts it to the named item types ("on entity drop of egg"). */
 export function onEntityDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
-  requireFilterKeys(filter, ["item"], "onEntityDrop");
+  requireFilterKeys(filter, ["item", "priority"], "onEntityDrop");
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
-  return withLoc(eventWithFilter("entityDrop", body, f));
+  return withLoc(
+    eventWithFilter("entityDrop", body, f, requirePriority(filter?.priority, "onEntityDrop")),
+  );
 }
 
 /** Construct a fish-cast event: a player casts a fishing line (state "fishing line cast"). */
-export function onFishCast(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "fishCast", body });
+export function onFishCast(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishCast", body, options, "onFishCast"));
 }
 
 /** Construct a fish-approach event: a fish is approaching the bobber (state "lured"). */
-export function onFishApproach(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "fishApproach", body });
+export function onFishApproach(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishApproach", body, options, "onFishApproach"));
 }
 
 /** Construct a fish-bite event: a fish bites the hook (state "bite"). Reel in promptly or the fish escapes. */
-export function onFishBite(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "fishBite", body });
+export function onFishBite(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishBite", body, options, "onFishBite"));
 }
 
 /** Construct a fish-caught event: the player reels in a fish (state "fish caught"). The caught stack is itemOfEntity(eventEntity()). */
-export function onFishCaught(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "fishCaught", body });
+export function onFishCaught(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishCaught", body, options, "onFishCaught"));
 }
 
 /** Construct an entity-hooked event: the hook catches an entity (state "entity caught"). hookedEntity() / eventEntity() are the caught entity. */
-export function onEntityHooked(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "entityHooked", body });
+export function onEntityHooked(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("entityHooked", body, options, "onEntityHooked"));
 }
 
 /** Construct a hook-in-ground event: the bobber hits the ground (state "bobber in ground"). */
-export function onHookInGround(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "hookInGround", body });
+export function onHookInGround(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("hookInGround", body, options, "onHookInGround"));
 }
 
 /** Construct a fish-escape event: the bite window lapsed without a reel-in and the fish got away (state "fish escape"). */
-export function onFishEscape(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "fishEscape", body });
+export function onFishEscape(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishEscape", body, options, "onFishEscape"));
 }
 
 /** Construct a fish-reel-in event: the player reels the line in without a catch (state "reel in"). */
-export function onFishReelIn(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "fishReelIn", body });
+export function onFishReelIn(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishReelIn", body, options, "onFishReelIn"));
 }
 
 /** Construct a fishing-state-change event: fires for EVERY fishing state; read the state with eventFishingState(). */
-export function onFishingStateChange(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "fishingStateChange", body });
+export function onFishingStateChange(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishingStateChange", body, options, "onFishingStateChange"));
 }
 
 /** Construct an event-entity expression: the entity an entity pickup / drop is about; in fishing events, the caught entity (or the caught Item entity for a fish). */
@@ -993,18 +1116,18 @@ export function itemOfEntity(target: Expr): Expr {
 }
 
 /** Construct an on-respawn event: a player respawns after death. Not cancellable. */
-export function onRespawn(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "respawn", body });
+export function onRespawn(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("respawn", body, options, "onRespawn"));
 }
 
 /** Construct an on-bed-enter event: a player gets into a bed. eventBlock() is the bed; the event is cancellable. */
-export function onBedEnter(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "bedEnter", body });
+export function onBedEnter(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("bedEnter", body, options, "onBedEnter"));
 }
 
 /** Construct an on-bed-leave event: a player gets out of a bed. eventBlock() is the bed; the event is not cancellable. */
-export function onBedLeave(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "bedLeave", body });
+export function onBedLeave(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("bedLeave", body, options, "onBedLeave"));
 }
 
 /** Construct an event-block expression: the block of a block break / place / click event (no value for air clicks). */
@@ -1821,13 +1944,13 @@ export function closeInventory(target: Expr): Stmt {
 }
 
 /** Construct an inventory-click event: fires for every click in an inventory view, with eventItem / eventInventory / slot indices set. */
-export function onInventoryClick(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "inventoryClick", body });
+export function onInventoryClick(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("inventoryClick", body, options, "onInventoryClick"));
 }
 
 /** Construct an inventory-close event: fires when a player closes an inventory view. */
-export function onInventoryClose(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "inventoryClose", body });
+export function onInventoryClose(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("inventoryClose", body, options, "onInventoryClose"));
 }
 
 // ---------------------------------------------------------------------------

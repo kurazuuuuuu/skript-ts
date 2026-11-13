@@ -458,6 +458,15 @@ export type Cond =
   | { kind: "contains"; container: Expr; item: Expr }
   | { kind: "startsWith"; target: Expr; prefix: Expr }
   | { kind: "endsWith"; target: Expr; suffix: Expr }
+  // Event cancellation state (cancellation / priority work,
+  // 2026-11-13): `event is cancelled` — a leaf condition with
+  // the native negated form `event is not cancelled`. Probed
+  // against the real Skript 2.17.1: both forms parse (also as
+  // `the event is cancelled`), including inside events that are
+  // not cancellable (there the state simply reads false). In a
+  // context with no event at all (a command, a function) the
+  // engine reads false; Skript has no event there to ask about.
+  | { kind: "eventCancelled" }
   // Engine-builtin condition (SharpSK slice, phase 7): a named timer exists.
   | { kind: "timerActive"; name: TextExpr }
   // Engine-builtin condition (skUtilities slice, phase 9): a file or
@@ -1043,6 +1052,22 @@ export interface EventFilter {
 }
 
 /**
+ * A handler priority (event cancellation / priority work,
+ * 2026-11-13): the names are Bukkit's EventPriority levels,
+ * spelled the way Skript's `with priority <level>` header suffix
+ * spells them. Handlers for one event run from the lowest slot
+ * to monitor; a handler with NO priority declared dispatches in
+ * the HIGH slot, not the normal one (probed r7 — only an
+ * explicit "normal" lands in the normal slot). Probed against
+ * the real Skript 2.17.1: the suffix
+ * comes AFTER any filter slots ("on damage of zombie with
+ * priority highest"), an unknown level name is a parse error,
+ * and a `priority:` section line inside the body does not
+ * exist (also a parse error).
+ */
+export type EventPriority = "lowest" | "low" | "normal" | "high" | "highest" | "monitor";
+
+/**
  * Represents a Skript command argument type. The set mirrors the
  * classes Skript 2.17.1 accepts in command headers, which it maps
  * onto Brigadier argument types (all probed against the real
@@ -1087,12 +1112,16 @@ export type TopLevel =
   // `prefixes` is set only for the papiRequest event (phase 10): the
   // PlaceholderAPI expansion identifiers this handler serves.
   // `filter` is set only for filtered gameplay events (phase 16).
+  // `priority` is set only when the builder was given one
+  // (cancellation / priority work, 2026-11-13); absent dispatches
+  // in the high slot under both runtimes (probed r7).
   | {
       kind: "event";
       event: EventKind;
       body: readonly Stmt[];
       prefixes?: readonly string[];
       filter?: EventFilter;
+      priority?: EventPriority;
       loc?: SourceLoc;
     }
   // A command (generalized in phase 20): a list of typed arguments

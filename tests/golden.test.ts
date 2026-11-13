@@ -56,6 +56,7 @@ import {
   equals,
   every,
   eventBlock,
+  eventCancelled,
   eventInventory,
   eventItem,
   eventPlayer,
@@ -78,6 +79,7 @@ import {
   healthOf,
   ifElse,
   isEngineOnlyScript,
+  toIr,
   isOp,
   item,
   joinText,
@@ -225,6 +227,7 @@ import { commandsScript } from "../examples/commands.js";
 import { displayScript } from "../examples/display.js";
 import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
+import { priorityScript } from "../examples/priority.js";
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), "utf8");
@@ -269,6 +272,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("timespan", () => {
     expect(emit(timespanScript)).toBe(fixture("timespan.sk"));
+  });
+  it("priority", () => {
+    expect(emit(priorityScript)).toBe(fixture("priority.sk"));
   });
   it("gui", () => {
     expect(emit(guiScript)).toBe(fixture("gui.sk"));
@@ -551,6 +557,70 @@ describe("custom functions (phase 13)", () => {
     ).toThrow(RangeError);
     expect(() => call("bad name")).toThrow(RangeError);
     expect(() => localVar("")).toThrow(RangeError);
+  });
+});
+
+describe("event cancellation state and handler priority (B2, 2026-11-13)", () => {
+  const body = [broadcast(str("x"))];
+  it("priority suffix comes after every filter slot", () => {
+    expect(emit(script(onDamage(body, { priority: "highest" })))).toBe(
+      'on damage with priority highest:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onDamage(body, { victim: "zombie", priority: "lowest" })))).toBe(
+      'on damage of zombie with priority lowest:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onBlockBreak(body, { block: "stone", priority: "high" })))).toBe(
+      'on block break of stone with priority high:\n    broadcast "x"\n',
+    );
+    expect(
+      emit(script(onRightClick(body, { block: "stone", item: "stick", priority: "low" }))),
+    ).toBe('on right click on stone with stick with priority low:\n    broadcast "x"\n');
+    expect(emit(script(onDeath(body, { victim: "zombie", priority: "monitor" })))).toBe(
+      'on death of zombie with priority monitor:\n    broadcast "x"\n',
+    );
+  });
+  it("unfiltered builders take the priority in their options object", () => {
+    expect(emit(script(onJoin(body, { priority: "low" })))).toBe(
+      'on join with priority low:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onRespawn(body, { priority: "monitor" })))).toBe(
+      'on respawn with priority monitor:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onPickup(body, { item: "wheat", priority: "normal" })))).toBe(
+      'on pick up of wheat with priority normal:\n    broadcast "x"\n',
+    );
+    // No priority declared: the header is exactly the old form.
+    expect(emit(script(onJoin(body)))).toBe('on join:\n    broadcast "x"\n');
+    expect(emit(script(onJoin(body, {})))).toBe('on join:\n    broadcast "x"\n');
+  });
+  it("priority validation", () => {
+    expect(() => onDamage(body, { priority: "super" as never })).toThrow(RangeError);
+    expect(() => onJoin(body, { priority: "urgent" as never })).toThrow(RangeError);
+    expect(() => onBlockBreak(body, { priority: "high", bogus: 1 } as never)).toThrow(RangeError);
+  });
+  it("the cancelled condition emits its native leaf forms", () => {
+    expect(
+      emit(script(onDamage([ifElse(eventCancelled(), [broadcast(str("was cancelled"))])]))),
+    ).toBe('on damage:\n    if event is cancelled:\n        broadcast "was cancelled"\n');
+    expect(emit(script(onDamage([ifElse(not(eventCancelled()), [broadcast(str("go"))])])))).toBe(
+      'on damage:\n    if event is not cancelled:\n        broadcast "go"\n',
+    );
+    expect(emit(script(onJoin([whileLoop(eventCancelled(), [broadcast(str("spin"))])])))).toBe(
+      'on join:\n    while event is cancelled:\n        broadcast "spin"\n',
+    );
+  });
+  it("the IR carries the priority and the condition kind", () => {
+    const ir = toIr(script(onDamage(body, { priority: "low" }))) as {
+      body: { priority?: string }[];
+    };
+    expect(ir.body[0]?.priority).toBe("low");
+    const ir2 = toIr(script(onJoin(body))) as { body: Record<string, unknown>[] };
+    expect("priority" in (ir2.body[0] ?? {})).toBe(false);
+    expect(
+      isEngineOnlyScript(
+        script(onDamage([ifElse(eventCancelled(), body)], { priority: "monitor" })),
+      ),
+    ).toBe(false);
   });
 });
 

@@ -541,6 +541,8 @@ function emitLeafCond(c: Cond, negated: boolean): string {
       return negated
         ? `${emitValue(c.target)} does not end with ${emitValue(c.suffix)}`
         : `${emitValue(c.target)} ends with ${emitValue(c.suffix)}`;
+    case "eventCancelled":
+      return negated ? "event is not cancelled" : "event is cancelled";
     case "bossBarDarkensSky":
       return negated
         ? `${emitValue(c.bar)} does not darken the sky`
@@ -1118,24 +1120,29 @@ function andList(values: readonly string[]): string {
   return `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
 }
 
-/** The .sk header line of an event top-level, filter slots included (phase 16). */
+/** The .sk header line of an event top-level, filter slots included (phase 16), plus the `with priority <level>` suffix when the handler declares one (cancellation / priority work, 2026-11-13 — the suffix comes after every filter slot, probed). */
 function eventHeader(t: Extract<TopLevel, { kind: "event" }>): string {
+  const base = eventHeaderBase(t);
+  return t.priority === undefined ? `${base}:` : `${base} with priority ${t.priority}:`;
+}
+
+function eventHeaderBase(t: Extract<TopLevel, { kind: "event" }>): string {
   const f = t.filter;
   switch (t.event) {
     case "join":
-      return "on join:";
+      return "on join";
     case "firstJoin":
-      return "on first join:";
+      return "on first join";
     case "quit":
-      return "on quit:";
+      return "on quit";
     case "chat":
-      return "on chat:";
+      return "on chat";
     case "death":
-      return `on death${f?.victimTypes ? ` of ${typeList(f.victimTypes)}` : ""}:`;
+      return `on death${f?.victimTypes ? ` of ${typeList(f.victimTypes)}` : ""}`;
     case "blockBreak":
-      return `on block break${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+      return `on block break${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}`;
     case "blockPlace":
-      return `on block place${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+      return `on block place${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}`;
     case "rightClick":
     case "leftClick": {
       const base = t.event === "rightClick" ? "on right click" : "on left click";
@@ -1145,49 +1152,49 @@ function eventHeader(t: Extract<TopLevel, { kind: "event" }>): string {
           ? ` on ${typeList(f.onEntityTypes)}`
           : "";
       const withPart = f?.withTypes ? ` with ${typeList(f.withTypes)}` : "";
-      return `${base}${on}${withPart}:`;
+      return `${base}${on}${withPart}`;
     }
     case "damage": {
       const of = f?.victimTypes ? ` of ${typeList(f.victimTypes)}` : "";
       const by = f?.attackerTypes ? ` by ${typeList(f.attackerTypes)}` : "";
-      return `on damage${of}${by}:`;
+      return `on damage${of}${by}`;
     }
     case "pickup":
-      return `on pick up${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+      return `on pick up${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}`;
     case "drop":
-      return `on drop${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+      return `on drop${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}`;
     case "entityPickup":
-      return `on entity pick up${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+      return `on entity pick up${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}`;
     case "entityDrop":
-      return `on entity drop${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}:`;
+      return `on entity drop${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}`;
     case "fishCast":
-      return "on fishing line cast:";
+      return "on fishing line cast";
     case "fishApproach":
-      return "on fish approaching:";
+      return "on fish approaching";
     case "fishBite":
-      return "on fish bite:";
+      return "on fish bite";
     case "fishCaught":
-      return "on fish caught:";
+      return "on fish caught";
     case "entityHooked":
-      return "on entity hooked:";
+      return "on entity hooked";
     case "hookInGround":
-      return "on bobber in ground:";
+      return "on bobber in ground";
     case "fishEscape":
-      return "on fish escape:";
+      return "on fish escape";
     case "fishReelIn":
-      return "on fishing rod reel in:";
+      return "on fishing rod reel in";
     case "fishingStateChange":
-      return "on fishing state change:";
+      return "on fishing state change";
     case "respawn":
-      return "on respawn:";
+      return "on respawn";
     case "bedEnter":
-      return "on bed enter:";
+      return "on bed enter";
     case "bedLeave":
-      return "on bed leave:";
+      return "on bed leave";
     case "inventoryClick":
-      return "on inventory click:";
+      return "on inventory click";
     case "inventoryClose":
-      return "on inventory close:";
+      return "on inventory close";
     default:
       // Engine-only events (ws / timer / papiRequest) are
       // rejected by emitTop before the header is computed.

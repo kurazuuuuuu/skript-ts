@@ -156,6 +156,7 @@ below, not by load checks.
 | `contains(a, b)`                                  | `<a> contains <b>`                        |
 | `startsWith(t, prefix)`                           | `<t> starts with <prefix>`                |
 | `endsWith(t, suffix)`                             | `<t> ends with <suffix>`                  |
+| `eventCancelled()`                                | `event is cancelled`                      |
 | `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | lowered to nested `if`/`else` (see below) |
 
 Comparison semantics (verified against the real Skript 2.17.1,
@@ -460,6 +461,97 @@ places, clicks and damage reports, wheat pickups singled
 out, an undroppable compass, respawns and bed use — and
 `examples/behavior/events2.behavior.ts` drives a bot through
 it under both runtimes.
+
+## Event cancellation state and handler priority
+
+Core language, like everything above: the same script runs
+under Skript and under the engine. Everything here was
+probed against the real Skript 2.17.1 (six one-level damage
+handlers, with and without a cancelling handler among them,
+a dedicated probe for the undeclared handler's dispatch
+slot, plus parse probes for the header shapes).
+
+**Reading the state.** `eventCancelled()` is the condition
+`event is cancelled` (native negation `event is not
+cancelled`; the `the event is cancelled` spelling also
+parses but is not emitted). It is a leaf condition, so it
+works in `ifElse`, in `and`/`or`/`not` logic, and as a
+`whileLoop` head. What it reads is the _live_ state of the
+event being handled — which, given the dispatch rule below,
+means: **false when the handler starts, true after the
+handler itself calls `cancelEvent()`, false again after
+`uncancelEvent()`**. In an event that cannot be cancelled
+(respawn, bed leave) it always reads false — the condition
+parses there too — and outside an event (a command, a
+function body) the engine reads false.
+
+**Priorities.** Every event builder accepts a `priority`:
+the filtered builders carry it in their filter object
+(`onDamage(body, { victim: "zombie", priority: "highest" })`),
+the unfiltered ones in a trailing options object
+(`onJoin(body, { priority: "low" })`). The value is one of
+`"lowest" | "low" | "normal" | "high" | "highest" |
+"monitor"` — anything else is rejected by the builder (an
+unknown level is a parse error in Skript). It emits the
+header suffix `with priority <level>`, always **after**
+every filter slot: `on damage of zombie with priority
+highest:`. With no priority declared the header is exactly
+the old form — but read the dispatch note below before
+assuming where such a handler runs. There is no
+`priority:` section line: that shape is a parse error in
+the original.
+
+**Dispatch order and the skip rule.** Handlers for one
+event run slot by slot — **lowest → low → normal → high →
+highest → monitor** — and handlers in the same slot run in
+declaration order (a first join's `firstJoin` and `join`
+handlers share one ladder). One probed subtlety decides
+where existing code sits on that ladder: **a handler with
+no priority declared dispatches in the _high_ slot, not
+the normal one** — interleaved by declaration order with
+the explicit-`high` handlers. Only an explicit `"normal"`
+lands in the normal slot. (Probed directly: an undeclared
+handler declared before an explicit-`normal` one still ran
+after it, and before an explicit-`highest` one.) And once
+the event is cancelled, **no later handler runs at all** —
+monitor included. A handler only ever starts while the
+event is un-cancelled. That is the mechanic behind the
+safe-zone pattern from real server work: put the guard
+that cancels at an early priority (`lowest`, `low` or
+`normal` — all ahead of the high slot where undeclared
+handlers sit) and the XP/reward handler at `highest` or
+`monitor`, and a cancelled hit never reaches the reward
+handler — no per-module area checks needed. (Reading
+`eventCancelled()` at the top of the late handler and
+stopping is the belt-and-braces form; the skip rule is what
+actually closes the hole.) A handler body suspended by a
+`wait` is the one exception to reason about: the remaining
+handlers start while it waits, as under Skript, so a cancel
+issued only after a wait cannot hold them back.
+
+**One recorded divergence (cross-plugin interleaving).**
+Skript registers each trigger as its own Bukkit listener at
+the trigger's priority, so its handlers interleave with
+_other plugins'_ listeners phase by phase. The engine
+dispatches its whole handler set from its own listeners,
+which are registered at Bukkit's default (normal) priority:
+priorities order the script's handlers among themselves,
+and the skip rule applies inside that set — including the
+case where the event arrives already cancelled by an
+earlier-phase plugin, in which case no handler runs — but
+relative to other plugins the engine acts as one
+normal-phase listener. A protection plugin that cancels at,
+say, the high phase therefore cannot hold back engine
+handlers the way it holds back a high-priority Skript
+trigger.
+
+`examples/priority.ts` exercises all of it — eight damage
+handlers declared out of order around a low-priority guard
+that cancels hits on one named bot, including an undeclared
+handler pinning the high-slot rule — and
+`examples/behavior/priority.behavior.ts` asserts the exact
+broadcast sequence per victim (and the guarded bot's
+untouched health) under both runtimes.
 
 ## Text operations
 

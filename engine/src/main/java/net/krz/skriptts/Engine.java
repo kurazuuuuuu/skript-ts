@@ -39,6 +39,7 @@ import org.bukkit.potion.PotionEffectType;
 import java.time.Duration;
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -611,16 +612,54 @@ final class Engine {
 
     /**
      * Fire an event. A first join matches both "firstJoin" and "join"
-     * handlers, in program declaration order — the same contract the
-     * transpiled .sk files have under Skript.
+     * handlers. Matching handlers run in handler-priority order —
+     * lowest, low, normal (the undeclared default), high, highest,
+     * monitor — with declaration order inside one level (the sort
+     * is stable), and once the event is cancelled NO later handler
+     * runs at all, monitor included. Both rules are the contract
+     * the transpiled .sk files have under Skript, probed against
+     * the real Skript 2.17.1 (six one-level handlers around a
+     * cancelling lowest handler): a handler only ever starts
+     * while the event is un-cancelled, which is also why the
+     * eventCancelled condition can only read true after the
+     * running handler's own cancel.
      */
     void fireEvent(String event, Ctx ctx, boolean firstJoin) {
+        List<Map<String, Object>> handlers = new ArrayList<>();
         for (Map<String, Object> top : topLevels) {
             if (!"event".equals(kind(top))) continue;
             String ev = str(top.get("event"));
             boolean match = ev.equals(event) || (firstJoin && "join".equals(event) && "firstJoin".equals(ev));
-            if (match && filterMatches(top, ctx)) execBlock(list(top.get("body")), ctx);
+            if (match && filterMatches(top, ctx)) handlers.add(top);
         }
+        handlers.sort(Comparator.comparingInt(Engine::priorityRank));
+        for (Map<String, Object> top : handlers) {
+            if (ctx.cancellable != null && ctx.cancellable.isCancelled()) break;
+            execBlock(list(top.get("body")), ctx);
+        }
+    }
+
+    /**
+     * The dispatch rank of a handler's declared priority. Probed
+     * subtlety (r7, real Skript 2.17.1): a handler with NO priority
+     * declared dispatches in the HIGH slot (rank 3), not the normal
+     * one — only an explicit "normal" lands at rank 2. The stable
+     * sort in fireEvent keeps declaration order within a slot, so
+     * undeclared and explicit-high handlers interleave by
+     * declaration order exactly as under Skript.
+     */
+    private static int priorityRank(Map<String, Object> top) {
+        if (top.get("priority") instanceof String p) {
+            return switch (p) {
+                case "lowest" -> 0;
+                case "low" -> 1;
+                case "high" -> 3;
+                case "highest" -> 4;
+                case "monitor" -> 5;
+                default -> 2;
+            };
+        }
+        return 3;
     }
 
     /**
@@ -2534,6 +2573,12 @@ final class Engine {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && p.isOp();
             }
+            // The live cancellation state of the event being
+            // handled; no cancellable event (a non-cancellable
+            // event, a command, a function) reads false — the
+            // same value Skript's `event is cancelled` gives
+            // there (it parses even inside on respawn).
+            case "eventCancelled" -> ctx.cancellable != null && ctx.cancellable.isCancelled();
             case "equals" -> valuesEqual(
                     evalExpr(node(cond.get("left")), ctx), evalExpr(node(cond.get("right")), ctx));
             case "notEquals" -> !valuesEqual(
