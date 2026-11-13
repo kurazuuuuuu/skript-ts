@@ -96,6 +96,8 @@
 | `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                      |
 | `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` など                                           | `%(<a> + <b>)%` など                 |
 | `remainder(a, b)`（5演算子は `arith(op, a, b)` でも可）          | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                    |
+| `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%` |
+| `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                          | `%random integer between <a> and <b>%` |
 | `fmt(...parts)`                                                  | `"<parts>"`                                                  | 外側の文字列に平坦化                 |
 | `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                    |
 | `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%` |
@@ -123,6 +125,20 @@
 （`mod(-1, 10)` は `9`）。除数がゼロのときは NaN です。なお
 `mod()` は 0 代入をしません（被演算子が値なしなら結果も値なし）。
 
+乱数の意味論（本家 Skript 2.17.1 の実挙動で裏取り済み）: 抽選式は
+評価のたびに新しい乱数を引く。シードはなく、どちらの実行系でも
+再現性はない。両端とも数値でなければならない。値なし・数値以外の
+端は「値なし」になる（本家で文字列の端が読み込みエラーになるのは
+リテラルの場合のみで、変数に入った文字列は実行時に値なしになり、
+エンジンと同じ挙動）。逆転した範囲は抽選前に
+入れ替える。`randomNumber` は範囲内一様（両端が等しければその値
+そのもの）。`randomInteger` は閉区間の中にある整数全体から一様に
+引く（下端は切り上げ、上端は切り捨てで内側へ寄せる）。したがって
+`randomInteger(1.5, 3.5)` は {2, 3} から、`randomInteger(-3.5, -1.5)`
+は {-3, -2} から、`randomInteger(1, 3)` は {1, 2, 3} から引く。
+整数を1つも含まない範囲（`randomInteger(1.2, 1.8)`）はエラーでは
+なく「値なし」になる。
+
 注意: `on death` イベントには `player` が存在せず、Skript にエラーとして
 弾かれます（"There's no player in an on death event"）。死亡したプレイヤーは
 `victim()` で表します。これは Skript 2.17.1 での実サーバー検証で見つかった
@@ -149,6 +165,7 @@
 | `contains(a, b)`                                  | `<a> contains <b>`                    |
 | `startsWith(t, prefix)`                           | `<t> starts with <prefix>`            |
 | `endsWith(t, suffix)`                             | `<t> ends with <suffix>`              |
+| `chance(p)`                                       | `chance of <p>`                       |
 | `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | 入れ子の `if`/`else` へ展開（下記）   |
 
 比較の意味論（推測ではなく本家 Skript 2.17.1 の実挙動で裏取り済み）:
@@ -170,6 +187,20 @@
 `does not have permission`）を使い分けます。このサブセットの条件は
 純粋（副作用なし）なので、この展開は意味論的に厳密です。エンジン
 側は `and`/`or`/`not` を直接評価します。
+
+chance の意味論（本家 Skript 2.17.1 の実挙動で裏取り済み）: 引数は
+**割合**で、`chance(0.5)` は半分の確率で成功する。これは本家自身の
+パーセントモデルで、`50%` リテラルは数値 0.5 であり、式の後ろに
+パーセント記号を書く形（`chance of {p}%`）は 100 で割る。1 以上は
+常に成功し、負の値は決して成功せず、値なし・数値以外も成功しない。
+検査のたびに引き直すため、`whileLoop` の頭にも使える（反復ごとに
+再抽選）。非対称な点が1つある。本家には **chance の否定形が存在
+しない**ため、`not(chance(...))` は `if` に else 節がある場合のみ
+展開でき（分岐交換）、なければ明示的なエラーでビルドが失敗する。
+`whileLoop` の頭としての否定 chance は最初から拒否される。（本家
+自身は空の `if chance ...:` 節を読み込み警告だけで受け入れ、それで
+否定を表現することもできるが、skript-ts は警告を出す出力を避けて
+明示的なビルドエラーを選んでいる。）
 
 ## リスト・ループ・while・wait
 

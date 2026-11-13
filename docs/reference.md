@@ -100,6 +100,8 @@ section.
 | `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                      |
 | `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc.                                           | `%(<a> + <b>)%` etc.                 |
 | `remainder(a, b)` (or `arith(op, a, b)` for any of the five)     | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                    |
+| `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%` |
+| `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                          | `%random integer between <a> and <b>%` |
 | `fmt(...parts)`                                                  | `"<parts>"`                                                  | flattened into the enclosing string  |
 | `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                    |
 | `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%` |
@@ -130,6 +132,23 @@ result takes the divisor's sign — `mod(-1, 10)` is `9` — and
 NaN for a zero divisor; `mod()` never substitutes 0 for a
 missing operand (a missing operand makes it valueless).
 
+Randomness semantics (verified against the real Skript 2.17.1):
+every evaluation of a draw expression draws fresh — there is
+no seed, so no draw is reproducible, in either runtime. Both
+bounds must be numbers; a missing or non-number bound yields
+_no value_ (a text bound in the original is a load error only
+when it is a literal — a text held in a variable yields no
+value at run time, exactly as the engine does). Reversed
+bounds are swapped before drawing. `randomNumber` is uniform
+over the range (equal bounds yield the bound itself).
+`randomInteger` draws uniformly over the whole numbers inside
+the closed range — the lower bound fits up and the upper bound
+fits down — so `randomInteger(1.5, 3.5)` draws from {2, 3},
+`randomInteger(-3.5, -1.5)` from {-3, -2}, and
+`randomInteger(1, 3)` from {1, 2, 3}. A range holding no whole
+number (`randomInteger(1.2, 1.8)`) yields _no value_, not an
+error.
+
 Note: in `on death` events there is **no** `player` — Skript rejects it
 ("There's no player in an on death event"). Use `victim()` for the player
 who died. This was caught by the real-server verification stage against
@@ -156,6 +175,7 @@ below, not by load checks.
 | `contains(a, b)`                                  | `<a> contains <b>`                        |
 | `startsWith(t, prefix)`                           | `<t> starts with <prefix>`                |
 | `endsWith(t, suffix)`                             | `<t> ends with <suffix>`                  |
+| `chance(p)`                                       | `chance of <p>`                           |
 | `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | lowered to nested `if`/`else` (see below) |
 
 Comparison semantics (verified against the real Skript 2.17.1,
@@ -180,6 +200,24 @@ swaps branches when an else exists, applies De Morgan over
 (`is not ...`, `does not have permission`). Conditions in this
 subset are pure, so the lowering is semantically exact; the
 engine evaluates `and`/`or`/`not` directly.
+
+Chance semantics (verified against the real Skript 2.17.1):
+the argument is a _fraction_ — `chance(0.5)` succeeds half the
+time. That is the original's own percent model: its `50%`
+literal is the number 0.5, and writing the percent sign after
+an expression (`chance of {p}%`) divides it by 100. A value of
+1 or more always succeeds, a negative value never does, and a
+missing or non-number value never succeeds. Every check draws
+again, so `chance` also works as a `whileLoop` head (each
+iteration re-draws). One asymmetry: the original has **no
+negated chance form**, so `not(chance(...))` lowers only when
+the `if` has an else branch (branch swap); without one the
+build fails with an explicit error, and `whileLoop` rejects a
+negated chance head outright. (The original itself would
+accept an empty `if chance ...:` section with only a load
+warning, which could encode the negation; skript-ts chooses
+the explicit build error over emitting warning-generating
+output.)
 
 ## Lists, loops, while and wait
 
