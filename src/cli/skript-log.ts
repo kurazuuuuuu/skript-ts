@@ -1,5 +1,6 @@
 import type { SourceMapFile } from "../source-map.js";
 import { lookupLine } from "../source-map.js";
+import { stripAnsi } from "./ansi.js";
 
 export interface SkriptParseError {
   file: string;
@@ -37,7 +38,10 @@ export class SkriptLogParser {
   loadedScriptCount: number | null = null;
 
   feed(rawLine: string): void {
-    const message = stripPrefix(rawLine);
+    // Console lines can carry ANSI color escapes (color-capable
+    // terminal, e.g. tmux); the checks below are plain-text phrases
+    // and anchored patterns, so strip escapes before anything else.
+    const message = stripPrefix(stripAnsi(rawLine));
 
     if (message.includes("Finished loading.")) {
       this.phase = "reload";

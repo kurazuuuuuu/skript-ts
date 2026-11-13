@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { stripAnsi } from "./ansi.js";
 
 export interface SandboxServerOptions {
   /** Directory containing paper.jar and the server data files. */
@@ -95,12 +96,19 @@ export class SandboxServer {
   }
 
   private pushLine(line: string): void {
-    this.lines.push(line);
-    this.opts.onLine?.(line);
+    // The server console colorizes its output when the surrounding
+    // terminal advertises color (e.g. the CLI running in a tmux
+    // pane), embedding ANSI escapes inside the logged phrases.
+    // Everything downstream — waitForLine patterns, the Skript log
+    // parser fed through onLine, the buffered log itself — judges
+    // plain text, so strip the escapes once, here at ingestion.
+    const clean = stripAnsi(line);
+    this.lines.push(clean);
+    this.opts.onLine?.(clean);
     const idx = this.lines.length - 1;
     this.waiters = this.waiters.filter((w) => {
       if (idx < w.fromIndex) return true;
-      const m = w.re.exec(line);
+      const m = w.re.exec(clean);
       if (m === null) return true;
       clearTimeout(w.timer);
       w.resolve(m);
