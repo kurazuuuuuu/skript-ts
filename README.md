@@ -34,9 +34,10 @@ behavior tests.
   variables, loops / `while` / `wait`, and custom functions, with
   semantics probed against the real Skript 2.17.1 (never guessed).
 - **Gameplay surface** — events with literal type filters, items /
-  inventories / chest GUIs, world operations and periodical triggers,
-  player state and effects, typed command definitions, titles /
-  action bars / boss bars, and timespans as values.
+  inventories / chest GUIs (including inventory drags, slot
+  add/remove and enchantments), world operations and periodical
+  triggers, player state and effects, typed command definitions,
+  titles / action bars / boss bars, and timespans as values.
 - **Engine builtins** — major addon features reimplemented natively
   inside the engine: a WebSocket client and world borders (MundoSK),
   named timers (SharpSK), SQL data sources (skript-db), a sandboxed
@@ -91,17 +92,18 @@ on join:
     send "Welcome back, %player%" to player
 ```
 
-Sample programs live in [`examples/`](examples/): 26 programs covering
+Sample programs live in [`examples/`](examples/): 28 programs covering
 the welcome flow, kit / spawn / custom commands, a chat-log relay, a
 death counter, the core language (`logic.ts`, `lists.ts`,
 `functions.ts`), gameplay events and filters (`gameplay.ts`,
 `events2.ts`, `events3.ts`), text operations (`text.ts`), items and
-GUIs (`gui.ts`), world operations (`world.ts`), player state
+GUIs (`gui.ts`, `gui2.ts`, plus the engine-only cursor sample
+`gui2cursor.ts`), world operations (`world.ts`), player state
 (`state.ts`), display effects and boss bars (`display.ts`,
 `bossbar.ts`), timespans (`timespan.ts`), HTTP requests and `env()`
 (`http.ts`, `env.ts`), and one sample per engine builtin
 (`mundosk.ts`, `sharpsk.ts`, `skriptdb.ts`, `skutil.ts`, `ersatz.ts`).
-They double as golden-test fixtures, and the 27 behavior suites in
+They double as golden-test fixtures, and the 29 behavior suites in
 [`examples/behavior/`](examples/behavior/) run them against a real
 server in both modes.
 

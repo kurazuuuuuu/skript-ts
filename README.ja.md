@@ -35,9 +35,11 @@ skript-ts には、同じ TypeScript プログラムに対する2つの実行系
   `wait`、カスタム関数。意味論は本家 Skript 2.17.1 への実測で
   確定しています（推測では決めていません）。
 - **ゲームプレイの表面** — リテラル型フィルタ付きイベント、
-  アイテム／インベントリ／チェスト GUI、ワールド操作と周期
-  トリガ、プレイヤー状態とエフェクト、型付きコマンド定義、
-  タイトル／アクションバー／ボスバー、値としてのタイムスパン。
+  アイテム／インベントリ／チェスト GUI（インベントリの
+  ドラッグ、スロットの add/remove、エンチャントを含む）、
+  ワールド操作と周期トリガ、プレイヤー状態とエフェクト、
+  型付きコマンド定義、タイトル／アクションバー／ボスバー、
+  値としてのタイムスパン。
 - **エンジン内蔵機能** — 主要アドオンの機能をエンジンへ
   クリーンルーム再実装しています。WebSocket クライアントと
   ワールドボーダー（MundoSK）、名前付きタイマー（SharpSK）、
@@ -94,19 +96,20 @@ on join:
     send "おかえりなさい、%player% さん" to player
 ```
 
-サンプルプログラムは [`examples/`](examples/) に26本あります。
+サンプルプログラムは [`examples/`](examples/) に28本あります。
 参加ウェルカム、キット／スポーン／カスタムコマンド、チャット
 ログ中継、死亡カウンタ、コア言語（`logic.ts`、`lists.ts`、
 `functions.ts`）、ゲームプレイイベントとフィルタ
 （`gameplay.ts`、`events2.ts`、`events3.ts`）、テキスト操作
-（`text.ts`）、アイテムと GUI（`gui.ts`）、ワールド操作
-（`world.ts`）、プレイヤー状態（`state.ts`）、表示エフェクトと
-ボスバー（`display.ts`、`bossbar.ts`）、タイムスパン
-（`timespan.ts`）、HTTP リクエストと `env()`（`http.ts`、
-`env.ts`）、エンジン内蔵機能ごとのサンプル（`mundosk.ts`、
-`sharpsk.ts`、`skriptdb.ts`、`skutil.ts`、`ersatz.ts`）です。
-ゴールデンテストのフィクスチャを兼ね、
-[`examples/behavior/`](examples/behavior/) の27本の振る舞い
+（`text.ts`）、アイテムと GUI（`gui.ts`、`gui2.ts`、および
+エンジン専用のカーソルサンプル `gui2cursor.ts`）、ワールド
+操作（`world.ts`）、プレイヤー状態（`state.ts`）、表示
+エフェクトとボスバー（`display.ts`、`bossbar.ts`）、
+タイムスパン（`timespan.ts`）、HTTP リクエストと `env()`
+（`http.ts`、`env.ts`）、エンジン内蔵機能ごとのサンプル
+（`mundosk.ts`、`sharpsk.ts`、`skriptdb.ts`、`skutil.ts`、
+`ersatz.ts`）です。ゴールデンテストのフィクスチャを兼ね、
+[`examples/behavior/`](examples/behavior/) の29本の振る舞い
 テストが両モードの実サーバーで検証します。
 
 ## ドキュメント
