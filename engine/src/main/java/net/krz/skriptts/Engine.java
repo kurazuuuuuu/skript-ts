@@ -33,6 +33,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.components.CustomModelDataComponent;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
@@ -3035,6 +3036,50 @@ final class Engine {
                 stack.setAmount(Math.max(0, (int) Math.round(n.doubleValue())));
                 yield stack;
             }
+            case "customItem" -> {
+                // A resolved pack item (RP-2): materialize the base
+                // item and stamp the item_model component, the
+                // registry CustomModelData number (as floats[0])
+                // and the defined display name. An unresolved node
+                // (the build always resolves first) yields no value.
+                String baseItem = (String) expr.get("baseItem");
+                if (baseItem == null) yield null;
+                Material material = Material.matchMaterial(baseItem);
+                if (material == null) yield null;
+                ItemStack stack = new ItemStack(material, 1);
+                ItemMeta meta = stack.getItemMeta();
+                if (meta != null) {
+                    String id = (String) expr.get("id");
+                    if (id != null) {
+                        NamespacedKey key = NamespacedKey.fromString(id);
+                        if (key != null) meta.setItemModel(key);
+                    }
+                    Object cmdValue = expr.get("customModelData");
+                    if (cmdValue instanceof Number cmdNumber) {
+                        CustomModelDataComponent component = meta.getCustomModelDataComponent();
+                        component.setFloats(List.of(cmdNumber.floatValue()));
+                        meta.setCustomModelDataComponent(component);
+                    }
+                    stack.setItemMeta(meta);
+                    Object displayNameValue = expr.get("displayName");
+                    if (displayNameValue instanceof String displayName) {
+                        setDisplayName(stack, displayName);
+                    }
+                }
+                yield stack;
+            }
+            case "itemModelOf" -> {
+                Object targetValue = evalExpr(node(expr.get("target")), ctx);
+                yield targetValue instanceof ItemStack stack ? itemModelStringOf(stack) : null;
+            }
+            case "customModelDataOf" -> {
+                // The probed contract: an item target with no CMD
+                // reads 0; a non-item target has no value.
+                Object targetValue = evalExpr(node(expr.get("target")), ctx);
+                if (!(targetValue instanceof ItemStack stack)) yield null;
+                Float first = cmdFirstFloat(stack);
+                yield first == null ? 0.0 : (double) first.floatValue();
+            }
             case "nameOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 if (target instanceof ItemStack stack) yield displayNameOf(stack);
@@ -4190,7 +4235,8 @@ final class Engine {
      * stack equals a plain one, two differently named stacks
      * differ (names compare case-sensitively, in their §-coded
      * form), and lore compares line by line when both stacks
-     * have lore.
+     * have lore. The item model and the first CustomModelData
+     * float follow the same rule (RP-2 probes).
      */
     private static boolean metaCompatible(ItemStack a, ItemStack b) {
         String aName = displayNameOf(a);
@@ -4199,7 +4245,39 @@ final class Engine {
         Object aLore = loreOf(a);
         Object bLore = loreOf(b);
         if (aLore instanceof List<?> al && bLore instanceof List<?> bl && !al.equals(bl)) return false;
+        // The item model and the first CustomModelData float join
+        // the same both-carry rule (probed for RP-2): each decides
+        // only when BOTH stacks carry it.
+        String aModel = itemModelStringOf(a);
+        String bModel = itemModelStringOf(b);
+        if (aModel != null && bModel != null && !aModel.equals(bModel)) return false;
+        Float aCmd = cmdFirstFloat(a);
+        Float bCmd = cmdFirstFloat(b);
+        if (aCmd != null && bCmd != null && !aCmd.equals(bCmd)) return false;
         return true;
+    }
+
+    /** The stack's item_model component as a `ns:path` string, or null when unset. */
+    private static String itemModelStringOf(ItemStack stack) {
+        if (stack == null) return null;
+        ItemMeta meta = stack.getItemMeta();
+        if (meta != null && meta.hasItemModel()) {
+            NamespacedKey model = meta.getItemModel();
+            return model != null ? model.toString() : null;
+        }
+        return null;
+    }
+
+    /** The stack's first CustomModelData float, or null when it carries none. */
+    private static Float cmdFirstFloat(ItemStack stack) {
+        if (stack == null) return null;
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) return null;
+        CustomModelDataComponent component = meta.getCustomModelDataComponent();
+        if (component == null) return null;
+        List<Float> floats = component.getFloats();
+        if (floats == null || floats.isEmpty()) return null;
+        return floats.get(0);
     }
 
     /**

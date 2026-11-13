@@ -12,6 +12,7 @@ import org.bukkit.boss.KeyedBossBar;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.components.CustomModelDataComponent;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +35,8 @@ import java.util.logging.Logger;
  * Locations are encoded as tagged objects so they survive restarts.
  * Item stacks (phase 17) are encoded as tagged objects too —
  * material, amount, and the display name / lore in §-coded legacy
- * form — while inventories are runtime-only values and are never
+ * form, plus the item model and CustomModelData floats (RP-2) —
+ * while inventories are runtime-only values and are never
  * written (like data sources).
  */
 final class Variables {
@@ -186,6 +188,27 @@ final class Variables {
                     m.put("lore", lines);
                 }
             }
+            // The RP-2 components persist too, so a stored custom
+            // item keeps its model across restarts.
+            if (meta != null && meta.hasItemModel()) {
+                NamespacedKey itemModel = meta.getItemModel();
+                if (itemModel != null) {
+                    m.put("itemModel", itemModel.toString());
+                }
+            }
+            if (meta != null) {
+                CustomModelDataComponent cmdComponent = meta.getCustomModelDataComponent();
+                if (cmdComponent != null) {
+                    List<Float> floats = cmdComponent.getFloats();
+                    if (floats != null && !floats.isEmpty()) {
+                        List<Object> cmdFloats = new ArrayList<>(floats.size());
+                        for (Float f : floats) {
+                            cmdFloats.add(f.doubleValue());
+                        }
+                        m.put("cmdFloats", cmdFloats);
+                    }
+                }
+            }
             return m;
         }
         if (value instanceof Location loc) {
@@ -232,6 +255,27 @@ final class Variables {
                     }
                     meta.lore(lines);
                     touched = true;
+                }
+                if (map.get("itemModel") instanceof String itemModel) {
+                    NamespacedKey itemModelKey = NamespacedKey.fromString(itemModel);
+                    if (itemModelKey != null) {
+                        meta.setItemModel(itemModelKey);
+                        touched = true;
+                    }
+                }
+                if (map.get("cmdFloats") instanceof List<?> rawCmdFloats) {
+                    List<Float> cmdFloats = new ArrayList<>(rawCmdFloats.size());
+                    for (Object rawCmdFloat : rawCmdFloats) {
+                        if (rawCmdFloat instanceof Number number) {
+                            cmdFloats.add(number.floatValue());
+                        }
+                    }
+                    CustomModelDataComponent cmdComponent = meta.getCustomModelDataComponent();
+                    if (cmdComponent != null && !cmdFloats.isEmpty()) {
+                        cmdComponent.setFloats(cmdFloats);
+                        meta.setCustomModelDataComponent(cmdComponent);
+                        touched = true;
+                    }
                 }
                 if (touched) stack.setItemMeta(meta);
             }
