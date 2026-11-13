@@ -363,6 +363,17 @@ final class Engine {
     private List<Map<String, Object>> topLevels = List.of();
     /** Custom functions (phase 13) by exact, case-sensitive name; overloads share a name. */
     private Map<String, List<Map<String, Object>>> functions = Map.of();
+    /**
+     * Whether a player value used as a variable index keys by the
+     * player's UUID (true, the default) or by their name (the
+     * legacy form). UUID keying means a player who renames keeps
+     * their stored data; name keying orphans it under the old
+     * name. The plugin sets this from config.json
+     * (variables.playerKeysUseUuid) before scripts load. Display
+     * is unaffected either way: a player still prints as their
+     * name everywhere except inside a storage key.
+     */
+    private boolean playerKeysUseUuid = true;
     private WsHost wsHost;
     private HttpHost httpHost;
     private CfHost cfHost;
@@ -389,6 +400,11 @@ final class Engine {
     Engine(Variables variables, Logger logger) {
         this.variables = variables;
         this.logger = logger;
+    }
+
+    /** Select the variable key form for player indices (called by the plugin on enable). */
+    void setPlayerKeysUseUuid(boolean useUuid) {
+        this.playerKeysUseUuid = useUuid;
     }
 
     /** Install the WebSocket host (called by the plugin on enable). */
@@ -3960,7 +3976,8 @@ final class Engine {
      * Variable storage key: "name" or "name::index". Names and text
      * indices are lowercased, matching Skript (its variable store
      * is case-insensitive: {l::"B"} and {l::"b"} are one entry, and
-     * a player-named index does not depend on the name's case).
+     * a player-named index does not depend on the name's case). A
+     * player index keys by UUID by default — see indexSegment.
      */
     private String varKey(Map<String, Object> varNode, Ctx ctx) {
         String name = str(varNode.get("name")).toLowerCase(Locale.ROOT);
@@ -3987,10 +4004,23 @@ final class Engine {
      * hand-written .sk text are a different node in Skript — its
      * name keeps the quotes — but the emitter only ever produces
      * expression indices, so that world is unreachable here.)
+     *
+     * A player index stores as the player's UUID while
+     * playerKeysUseUuid holds (the default): the same segment the
+     * original produces with its "use player UUIDs in variable
+     * names" setting, so {growth::%player%} survives a rename.
+     * With the legacy name form selected, a player index goes
+     * through the string form like any other value (their name,
+     * lowercased — including the numeric-name canonicalization
+     * above, so a player named "42" keys as the number 42).
      */
-    static String indexSegment(Object index) {
+    String indexSegment(Object index) {
         if (index == null) return "";
         if (index instanceof Number n) return formatNumber(n.doubleValue());
+        if (playerKeysUseUuid && index instanceof OfflinePlayer op) {
+            // Player is an OfflinePlayer; both key by UUID here.
+            return op.getUniqueId().toString();
+        }
         String s = stringify(index).toLowerCase(Locale.ROOT);
         Double numeric = parseNumberText(s);
         return numeric != null ? formatNumber(numeric) : s;

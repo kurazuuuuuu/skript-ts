@@ -122,6 +122,50 @@ final class Variables {
         }
     }
 
+    /**
+     * One-time migration of player-name key segments to UUID
+     * segments, run by the plugin after load while UUID keying is
+     * in effect. Every index segment (the segments after the
+     * variable name — a player only ever appears as an index,
+     * never as the variable name itself) that exactly equals a
+     * known player's name (the map's keys are lowercased names,
+     * like all store segments; the plugin only maps names that
+     * belong to exactly one UUID) is replaced by that player's
+     * UUID. Nothing is deleted: an entry whose migrated key
+     * already exists stays under its name key and is counted as a
+     * conflict, and segments matching no known player stay as
+     * they are — such data remains reachable by selecting the
+     * legacy name-keying option. A text index that merely equals
+     * a player's name is indistinguishable from a player index
+     * in this store format and migrates with it.
+     * Returns {moved, conflicts}; saves once if anything moved.
+     */
+    synchronized int[] migratePlayerNameKeys(Map<String, String> nameToUuid) {
+        int moved = 0;
+        int conflicts = 0;
+        for (String key : new ArrayList<>(values.keySet())) {
+            String[] segments = key.split("::", -1);
+            boolean changed = false;
+            for (int i = 1; i < segments.length; i++) {
+                String uuid = nameToUuid.get(segments[i]);
+                if (uuid != null && !uuid.equals(segments[i])) {
+                    segments[i] = uuid;
+                    changed = true;
+                }
+            }
+            if (!changed) continue;
+            String newKey = String.join("::", segments);
+            if (values.containsKey(newKey)) {
+                conflicts++;
+                continue;
+            }
+            values.put(newKey, values.remove(key));
+            moved++;
+        }
+        if (moved > 0) save();
+        return new int[] {moved, conflicts};
+    }
+
     synchronized void save() {
         try {
             Map<String, Object> out = new LinkedHashMap<>();
