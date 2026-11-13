@@ -3110,6 +3110,36 @@ final class Engine {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 yield target instanceof Item itemEntity ? itemEntity.getItemStack() : null;
             }
+            // The player's tool (held item): the MAIN hand's
+            // stack, read live — not an event value, so in a
+            // block break this is the digging tool while
+            // event-item is the broken block in item form. The
+            // stack is returned exactly as Bukkit reports it,
+            // AIR included: Skript's own tool expression reads
+            // an empty hand as the air item type (verified on a
+            // real server — a bare-handed break broadcasts
+            // "tool: air"), NOT as no value, so normalizing air
+            // away here would diverge from the .sk runtime.
+            // Only a non-player target has no value. As with
+            // event items the stack is live; the meta writers
+            // clone before rewriting.
+            case "toolOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof Player p
+                        ? p.getInventory().getItemInMainHand()
+                        : null;
+            }
+            // The OFF hand's stack, under exactly the toolOf
+            // rules above: Skript's `offhand tool of %player%`
+            // reads an empty off hand as the air item type too
+            // (probed on the real server alongside the main
+            // hand), so the stack is returned unnormalized.
+            case "offHandToolOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof Player p
+                        ? p.getInventory().getItemInOffHand()
+                        : null;
+            }
             case "attacker" -> ctx.attacker;
             case "damageAmount" -> ctx.damageEvent == null ? null : ctx.damageEvent.getDamage();
             case "damageCause" -> ctx.damageEvent == null

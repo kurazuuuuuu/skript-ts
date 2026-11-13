@@ -24,9 +24,11 @@ import {
   param,
   player,
   returnValue,
+  offHandToolOf,
   script,
   setDamage,
   str,
+  toolOf,
   typeOf,
   victim,
 } from "../src/index.js";
@@ -35,7 +37,10 @@ import {
 // place, right / left click, damage — with their event values
 // (event block / item, victim / attacker, damage amount / cause),
 // event control (cancel event, set damage), and the block / item /
-// entity function parameter types. Entirely core constructs, so
+// entity function parameter types. The break report also names
+// both hands via toolOf(player()) / offHandToolOf(player()) —
+// in a break, event-item is the broken block in item form,
+// never the tool in hand. Entirely core constructs, so
 // it runs under both runtimes: dirt cannot be broken and stone
 // cannot be placed (both are cancelled), clicks are announced, and
 // damage is reported — ShieldBot takes no damage at all and
@@ -62,6 +67,10 @@ export const gameplayScript: Script = script(
             call("blockLabel", eventBlock()),
             " (block item: ",
             call("itemLabel", eventItem()),
+            ", tool: ",
+            call("itemLabel", toolOf(player())),
+            ", off hand: ",
+            call("itemLabel", offHandToolOf(player())),
             ")",
           ),
         ),

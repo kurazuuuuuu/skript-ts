@@ -114,6 +114,7 @@ import {
   notEquals,
   now,
   num,
+  offHandToolOf,
   onBedEnter,
   onBedLeave,
   onBlockBreak,
@@ -189,6 +190,7 @@ import {
   textLength,
   times,
   timespan,
+  toolOf,
   typeOf,
   uncancelEvent,
   unixTimestamp,
@@ -358,6 +360,38 @@ describe("gameplay events (phase 14)", () => {
   it("type-of parenthesizes an arithmetic operand", () => {
     expect(emit(script(onDamage([set(variable("t"), typeOf(plus(num(1), num(2))))])))).toBe(
       "on damage:\n    set {t} to type of ((1 + 2))\n",
+    );
+  });
+  it("the player's tool in value position and interpolated", () => {
+    expect(
+      emit(
+        script(
+          onBlockBreak([
+            set(variable("t"), toolOf(player())),
+            broadcast(fmt("tool: ", toolOf(player()))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on block break:\n" +
+        "    set {t} to tool of player\n" +
+        "    broadcast \"tool: %tool of player%\"\n",
+    );
+  });
+  it("the player's off-hand tool in value position and interpolated", () => {
+    expect(
+      emit(
+        script(
+          onBlockBreak([
+            set(variable("t"), offHandToolOf(player())),
+            broadcast(fmt("offhand: ", offHandToolOf(player()))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on block break:\n" +
+        "    set {t} to offhand tool of player\n" +
+        "    broadcast \"offhand: %offhand tool of player%\"\n",
     );
   });
   it("cancel, uncancel and set damage statements", () => {

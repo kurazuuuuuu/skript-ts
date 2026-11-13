@@ -262,6 +262,17 @@ export type Expr =
   //   and the raw index within the whole view (top inventory
   //   first) — Skript's `index of event-slot` and `raw index of
   //   event-slot`.
+  // - toolOf / offHandToolOf read the item in a player's MAIN /
+  //   OFF hand (`tool of %player%` / `offhand tool of %player%`,
+  //   Skript's player-tool expressions). They are NOT event
+  //   values — they read the live hand in any context that has a
+  //   player (in a block break the main hand is the digging tool,
+  //   where event-item is the broken block in item form instead).
+  //   An empty hand reads as the AIR item here, NOT as no value
+  //   (probed on the real Skript: both hands report "0 airs",
+  //   type "air") — the deliberate contrast with event-item,
+  //   whose empty hand is absent. Only a non-player target has
+  //   no value.
   | { kind: "itemWithName"; base: Expr; name: Expr }
   | { kind: "itemWithLore"; base: Expr; lines: readonly Expr[] }
   | { kind: "itemWithAmount"; base: Expr; amount: Expr }
@@ -288,6 +299,8 @@ export type Expr =
   | { kind: "nameOf"; target: Expr }
   | { kind: "loreOf"; target: Expr }
   | { kind: "amountOf"; target: Expr }
+  | { kind: "toolOf"; target: Expr }
+  | { kind: "offHandToolOf"; target: Expr }
   | { kind: "chestInventory"; rows: Expr; title?: Expr }
   | { kind: "currentInventory"; target: Expr }
   | { kind: "eventInventory" }
