@@ -94,6 +94,8 @@ section.
 | `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                  |
 | `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                      |
 | `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                       |
+| `toolOf(target)`                                                 | `tool of <target>`                                           | `%tool of <target>%`                 |
+| `offHandToolOf(target)`                                          | `offhand tool of <target>`                                   | `%offhand tool of <target>%`         |
 | `attacker()`                                                     | `attacker`                                                   | `%attacker%`                         |
 | `damageAmount()`                                                 | `damage`                                                     | `%damage%`                           |
 | `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                     |
@@ -334,6 +336,19 @@ scripts and the behavior test):
   (pinned live: digging grass with a sword in hand reported
   `grass block`). An empty hand means the value is _absent_ —
   inside a string it reads `<none>`, not `air`.
+- `toolOf(player())` is the item in the player's **main hand** —
+  the tool the event-item of a break is not. It is not an event
+  value: it reads the live hand in any context that has a player
+  value, so a break handler can write the two apart (the
+  behavior test pins it: digging grass with a diamond sword in
+  hand reports block item `grass block` and tool
+  `diamond sword`). `offHandToolOf(player())` is the same read
+  for the **off hand**. An empty hand reads as the `air` item
+  here — unlike the event-item above, whose empty hand has no
+  value at all: the tool expressions follow Skript's
+  player-tool expression, whose empty hand is air (probed on
+  the real Skript: both hands report `0 airs`, type `air`).
+  Only a non-player target has no value.
 - In damage events, `victim()` is the entity taking damage and
   `attacker()` the entity that caused it; `attacker()` has no
   value for environmental damage (fall, lava, ...). The bare
@@ -587,6 +602,16 @@ clicking through a live GUI; see the development log):
   variable with no item value is left untouched.
   `giveItem(player, item)` hands an item-valued
   expression (meta included) to a player.
+- **Held items**: `toolOf(player)` is the item in the
+  player's main hand (`tool of %player%`, Skript's
+  player-tool expression) and `offHandToolOf(player)` the
+  item in the off hand (`offhand tool of %player%`). An
+  empty hand reads as the `air` item (the tool expressions
+  have a value for an empty hand; event-item does not).
+  They read the live hand wherever a player value exists;
+  in a block break the main-hand read is the digging tool,
+  where `eventItem()` is the broken block instead (see the
+  gameplay events section).
 - **Inventories as values**: `chestInventory(rows[,
   title])` creates a fresh virtual chest inventory (rows
   clamp to 1..6) that exists independently of any

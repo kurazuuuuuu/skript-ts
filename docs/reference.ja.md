@@ -90,6 +90,8 @@
 | `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                  |
 | `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                      |
 | `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                       |
+| `toolOf(target)`                                                 | `tool of <target>`                                           | `%tool of <target>%`                 |
+| `offHandToolOf(target)`                                          | `offhand tool of <target>`                                   | `%offhand tool of <target>%`         |
 | `attacker()`                                                     | `attacker`                                                   | `%attacker%`                         |
 | `damageAmount()`                                                 | `damage`                                                     | `%damage%`                           |
 | `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                     |
@@ -312,6 +314,20 @@ wait）、`examples/behavior/functions.behavior.ts` が両ランタイムで
   剣を持って草を掘っても `grass block` と報告されました）。
   空手のとき値は**存在せず**、文字列の中では `air` ではなく
   `<none>` と読めます。
+- `toolOf(player())` は、プレイヤーの**メインハンド**の
+  アイテムです。破壊の event-item が指していない
+  「道具」そのものです。イベント値ではなく、
+  プレイヤー値がある文脈ならどこでも手の内容を読みます。
+  そのため破壊ハンドラでは両者を書き分けられます
+  （振る舞いテストで確定：ダイヤの剣を持って草を掘ると、
+  ブロックアイテムは `grass block`、道具は `diamond sword`
+  と報告されます）。`offHandToolOf(player())` は
+  **オフハンド**について同じ読み取りをします。空手では
+  `air` のアイテムとして読めます（上の event-item が
+  値なしになるのとは対照的です。本家の player-tool 式の
+  意味論で、実 Skript でプローブ済み：両手とも `0 airs`、
+  型は `air` と報告されます）。プレイヤーでない対象
+  だけが値なしです。
 - ダメージイベントでは `victim()` がダメージを受ける
   エンティティ、`attacker()` が与えたエンティティです。
   `attacker()` は環境ダメージ（落下、溶岩など）では値なし
@@ -568,6 +584,15 @@ Skript（生成された `.sk`）でもエンジン jar でも動きます。
   保持していれば先に実体化され、アイテム値を持たない
   変数は変更されません。`giveItem(player, item)` は
   アイテム式（メタ込み）をプレイヤーへ渡します。
+- **手持ちアイテム**: `toolOf(player)` はプレイヤーの
+  メインハンドのアイテム（`tool of %player%`、本家の
+  player-tool 式）、`offHandToolOf(player)` はオフハンドの
+  アイテムです（`offhand tool of %player%`）。空手では
+  `air` のアイテムとして読めます（道具の式は空手でも
+  値を持ち、event-item は値なしになります）。プレイヤー値が
+  ある文脈で手の内容をそのまま読み、ブロック破壊では
+  メインハンドが掘っている道具を返します（`eventItem()` は
+  壊したブロックを返す。ゲームプレイイベントの節を参照）。
 - **値としてのインベントリ**: `chestInventory(rows[,
   title])` は新しい仮想チェストインベントリを作ります
   （行数は 1..6 に丸め）。プレイヤーとは独立に存在します。

@@ -1697,6 +1697,13 @@ export function replaceFirstIn(
 //   a scalar variable holds; a variable holding a bare type name
 //   is materialized first, and a variable with no item value is
 //   left untouched.
+// - toolOf / offHandToolOf read the item in a player's main /
+//   off hand (Skript's player-tool expressions). They are not
+//   event values: they read the live hand wherever a player
+//   value exists, so inside a block break the main hand yields
+//   the digging tool while eventItem() yields the broken block
+//   in item form. An empty hand reads as the air item — unlike
+//   eventItem(), whose empty hand has no value.
 // - chestInventory builds a fresh virtual chest inventory (rows
 //   are clamped to 1..6 by the runtimes) that can be filled via
 //   setSlot before or after openInventory shows it.
@@ -1743,6 +1750,16 @@ export function loreOf(target: Expr): Expr {
 /** Construct an amount-of expression: a stack's size (or a list's size). */
 export function amountOf(target: Expr): Expr {
   return { kind: "amountOf", target };
+}
+
+/** Construct a tool-of expression: the item in the player's main hand (`tool of %player%`). An empty hand reads as an air item, exactly like Skript's tool expression; only a non-player target has no value. In a block break this is the digging tool — eventItem() there is the broken block in item form, not the tool. */
+export function toolOf(target: Expr): Expr {
+  return { kind: "toolOf", target };
+}
+
+/** Construct an off-hand tool-of expression: the item in the player's off hand (`offhand tool of %player%`). The same value rules as toolOf: an empty off hand reads as an air item, and only a non-player target has no value. This is the typed read that replaces scanning slot 40 of the inventory by hand. */
+export function offHandToolOf(target: Expr): Expr {
+  return { kind: "offHandToolOf", target };
 }
 
 /** Construct a chest-inventory expression: a fresh virtual chest inventory with the given rows (1..6) and optional title. */

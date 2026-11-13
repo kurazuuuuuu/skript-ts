@@ -114,11 +114,15 @@ export default defineBehavior(async (t) => {
     // Left click + break: digging the block below fires the click
     // at dig start and the break at completion. The empty hand's
     // event-item has no value under Skript (pinned live: it reads
-    // <none>, not "air").
+    // <none>, not "air") — but the held-item reads are the other
+    // way: toolOf / offHandToolOf follow Skript's tool expression,
+    // whose empty hand is the air item (probed on the real
+    // Skript: both hands report type "air"), so the break
+    // report's two hand slots read "air" here.
     let m = bot.messages.length;
     await bot.digAt(bx, by - 1, bz);
     await waitNew(bot, m, "GameBot left clicked grass block with <none>", 8000);
-    await waitNew(bot, m, "GameBot broke grass block (block item: grass block)", 8000);
+    await waitNew(bot, m, "GameBot broke grass block (block item: grass block, tool: air, off hand: air)", 8000);
     expectBlock(bot, bx, by - 1, bz, null);
 
     // Restore the platform and put the bot back at grade.
@@ -129,6 +133,34 @@ export default defineBehavior(async (t) => {
     const cx = Math.floor(pos2.x);
     const cy = Math.floor(pos2.y);
     const cz = Math.floor(pos2.z);
+
+    // Break with both hands filled: the same break message now
+    // writes the three values side by side — event-item is the
+    // broken block in item form (grass block), toolOf(player())
+    // is the tool in the main hand (diamond sword), and
+    // offHandToolOf(player()) is the shield in the off hand.
+    // Writing them apart is what an mcMMO-style skill check
+    // needs: the skill keys off the block, the tool comes from
+    // the hand. (The dig's left click also fires first and
+    // reports the sword as its hand item; only the break line is
+    // asserted here.)
+    await t.console("give GameBot diamond_sword 1");
+    await bot.equipItem("diamond_sword");
+    await t.console("item replace entity GameBot weapon.offhand with minecraft:shield");
+    m = bot.messages.length;
+    await bot.digAt(cx, cy - 1, cz);
+    await waitNew(
+      bot,
+      m,
+      "GameBot broke grass block (block item: grass block, tool: diamond sword, off hand: shield)",
+      8000,
+    );
+    expectBlock(bot, cx, cy - 1, cz, null);
+    await t.console("item replace entity GameBot weapon.offhand with minecraft:air");
+    // Restore the dug cell for the sections below.
+    await t.console("fill 198 -61 198 202 -61 202 grass_block");
+    await t.console("tp GameBot 200.5 -60 200.5");
+    await t.sleep(600);
 
     // Right click on a block with a stick in hand.
     await t.console("give GameBot stick 1");

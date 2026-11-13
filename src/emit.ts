@@ -84,6 +84,14 @@ function emitValue(e: Expr): string {
       return e.target.kind === "arith"
         ? `item of (${emitValue(e.target)})`
         : `item of ${emitValue(e.target)}`;
+    case "toolOf":
+      return e.target.kind === "arith"
+        ? `tool of (${emitValue(e.target)})`
+        : `tool of ${emitValue(e.target)}`;
+    case "offHandToolOf":
+      return e.target.kind === "arith"
+        ? `offhand tool of (${emitValue(e.target)})`
+        : `offhand tool of ${emitValue(e.target)}`;
     case "attacker":
       return "attacker";
     case "damageAmount":
@@ -359,6 +367,8 @@ function emitString(e: Expr): string {
     case "eventFishingState":
     case "droppedItemEntity":
     case "itemOfEntity":
+    case "toolOf":
+    case "offHandToolOf":
     case "attacker":
     case "damageAmount":
     case "damageCause":

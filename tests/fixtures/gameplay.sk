@@ -12,7 +12,7 @@ on block break:
         broadcast "break blocked for %player%"
         cancel event
     else:
-        broadcast "%player% broke %blockLabel(event-block)% (block item: %itemLabel(event-item)%)"
+        broadcast "%player% broke %blockLabel(event-block)% (block item: %itemLabel(event-item)%, tool: %itemLabel(tool of player)%, off hand: %itemLabel(offhand tool of player)%)"
 
 on block place:
     if type of event-item is stone:
