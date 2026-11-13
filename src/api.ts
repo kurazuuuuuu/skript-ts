@@ -31,6 +31,7 @@ import type {
   FishingStateName,
 } from "./ast.js";
 import { captureLoc } from "./loc.js";
+import type { ItemDef } from "./resourcepack.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
 function withLoc<T extends Stmt | TopLevel>(node: T): T {
@@ -1728,6 +1729,57 @@ export function withLore(base: Expr, ...lines: Expr[]): Expr {
 /** Construct a counted-item expression: a stack of the item (`<count> of <item>`). */
 export function withAmount(base: Expr, amount: Expr): Expr {
   return { kind: "itemWithAmount", base, amount };
+}
+
+// ---------------------------------------------------------------------------
+// Resource pack custom items (RP-2)
+//
+// customItem(ref) references an item defined by the project's
+// resource pack (defineItem). The reference is by id as written
+// (a bare path resolves against the pack namespace) or by passing
+// the ItemDef itself. The node is UNRESOLVED at script-build time;
+// the project build resolves it against the pack — filling the
+// resolved item id (the item_model component), the base item, the
+// registry CustomModelData number and the defined display name —
+// before emit/IR. Using it in a project with no matching pack item
+// is a build error. Compose with the phase-17 suffixes and give:
+// withAmount(customItem("gem"), num(3)), giveItem(player, ...).
+// itemModelOf / customModelDataOf read the components back off any
+// item value: no value when no item model is set, 0 when no custom
+// model data is set (the probed Skript 2.17.1 forms).
+// ---------------------------------------------------------------------------
+
+/**
+ * Reference a custom item from the project's resource pack.
+ *
+ * The node is UNRESOLVED at script-build time. The project build resolves
+ * `ref` against the project's resource pack, filling `id`, `baseItem`,
+ * `customModelData`, and `displayName`, before Skript emit/IR.
+ */
+export function customItem(ref: string | ItemDef): Expr {
+  let value: string;
+  if (typeof ref === "string") {
+    if (ref.length === 0) {
+      throw new RangeError("customItem: ref must be a non-empty string");
+    }
+    value = ref;
+  } else {
+    if (ref.kind !== "item") {
+      throw new RangeError('customItem: ItemDef must have kind "item"');
+    }
+    value = ref.id;
+  }
+  return { kind: "customItem", ref: value };
+}
+
+/** Construct an item-model-of expression: the item's `item_model` component id (no value when unset). */
+export function itemModelOf(target: Expr): Expr {
+  return { kind: "itemModelOf", target };
+}
+
+/** Construct a custom-model-data-of expression: the item's first CustomModelData float as a number (0 when unset). */
+export function customModelDataOf(target: Expr): Expr {
+  return { kind: "customModelDataOf", target };
 }
 
 /** Construct a name-of expression: an item's custom name, an inventory's title, or a player's name. */

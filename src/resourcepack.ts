@@ -200,6 +200,14 @@ export interface ItemInput {
   texture?: TextureDef | string;
   model?: string;
   modelParent?: string;
+  /**
+   * Explicit CustomModelData number request (RP-2). When omitted the
+   * build allocates the next registry number (append-only). An
+   * explicit number that collides with another item's allocation —
+   * including a number reserved by a since-deleted definition — is a
+   * build error.
+   */
+  customModelData?: number;
 }
 
 export interface ItemDef {
@@ -210,6 +218,7 @@ export interface ItemDef {
   texture?: TextureDef | string;
   model?: string;
   modelParent?: string;
+  customModelData?: number;
 }
 
 export interface FontCharInput {
@@ -473,9 +482,25 @@ export function defineItem(input: ItemInput): ItemDef {
     fail(`${where}: displayName must be a string, got ${describe(displayName)}`);
   }
 
+  const customModelData: unknown = input.customModelData;
+  if (customModelData !== undefined) {
+    if (
+      typeof customModelData !== "number" ||
+      !Number.isInteger(customModelData) ||
+      customModelData < 1
+    ) {
+      fail(
+        `${where}: customModelData must be a positive integer, got ${describe(customModelData)}`,
+      );
+    }
+  }
+
   const def: ItemDef = { kind: "item", id: itemId, baseItem };
   if (displayName !== undefined) {
     def.displayName = displayName;
+  }
+  if (customModelData !== undefined) {
+    def.customModelData = customModelData as number;
   }
   if (normalizedTexture !== undefined) {
     def.texture = normalizedTexture;

@@ -251,6 +251,26 @@ export type Expr =
   | { kind: "itemWithName"; base: Expr; name: Expr }
   | { kind: "itemWithLore"; base: Expr; lines: readonly Expr[] }
   | { kind: "itemWithAmount"; base: Expr; amount: Expr }
+  // Resource pack custom items (RP-2). customItem starts
+  // UNRESOLVED: only `ref` (the pack item's id as written, or the
+  // ItemDef's id) is set by the builder. The project build resolves
+  // it against the project's pack (src/resolve.ts) and fills `id`
+  // (the resolved item id = the item_model component value),
+  // `baseItem`, `customModelData` (the registry number) and
+  // `displayName` before emit/IR; emit and the engine refuse an
+  // unresolved node. itemModelOf / customModelDataOf read the two
+  // components back off any item value (no value / 0 when unset,
+  // matching the probed Skript 2.17.1 forms).
+  | {
+      kind: "customItem";
+      ref: string;
+      id?: string;
+      baseItem?: string;
+      customModelData?: number;
+      displayName?: string;
+    }
+  | { kind: "itemModelOf"; target: Expr }
+  | { kind: "customModelDataOf"; target: Expr }
   | { kind: "nameOf"; target: Expr }
   | { kind: "loreOf"; target: Expr }
   | { kind: "amountOf"; target: Expr }

@@ -458,6 +458,51 @@ describe("generatePack", () => {
   });
 });
 
+describe("manifest items (RP-2)", () => {
+  it("records each item with its resolved ids and no number by default", () => {
+    const { manifest } = sampleGenerated();
+    expect(manifest.items).toEqual([
+      {
+        id: "example:gem",
+        baseItem: "minecraft:amethyst_shard",
+        model: "example:item/gem",
+      },
+    ]);
+  });
+
+  it("records the allocated registry number when allocations are given", () => {
+    const { pack, coinPng } = samplePack();
+    const { manifest } = generatePack(pack, () => coinPng, {
+      customModelData: new Map([["example:gem", 7]]),
+    });
+    expect(manifest.items).toEqual([
+      {
+        id: "example:gem",
+        baseItem: "minecraft:amethyst_shard",
+        model: "example:item/gem",
+        customModelData: 7,
+      },
+    ]);
+  });
+
+  it("validates an explicit customModelData on defineItem", () => {
+    const gem = gemTexture();
+    expect(() =>
+      defineItem({ id: "bad", baseItem: "minecraft:stone", texture: gem, customModelData: 0 }),
+    ).toThrow(/customModelData must be a positive integer/);
+    expect(() =>
+      defineItem({ id: "bad", baseItem: "minecraft:stone", texture: gem, customModelData: 1.5 }),
+    ).toThrow(/customModelData must be a positive integer/);
+    const ok = defineItem({
+      id: "fine",
+      baseItem: "minecraft:stone",
+      texture: gem,
+      customModelData: 3,
+    });
+    expect(ok.customModelData).toBe(3);
+  });
+});
+
 describe("buildZip", () => {
   it("builds a valid empty zip", () => {
     const zip = buildZip(new Map());

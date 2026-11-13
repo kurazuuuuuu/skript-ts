@@ -29,6 +29,8 @@ export interface BehaviorBot {
   chat(text: string): void;
   /** Poll the bot's inventory until an item with this name appears. Throws on timeout. */
   expectInventoryItem(itemName: string, timeoutMs?: number): Promise<void>;
+  /** The first inventory item with this name, with its components (RP-2), or null. Polls briefly. */
+  inventoryItemInfo(itemName: string, timeoutMs?: number): Promise<InventoryItemInfo | null>;
   disconnect(): void;
   // World interaction controls (phase 14): enough of the bot's
   // body to exercise the gameplay events — digging, placing,
@@ -177,6 +179,18 @@ export interface WindowSlotItem {
   customName: string | null;
   /** The lore lines, when the item carries lore. */
   lore: string[];
+}
+
+/** An item in the bot's own inventory, with its RP-2 components. */
+export interface InventoryItemInfo {
+  name: string;
+  count: number;
+  /** The custom display name, when the item carries one. */
+  customName: string | null;
+  /** The `item_model` component value (`ns:path`), or null when unset. */
+  itemModel: string | null;
+  /** The first CustomModelData float, or null when the item carries none. */
+  customModelData: number | null;
 }
 
 /** A set_title_time packet the bot received (phase 21), in ticks. */
@@ -454,6 +468,37 @@ class MineflayerBehaviorBot implements BehaviorBot {
           `timed out after ${timeoutMs}ms waiting for inventory item "${itemName}"; inventory: ${names}`,
         );
       }
+      await sleep(250);
+    }
+  }
+
+  async inventoryItemInfo(itemName: string, timeoutMs = 10_000): Promise<InventoryItemInfo | null> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const items = this.bot.inventory?.items() ?? [];
+      const item = items.find((it) => it.name === itemName);
+      if (item) {
+        let customName: string | null = null;
+        let itemModel: string | null = null;
+        let customModelData: number | null = null;
+        const components: unknown = (item as unknown as { components?: unknown }).components;
+        if (Array.isArray(components)) {
+          for (const entry of components as { type?: unknown; data?: unknown }[]) {
+            if (entry.type === "custom_name") {
+              customName = componentText(entry.data);
+            } else if (entry.type === "item_model" && typeof entry.data === "string") {
+              itemModel = entry.data;
+            } else if (entry.type === "custom_model_data") {
+              const data = entry.data as { floats?: unknown } | null;
+              if (data && Array.isArray(data.floats) && typeof data.floats[0] === "number") {
+                customModelData = data.floats[0];
+              }
+            }
+          }
+        }
+        return { name: item.name, count: item.count, customName, itemModel, customModelData };
+      }
+      if (Date.now() >= deadline) return null;
       await sleep(250);
     }
   }
