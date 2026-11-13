@@ -28,11 +28,22 @@ README から移設しました。
 
 ```sh
 # 型チェック → build/ へ変換（--deploy でサーバーへも配置）
-bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--engine] [--server-dir server] [--json]
+bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--engine] [--engine-jar <path>] [--server-dir server] [--json]
 
 # server/ の使い捨てサンドボックスに対する全検証
-bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--fast] [--json]
+bin/skript-ts.mjs verify [--engine] [--engine-jar <path>] [--no-behavior] [--no-fresh] [--fast] [--json]
 ```
+
+CLI の実行基盤（tsx ローダーと TypeScript コンパイラ）は
+skript-ts パッケージ自身から解決し、振る舞いテスト用の bot
+ライブラリは `verify` の振る舞いステージでのみ遅延ロード
+します。そのため skript-ts を消費するだけのプロジェクト
+（git サブモジュール配置など）は、自前の tsx / TypeScript /
+mineflayer のインストールを持たなくて構いません。エンジン
+jar の解決順序は、明示の `--engine-jar <path>` →
+`<プロジェクト>/engine/build/skript-ts.jar` →
+skript-ts パッケージ内でビルドされた jar、です。サブモジュール
+配置でもプロジェクトルートへの橋渡しコピーは不要です。
 
 `verify` のステージは、型チェック → 変換 → 配置 → サーバー起動 →
 読み込み確認（初回読み込み＋ `skript reload all`）→ 振る舞いテスト →
@@ -48,8 +59,12 @@ bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--fast] [--jso
 無いことを確認して停止し、`probe status` で起動状態を確認できます。
 
 エンジンモードの開発向けに watch ループもあります。
-`bin/skript-ts.mjs watch --server-dir server [--src <dir>] [--yes]` は、
-エンジン jar で**すでに起動している**サーバーに対して動きます
+`bin/skript-ts.mjs watch --server-dir server [--src <dir>] [--yes] [--engine-jar <path>] [--no-engine-jar]` は、
+エンジン jar で**すでに起動している**サーバーに対して動きます。
+起動時に watch は解決したエンジン jar をサーバーへ配置しますが、
+`--no-engine-jar` を付けると配置（と、それに伴う Skript.jar の
+無効化）を一切しません。プラグイン構成を外部で管理している
+サーバー向けで、起動中サーバーの jar を上書きしなくなります
 （watch がサーバーを起動・停止することはありません）。保存のたびに
 型チェック→変換→配置が走り、エンジンが再起動なしでリロードします。
 CLI は配置の完了後にだけプラグインのデータフォルダへ

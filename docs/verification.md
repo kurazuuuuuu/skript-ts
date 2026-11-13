@@ -28,11 +28,21 @@ non-TTY output falls back to append-only lines.
 
 ```sh
 # typecheck -> transpile into build/ (add --deploy to also copy into a server)
-bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--engine] [--server-dir server] [--json]
+bin/skript-ts.mjs build [--src examples] [--out build] [--deploy] [--engine] [--engine-jar <path>] [--server-dir server] [--json]
 
 # full verification against the throwaway sandbox server in server/
-bin/skript-ts.mjs verify [--engine] [--no-behavior] [--no-fresh] [--fast] [--json]
+bin/skript-ts.mjs verify [--engine] [--engine-jar <path>] [--no-behavior] [--no-fresh] [--fast] [--json]
 ```
+
+The CLI resolves its own toolchain (the tsx loader, the TypeScript
+compiler) from the skript-ts package itself, and the behavior-test
+bot library loads lazily only for `verify`'s behavior stage — a
+project that merely consumes skript-ts (for example as a git
+submodule) needs no tsx / TypeScript / mineflayer installation of
+its own. The engine jar is resolved in this order: an explicit
+`--engine-jar <path>`, then `<project>/engine/build/skript-ts.jar`,
+then the jar built inside the skript-ts package — so a submodule
+consumer needs no bridge copy of the jar at the project root.
 
 `verify` runs: typecheck → transpile → deploy → server start → script
 load check (initial load plus `skript reload all`) → behavior tests →
@@ -48,8 +58,12 @@ and `probe stop` shuts it down (verifying no process or `session.lock`
 is left behind). `probe status` reports whether it is running.
 
 For engine-mode development there is a watch loop:
-`bin/skript-ts.mjs watch --server-dir server [--src <dir>] [--yes]`
-runs against a server that is **already running** with the engine jar
+`bin/skript-ts.mjs watch --server-dir server [--src <dir>] [--yes] [--engine-jar <path>] [--no-engine-jar]`
+runs against a server that is **already running** with the engine jar.
+At startup watch places the resolved engine jar into the server;
+`--no-engine-jar` skips that placement entirely (and the Skript.jar
+disabling that comes with it) for servers whose plugin set is
+managed elsewhere, instead of overwriting a running server's jar
 (watch never starts or stops it). Each save is typechecked, transpiled
 and deployed, and the engine reloads it without a restart: the CLI
 writes a `reload.request` marker into the plugin data folder only
