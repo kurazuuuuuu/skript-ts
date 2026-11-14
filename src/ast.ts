@@ -614,6 +614,18 @@ export type Cond =
   // context with no event at all (a command, a function) the
   // engine reads false; Skript has no event there to ask about.
   | { kind: "eventCancelled" }
+  // Presence condition (feedback T3 / C4): `<expr> is set` — a
+  // leaf condition with the native negated form `<expr> is not
+  // set`, usable in whileLoop heads. Probed against the real
+  // Skript 2.17.1 by the coordinator: both forms parse and behave
+  // correctly for local variables, global variables, AND
+  // function-call results — a function that returns nothing
+  // yields "not set", one that returns a value yields "set".
+  // Presence is about having a value at all, not about its
+  // content: a set-but-empty text "" IS set (it is a real value);
+  // only genuine absence (an unset variable, a deleted variable,
+  // a call with no return) is not set.
+  | { kind: "isSet"; target: Expr }
   // Inventory operations (feedback lane D, 2026-11-13), probed
   // against the real Skript 2.17.1:
   // - hasItem: the target inventory holds at least the pattern

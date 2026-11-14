@@ -2888,6 +2888,23 @@ final class Engine {
             // same value Skript's `event is cancelled` gives
             // there (it parses even inside on respawn).
             case "eventCancelled" -> ctx.cancellable != null && ctx.cancellable.isCancelled();
+            // Presence (feedback T3 / C4), as probed against the
+            // real Skript 2.17.1: the target HAS a value. The
+            // engine's "no value" representation is null — how
+            // valuesEqual treats a missing operand, how an unset
+            // variable / local reads (the store returns null),
+            // and what invokeFunction returns for a call with no
+            // return (also null) — plus an empty multi-value: a
+            // List with no elements (listValue and the other
+            // list producers already normalize an empty result
+            // to null, but an empty List is absence by the same
+            // contract, never a present value). Everything else
+            // is set, including a set-but-empty text "" (a real
+            // String value, not null) and Boolean false / 0.
+            case "isSet" -> {
+                Object v = evalExpr(node(cond.get("target")), ctx);
+                yield v != null && !(v instanceof List<?> l && l.isEmpty());
+            }
             case "equals" -> valuesEqual(
                     evalExpr(node(cond.get("left")), ctx), evalExpr(node(cond.get("right")), ctx));
             case "notEquals" -> !valuesEqual(

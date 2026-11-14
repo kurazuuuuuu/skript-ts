@@ -260,6 +260,7 @@ below, not by load checks.
 | `startsWith(t, prefix)`                           | `<t> starts with <prefix>`                |
 | `endsWith(t, suffix)`                             | `<t> ends with <suffix>`                  |
 | `eventCancelled()`                                | `event is cancelled`                      |
+| `isSet(target)`                                   | `<target> is set`                         |
 | `chance(p)`                                       | `chance of <p>`                           |
 | `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | lowered to nested `if`/`else` (see below) |
 | a boolean expression (`CondLike`)                 | `<expr> is true` (see below)              |
@@ -328,6 +329,25 @@ head, `and`/`or`/`not` over boolean expressions, and the
 `when` / `unless` / `stopIf` flows (including a `stopIf` that
 does not fire) — and `examples/behavior/boolcond.behavior.ts`
 asserts the identical expectations under both runtimes.
+Presence semantics (verified against the real Skript 2.17.1):
+`isSet(target)` answers feedback C4's "is the variable set"
+need — it is true when the target expression _has_ a value,
+whatever that value is. Both the positive form (`<expr> is
+set`) and its native negation (`<expr> is not set`, used for
+`not(isSet(...))` and negated `whileLoop` heads) were probed
+for local variables, global variables, and function-call
+results: a function that returns nothing yields "not set",
+one that returns a value yields "set". Presence is not
+content: a variable holding an empty text `""`, the number
+`0`, or `false` _is_ set; only genuine absence — an unset
+variable, a deleted variable, a call with no return — is not
+set. It is a leaf condition, so it works in `ifElse`, in
+`and`/`or`/`not` logic, and as a `whileLoop` head. The engine
+implements the same rule over its no-value representation
+(`null`, or an empty multi-value).
+`examples/isset.ts` exercises all of it and
+`examples/behavior/isset.behavior.ts` asserts the identical
+expectations under both runtimes.
 
 Chance semantics (verified against the real Skript 2.17.1):
 the argument is a _fraction_ — `chance(0.5)` succeeds half the

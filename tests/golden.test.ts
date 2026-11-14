@@ -93,6 +93,7 @@ import {
   isEngineOnlyScript,
   toIr,
   isOp,
+  isSet,
   item,
   itemCountIn,
   joinText,
@@ -279,6 +280,7 @@ import { priorityScript } from "../examples/priority.js";
 import { randomScript } from "../examples/random.js";
 import { inventoryScript } from "../examples/inventory.js";
 import { literalsScript } from "../examples/literals.js";
+import { issetScript } from "../examples/isset.js";
 import { invspaceScript } from "../examples/invspace.js";
 
 function fixture(name: string): string {
@@ -369,6 +371,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("literals", () => {
     expect(emit(literalsScript)).toBe(fixture("literals.sk"));
+  });
+  it("isset", () => {
+    expect(emit(issetScript)).toBe(fixture("isset.sk"));
   });
 });
 
@@ -484,6 +489,43 @@ describe("typed variable handles (feedback E6 / E7)", () => {
     expect(() => playerVar("  ")).toThrow(RangeError);
     expect(() => localHandle("")).toThrow(RangeError);
     expect(() => localHandle("  ")).toThrow(RangeError);
+  });
+});
+
+describe("isSet condition (feedback T3 / C4)", () => {
+  const y = [broadcast(str("y"))];
+  const n = [broadcast(str("n"))];
+  it("the sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(issetScript)).toBe(false);
+  });
+  it("emits `is set` for locals, globals and function-call results", () => {
+    expect(emit(script(onJoin([ifElse(isSet(localVar("v")), y)])))).toBe(
+      'on join:\n    if {_v} is set:\n        broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([ifElse(isSet(variable("v")), y)])))).toBe(
+      'on join:\n    if {v} is set:\n        broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([ifElse(isSet(call("maybe", str("yes"))), y)])))).toBe(
+      'on join:\n    if maybe("yes") is set:\n        broadcast "y"\n',
+    );
+  });
+  it("not(isSet(...)) without an else uses the native `is not set` form", () => {
+    expect(emit(script(onJoin([ifElse(not(isSet(localVar("v"))), y)])))).toBe(
+      'on join:\n    if {_v} is not set:\n        broadcast "y"\n',
+    );
+  });
+  it("not(isSet(...)) with an else swaps the branches", () => {
+    expect(emit(script(onJoin([ifElse(not(isSet(variable("v"))), y, n)])))).toBe(
+      'on join:\n    if {v} is set:\n        broadcast "n"\n    else:\n        broadcast "y"\n',
+    );
+  });
+  it("heads a while loop, in positive and negated form", () => {
+    expect(emit(script(onJoin([whileLoop(isSet(localVar("v")), y)])))).toBe(
+      'on join:\n    while {_v} is set:\n        broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([whileLoop(not(isSet(localVar("v"))), y)])))).toBe(
+      'on join:\n    while {_v} is not set:\n        broadcast "y"\n',
+    );
   });
 });
 
