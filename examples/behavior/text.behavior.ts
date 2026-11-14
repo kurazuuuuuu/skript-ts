@@ -126,7 +126,11 @@ export default defineBehavior(async (t) => {
     // Skript's own tool expression reports the amount-0 stack
     // ("0 airs") — the one recorded string-form divergence of
     // the G3 unification (type/equality agree: air in both).
-    // The bot's hands are empty here (nothing was given).
+    // The welcome sample put a wooden sword in the main hand
+    // at join, so clear the inventory first (the gameplay
+    // suite's lesson) and let the clear settle.
+    await t.console("clear TextBot");
+    await t.sleep(600);
     mark = bot.messages.length;
     await cmd("/hands");
     await waitNew(bot, mark, t.mode === "engine" ? "hands: air / air" : "hands: 0 airs / 0 airs");

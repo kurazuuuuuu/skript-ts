@@ -5509,12 +5509,38 @@ final class Engine {
      * Normalize a hand read (toolOf / offHandToolOf): Bukkit
      * reports an empty hand as an amount-0 air stack (or, on some
      * paths, null), which stringifies as "0 airs". The hand value
-     * is the air item itself (feedback G3), so any air stack —
-     * or a missing stack — becomes a plain amount-1 air stack;
-     * a real held stack passes through untouched.
+     * is the air item itself (feedback G3), so an empty hand
+     * becomes an {@link AirItemStack}; a real held stack passes
+     * through untouched. (A plain {@code new ItemStack(AIR, 1)}
+     * cannot do this: Bukkit's constructor collapses every air
+     * stack onto the empty singleton, whose amount reads 0 —
+     * verified live, the first G3 attempt with a plain stack
+     * still printed "0 airs".)
      */
     private static ItemStack normalizeHand(ItemStack stack) {
-        return stack == null || stack.getType().isAir() ? new ItemStack(Material.AIR, 1) : stack;
+        return stack == null || stack.getType().isAir() ? new AirItemStack() : stack;
+    }
+
+    /**
+     * The empty hand as an item value: an air stack that reads
+     * as amount 1, so it stringifies as "air" and its type is
+     * "air", while staying an ItemStack for every consumer
+     * (item-parameter binding, toItemStack materialization,
+     * type-bridged equality against item("air")). Only the
+     * amount read is overridden; the underlying stack is
+     * Bukkit's empty stack.
+     */
+    private static final class AirItemStack extends ItemStack {
+        private static final long serialVersionUID = 1L;
+
+        AirItemStack() {
+            super(Material.AIR, 1);
+        }
+
+        @Override
+        public int getAmount() {
+            return 1;
+        }
     }
 
     private static ItemStack toItemStack(Object value) {

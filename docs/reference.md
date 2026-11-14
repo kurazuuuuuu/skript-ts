@@ -676,8 +676,8 @@ scripts and the behavior test):
   the plain `air`: the raw runtimes report the empty hand as
   an amount-0 stack (`0 airs`), and feedback G3 (2026-11-14,
   third batch) had that unified — the engine normalizes the
-  hand read to an amount-1 air stack, so `fmt(toolOf(p))`
-  reads `air`, never `0 airs`.
+  hand read to an air item that reads as amount 1, so
+  `fmt(toolOf(p))` reads `air`, never `0 airs`.
 - In damage events, `victim()` is the entity taking damage and
   `attacker()` the entity that caused it; `attacker()` has no
   value for environmental damage (fall, lava, ...). The bare

@@ -322,7 +322,7 @@ export type Expr =
   //   Bukkit/Skript report the empty hand as an amount-0 stack
   //   ("0 airs"), and feedback G3 (2026-11-14, third batch) had
   //   that unified to "air" — the engine normalizes the hand
-  //   read to an amount-1 air stack.
+  //   read to an air item that reads as amount 1.
   | { kind: "itemWithName"; base: Expr; name: Expr }
   | { kind: "itemWithLore"; base: Expr; lines: readonly Expr[] }
   | { kind: "itemWithAmount"; base: Expr; amount: Expr }
