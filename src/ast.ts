@@ -11,6 +11,13 @@ export type Expr =
   // as a value (its entries in iteration order), and its size.
   | { kind: "variableList"; name: string }
   | { kind: "listSize"; list: Expr }
+  // Core-language list sorting (feedback C5): `sorted <list>`.
+  // Probed against the real Skript 2.17.1 by the coordinator:
+  // homogeneous lists only — all-number lists sort ascending
+  // numerically, all-text lists sort ascending case-insensitively;
+  // anything else — mixed types, items, players, empty — yields
+  // no value.
+  | { kind: "sortedList"; list: Expr }
   // Loop expressions (phase 12): the element a list loop is
   // visiting (in times/range loops, the current number; in player
   // loops, the player), and the index of a list loop (a number or

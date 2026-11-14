@@ -3184,6 +3184,29 @@ final class Engine {
                 if (value instanceof List<?> entries) yield (double) entries.size();
                 yield value == null ? 0.0 : 1.0;
             }
+            case "sortedList" -> {
+                // Feedback C5, probed against the real Skript
+                // 2.17.1: homogeneous lists only. The operand is
+                // evaluated as a multi-value; an empty result has
+                // no value. All numbers sort by double value
+                // ascending, all texts sort case-insensitively
+                // ascending (ROOT locale); both sorts are stable.
+                // Anything else (mixed types, items, players, ...)
+                // yields no value.
+                Object value = evalExpr(node(expr.get("list")), ctx);
+                List<Object> values = new ArrayList<>();
+                spreadInto(values, value);
+                if (values.isEmpty()) yield null;
+                if (values.stream().allMatch(v -> v instanceof Number)) {
+                    values.sort(Comparator.comparingDouble(v -> ((Number) v).doubleValue()));
+                    yield values;
+                }
+                if (values.stream().allMatch(v -> v instanceof String)) {
+                    values.sort(Comparator.comparing(v -> ((String) v).toLowerCase(Locale.ROOT)));
+                    yield values;
+                }
+                yield null;
+            }
             case "functionCall" ->
                 invokeFunction(str(expr.get("name")), evalArgs(list(expr.get("args")), ctx), ctx);
             case "loopValue" -> ctx.loopValue;

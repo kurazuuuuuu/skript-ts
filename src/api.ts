@@ -647,6 +647,17 @@ export function listSize(list: Expr): Expr {
   return { kind: "listSize", list };
 }
 
+/**
+ * Construct a sorted-list expression: the list's entries sorted
+ * ascending (feedback C5). Homogeneous lists only, as probed
+ * against the real Skript 2.17.1: numbers sort numerically,
+ * texts sort case-insensitively; a mixed list, a list of other
+ * types, or an empty list yields no value.
+ */
+export function sortedList(list: Expr): Expr {
+  return { kind: "sortedList", list };
+}
+
 /** Construct a loop-value expression: the element (or number / player) the enclosing loop is visiting. */
 export function loopValue(): Expr {
   return { kind: "loopValue" };

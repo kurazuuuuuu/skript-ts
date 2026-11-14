@@ -105,6 +105,7 @@ expressions. See `examples/literals.ts`.
 | `localList(name)`                                                | `{_name::*}`                                                 | `%{_name::*}%`                         |
 | `call(name, ...args)`                                            | `<name>(<args>)`                                             | `%<name>(<args>)%`                     |
 | `listSize(list)`                                                 | `size of {name::*}`                                          | `%size of {name::*}%`                  |
+| `sortedList(list)`                                               | `sorted {name::*}`                                           | `%sorted {name::*}%`                   |
 | `loopValue()`                                                    | `loop-value`                                                 | `%loop-value%`                         |
 | `loopIndex()`                                                    | `loop-index`                                                 | `%loop-index%`                         |
 | `str(s)`                                                         | `"<s>"`                                                      | raw text                               |
@@ -390,6 +391,17 @@ individual `name::index` keys in `variables.json`).
   deleting the bare `{name}` variable does not.
 - **`listRemove`** deletes only the _first_ matching element (in
   iteration order), using the phase-11 equality rules.
+- **`sortedList(list)`** (`sorted <list>`, feedback C5) yields the
+  list's entries sorted ascending, like `listSize` over any
+  list-valued expression (a list variable, a local list, a
+  `splitText` result, a function call, ...). Probed against the
+  real Skript 2.17.1: homogeneous lists only — all-number lists
+  sort ascending numerically (`3, 1, 2` → `1, 2, 3`), all-text
+  lists sort ascending case-insensitively (`banana, Apple,
+  cherry` → `Apple, banana, cherry`), and anything else — a
+  mixed number/text list, items, players, an empty list — yields
+  no value. Descending order is not part of this addition: no
+  reversed / descending form is offered.
 - A list used as text joins as `a, b and c` (`a and b` for two, the
   element itself for one). A missing value inside a string renders
   as `<none>` — this applies to unset scalars and missing indices

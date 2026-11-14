@@ -46,6 +46,8 @@ function emitValue(e: Expr): string {
       return `${e.name}(${e.args.map((a) => emitValue(a)).join(", ")})`;
     case "listSize":
       return `size of ${emitValue(e.list)}`;
+    case "sortedList":
+      return `sorted ${emitValue(e.list)}`;
     case "loopValue":
       return "loop-value";
     case "loopIndex":
@@ -420,6 +422,7 @@ function emitString(e: Expr): string {
     case "localVariableList":
     case "functionCall":
     case "listSize":
+    case "sortedList":
     case "loopValue":
     case "loopIndex":
       return `%${emitValue(e)}%`;
