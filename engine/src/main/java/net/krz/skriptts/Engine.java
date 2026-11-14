@@ -251,6 +251,7 @@ final class Engine {
         FishHook fishingHook; // "fishing hook" in fishing events
         String fishingState; // "event-fishing state" in fishing events (the Skript state name)
         Inventory eventInventory; // "event-inventory" in inventory click/close events (the view's top inventory)
+        String guiEventId; // registered GUI id of the event inventory (feedback B3); null when it is not a tagged script GUI
         BossBar eventBossBar; // "event-bossbar" inside a boss bar creation section (phase 24); null elsewhere
         Double clickedSlot; // "index of event-slot" in inventory click events; null elsewhere
         Double clickedRawSlot; // "raw index of event-slot" in inventory click events; null elsewhere
@@ -293,6 +294,7 @@ final class Engine {
             c.fishingHook = fishingHook;
             c.fishingState = fishingState;
             c.eventInventory = eventInventory;
+            c.guiEventId = guiEventId;
             c.eventBossBar = eventBossBar;
             c.clickedSlot = clickedSlot;
             c.clickedRawSlot = clickedRawSlot;
@@ -436,6 +438,31 @@ final class Engine {
      * a plain map is enough.
      */
     private final Map<String, Long> commandCooldownLastUse = new HashMap<>();
+
+    /**
+     * Registered GUI ids of tagged script GUIs (feedback B3), by
+     * inventory identity: the unspoofable counterpart of
+     * {@link #guiTitles}. A title can be copied by any renamed
+     * container; this id is assigned by the engine at the tagged
+     * open and never read from the inventory itself, so it
+     * cannot be forged. Same lifecycle as guiTitles: weak keys
+     * forget an inventory nobody references any more, and both
+     * registries are cleared together on plugin disable
+     * ({@link #clearGuiRegistries()}).
+     */
+    private final Map<Inventory, String> guiIds =
+            java.util.Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** The registered GUI id of an inventory, or null when it is not a tagged script GUI. */
+    String guiIdOf(Inventory inv) {
+        return inv == null ? null : guiIds.get(inv);
+    }
+
+    /** Drop both GUI registries (called by the plugin on disable). */
+    void clearGuiRegistries() {
+        guiTitles.clear();
+        guiIds.clear();
+    }
 
     Engine(Variables variables, Logger logger) {
         this.variables = variables;
@@ -2120,6 +2147,24 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "openGuiTagged" -> {
+                // GUI identity (feedback B3): like openGui, but
+                // the fresh inventory is registered under the
+                // statement's guiId, so inventory events can
+                // recognize it by id (guiEventIs / guiEventId)
+                // rather than by its spoofable title.
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    Object rows = evalExpr(node(stmt.get("rows")), ctx);
+                    Object title = stmt.get("title") == null ? null : evalExpr(node(stmt.get("title")), ctx);
+                    Inventory inv = createChestInventory(
+                            rows instanceof Number n ? n.doubleValue() : 3,
+                            title instanceof String s ? s : null);
+                    String guiId = str(stmt.get("guiId"));
+                    if (guiId != null) guiIds.put(inv, guiId);
+                    target.openInventory(inv);
+                }
+                cont.run();
+            }
             case "closeInventory" -> {
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
                     target.closeInventory();
@@ -3170,6 +3215,15 @@ final class Engine {
                 String name = renderText(node(cond.get("name")), ctx);
                 yield timerHost != null && name != null && timerHost.isActive(name);
             }
+            case "guiEventIs" -> {
+                // GUI identity (feedback B3): the event inventory's
+                // registered id, packed into the context by the
+                // inventory listeners, equals the handle's id. A
+                // context with no registered id (any other event,
+                // an untagged or foreign inventory) never matches.
+                String guiId = str(cond.get("guiId"));
+                yield guiId != null && guiId.equals(ctx.guiEventId);
+            }
             case "httpOk" -> {
                 yield ctx.httpId != null && ctx.httpError == null;
             }
@@ -3674,6 +3728,7 @@ final class Engine {
                 yield target == null ? null : typeNameOf(target);
             }
             case "eventInventory" -> ctx.eventInventory;
+            case "guiEventId" -> ctx.guiEventId;
             case "clickedSlotIndex" -> ctx.clickedSlot;
             case "clickedRawSlotIndex" -> ctx.clickedRawSlot;
             case "draggedSlots" -> ctx.draggedSlots;

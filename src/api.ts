@@ -257,6 +257,7 @@ const COND_KINDS: ReadonlySet<string> = new Set([
   "hasItemTag",
   "chance",
   "timerActive",
+  "guiEventIs",
   "fileExists",
   "httpOk",
   "cfOk",
@@ -849,6 +850,7 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "bossBarCreatesFog",
   "bossBarPlaysBossMusic",
   "timerActive",
+  "guiEventIs",
   "fileExists",
 ]);
 
@@ -2740,11 +2742,101 @@ export function openInventory(target: Expr, inventory: Expr): Stmt {
   return withLoc({ kind: "openInventory", target, inventory });
 }
 
-/** Construct an open-GUI statement: build a fresh chest inventory (rows 1..6, optional title) and open it to a player. */
-export function openGui(target: Expr, rows: Expr, title?: Expr): Stmt {
+// ---------------------------------------------------------------------------
+// GUI identity (feedback B3, with the T4 typed-identifier angle):
+// an unspoofable identity for script-opened GUIs.
+//
+// Title matching is NOT identity: inventoryTitle()/nameOf reads
+// the real title of ANY inventory, so a player-renamed chest (or
+// any container) titled "Shop Menu" is indistinguishable from
+// the script's own shop GUI, and a click handler guarding on the
+// title alone can be fooled. A GuiHandle is the typed fix: pass
+// one to openGui and the engine registers the opened inventory
+// under the handle's id in its own registry — a value no player
+// action can forge, because it never comes from the inventory
+// itself. Inside inventory events, guiEventIs(handle) tests the
+// current event inventory's registered id and guiEventId()
+// reads it as text.
+//
+// Matching is by handle/id, never by title text (T4). Handles
+// are plain build-time values: define one once
+// (const shopGui = guiHandle("shop")) and reuse the same handle
+// at the open site and in every handler.
+//
+// All three constructs are ENGINE-ONLY: the identity lives in
+// the engine's registry, so there is no .sk form. A tagged open
+// is its own statement kind (openGuiTagged) precisely so that
+// kind-based engine-only detection does not drag the plain,
+// fully core openGui with it — untagged openGui scripts stay
+// portable.
+// ---------------------------------------------------------------------------
+
+/**
+ * A typed identifier for a script GUI (feedback B3 / T4). See
+ * guiHandle(): the handle carries only its `id`; matching is by
+ * that id, never by the GUI's title text.
+ */
+export interface GuiHandle {
+  /** The GUI's registered id (a non-empty string). */
+  readonly id: string;
+}
+
+function requireGuiId(id: unknown): string {
+  if (typeof id !== "string" || id.trim() === "") {
+    throw new RangeError("gui handle id must be a non-empty string");
+  }
+  return id;
+}
+
+/**
+ * Construct a GUI handle (feedback B3 / T4): the typed identifier
+ * of a script GUI. Pass it as openGui's fourth argument to
+ * register the opened GUI under this id, and to guiEventIs() to
+ * recognize the GUI again inside inventory events. The id must
+ * be a non-empty string. ENGINE-ONLY feature.
+ */
+export function guiHandle(id: string): GuiHandle {
+  return { id: requireGuiId(id) };
+}
+
+/**
+ * Construct an open-GUI statement: build a fresh chest inventory
+ * (rows 1..6, optional title) and open it to a player. With a
+ * GuiHandle as the fourth argument the opened GUI is registered
+ * under the handle's id (ENGINE-ONLY — see guiHandle); without
+ * one the statement is plain core language.
+ */
+export function openGui(target: Expr, rows: Expr, title?: Expr, gui?: GuiHandle): Stmt {
+  if (gui !== undefined) {
+    const guiId = requireGuiId(gui?.id);
+    return title === undefined
+      ? withLoc({ kind: "openGuiTagged", target, rows, guiId })
+      : withLoc({ kind: "openGuiTagged", target, rows, title, guiId });
+  }
   return title === undefined
     ? withLoc({ kind: "openGui", target, rows })
     : withLoc({ kind: "openGui", target, rows, title });
+}
+
+/**
+ * Construct a GUI-identity condition (feedback B3 / T4): true
+ * when the current inventory event's inventory is a script GUI
+ * registered under the handle's id. False outside inventory
+ * events and for inventories the script did not tag — including
+ * title lookalikes. ENGINE-ONLY.
+ */
+export function guiEventIs(gui: GuiHandle): Cond {
+  return { kind: "guiEventIs", guiId: requireGuiId(gui?.id) };
+}
+
+/**
+ * Construct a GUI-event-id expression (feedback B3 / T4): the
+ * registered id (text) of the current inventory event's GUI, or
+ * no value when the event's inventory is not a tagged script
+ * GUI. ENGINE-ONLY.
+ */
+export function guiEventId(): Expr {
+  return { kind: "guiEventId" };
 }
 
 /** Construct a close-inventory statement: close the inventory view a player has open. */

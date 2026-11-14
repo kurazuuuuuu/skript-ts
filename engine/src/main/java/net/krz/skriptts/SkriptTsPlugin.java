@@ -326,6 +326,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         }
         cancelPeriodicals();
         unregisterScriptCommands();
+        if (engine != null) engine.clearGuiRegistries();
         if (placeholders != null) placeholders.shutdown();
         if (timers != null) timers.shutdown();
         if (urls != null) urls.shutdown();
@@ -914,7 +915,10 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     // slot's item (no value for an empty slot), and both slot
     // indices (within the clicked inventory, and raw within the
     // whole view). Cancellation writes through to the Bukkit
-    // event, so a cancelled click moves nothing.
+    // event, so a cancelled click moves nothing. Click and close
+    // contexts also carry the top inventory's registered GUI id
+    // (feedback B3), read from the engine's registry — never
+    // from the inventory's title, which anyone can copy.
     // ------------------------------------------------------------------
 
     @EventHandler
@@ -922,6 +926,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         Engine.Ctx ctx = baseCtx(player);
         ctx.eventInventory = event.getInventory();
+        ctx.guiEventId = engine.guiIdOf(event.getInventory());
         ctx.eventItem = normalizeItem(event.getCurrentItem());
         ctx.cursorItem = normalizeItem(event.getCursor());
         ctx.clickType = clickTypeName(event.getClick());
@@ -936,6 +941,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         if (!(event.getPlayer() instanceof Player player)) return;
         Engine.Ctx ctx = baseCtx(player);
         ctx.eventInventory = event.getInventory();
+        ctx.guiEventId = engine.guiIdOf(event.getInventory());
         engine.fireEvent("inventoryClose", ctx, false);
     }
 

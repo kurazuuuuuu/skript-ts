@@ -384,6 +384,7 @@ function emitValue(e: Expr): string {
     case "eventCursor":
     case "freeSpaceFor":
     case "itemTag":
+    case "guiEventId":
       // Engine-builtin expressions (phases 6-10, 26, the
       // world paint family, phase 28's cursor, the
       // inventory free-space count, which the original has
@@ -568,6 +569,7 @@ function emitString(e: Expr): string {
     case "eventCursor":
     case "freeSpaceFor":
     case "itemTag":
+    case "guiEventId":
       throw new Error(
         `Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -705,6 +707,7 @@ function emitLeafCond(c: Cond, negated: boolean): string {
         ? `${emitValue(c.bar)} does not play boss music`
         : `${emitValue(c.bar)} plays boss music`;
     case "timerActive":
+    case "guiEventIs":
     case "fileExists":
     case "httpOk":
     case "cfOk":
@@ -1424,6 +1427,7 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     case "setItemTag":
     case "spawnParticle":
     case "launchFirework":
+    case "openGuiTagged":
       throw new Error(
         `Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`,
       );

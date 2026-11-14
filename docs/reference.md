@@ -1076,6 +1076,35 @@ clicking through a live GUI; see the development log):
   guard: a cancelled click moves nothing.
   `onInventoryClose` fires when a view closes, by
   script or by the player.
+- **GUI identity (engine-only)**: a title is not an
+  identity. `nameOf(eventInventory())` reads the real
+  title of _any_ inventory, so a player-renamed chest
+  titled `Shop Menu` is indistinguishable from the
+  script's own shop GUI — a click handler guarding on
+  the title alone can be spoofed. The unspoofable form
+  is a **handle**: `guiHandle(id)` builds a typed
+  identifier (the id is a non-empty string), and
+  passing it as `openGui(player, rows[, title], gui)`'s
+  fourth argument registers the opened GUI under that
+  id in the engine's own registry — a value no player
+  action can forge, because it never comes from the
+  inventory itself. Inside inventory events,
+  `guiEventIs(handle)` is true exactly when the event's
+  inventory is a script GUI registered with that id,
+  and `guiEventId()` reads the registered id as text
+  (no value when the event's inventory is not a tagged
+  script GUI — an untagged GUI, a vanilla container, or
+  a renamed lookalike). Matching is always by handle /
+  id, never by title text. The identity lives in the
+  engine, so all three constructs are **engine-only**:
+  scripts using them deploy IR-only, and the tagged
+  open is a distinct statement kind so that plain
+  untagged `openGui` stays core language.
+  `examples/guiidentity.ts` exercises it — a tagged
+  `/shopgui` and an untagged `/plaingui` with the same
+  title report different identities — and
+  `examples/behavior/guiidentity.behavior.ts` drives a
+  bot through both under the engine.
 - **Inventory operations**: `hasItem(target, item)`
   tests whether an inventory holds at least the item
   pattern's amount (`<target> has <item>`; negated

@@ -1,0 +1,119 @@
+{
+  "kind": "script",
+  "body": [
+    {
+      "kind": "command",
+      "name": "shopgui",
+      "args": [],
+      "body": [
+        {
+          "kind": "openGuiTagged",
+          "target": {
+            "kind": "player"
+          },
+          "rows": {
+            "kind": "number",
+            "value": 3
+          },
+          "title": {
+            "kind": "string",
+            "value": "Shop"
+          },
+          "guiId": "shop"
+        }
+      ]
+    },
+    {
+      "kind": "command",
+      "name": "plaingui",
+      "args": [],
+      "body": [
+        {
+          "kind": "openGui",
+          "target": {
+            "kind": "player"
+          },
+          "rows": {
+            "kind": "number",
+            "value": 3
+          },
+          "title": {
+            "kind": "string",
+            "value": "Shop"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "event",
+      "event": "inventoryClick",
+      "body": [
+        {
+          "kind": "cancelEvent"
+        },
+        {
+          "kind": "broadcast",
+          "message": {
+            "kind": "format",
+            "parts": [
+              "guiid=",
+              {
+                "kind": "guiEventId"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "guiEventIs",
+            "guiId": "shop"
+          },
+          "then": [
+            {
+              "kind": "broadcast",
+              "message": {
+                "kind": "string",
+                "value": "gui is shop"
+              }
+            }
+          ],
+          "else": [
+            {
+              "kind": "broadcast",
+              "message": {
+                "kind": "string",
+                "value": "gui not shop"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "guiEventIs",
+            "guiId": "other"
+          },
+          "then": [
+            {
+              "kind": "broadcast",
+              "message": {
+                "kind": "string",
+                "value": "gui is other"
+              }
+            }
+          ],
+          "else": [
+            {
+              "kind": "broadcast",
+              "message": {
+                "kind": "string",
+                "value": "gui not other"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
