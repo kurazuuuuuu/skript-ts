@@ -350,6 +350,46 @@ behavior; the engine implements the same continuation semantics
 on the Bukkit scheduler. Amounts may be fractional (`wait 0.5
 seconds`); units are `ticks`, `seconds` and `minutes`.
 
+## Variable handles
+
+Typed handles are pure API sugar over the variable builders —
+they centralize the key construction for one variable name and
+build exactly the same AST, so there is no new `.sk` form and
+no runtime difference.
+
+`playerVar(name)` (feedback E6) handles one player-indexed
+global variable. The player expression passed to each method
+is the index — the per-player slot:
+
+| TypeScript                              | Equivalent builder form                 |
+| --------------------------------------- | --------------------------------------- |
+| `playerVar(name).of(player)`            | `variable(name, player)`                |
+| `playerVar(name).set(player, value)`    | `set(variable(name, player), value)`    |
+| `playerVar(name).add(player, value)`    | `add(variable(name, player), value)`    |
+| `playerVar(name).remove(player, value)` | `remove(variable(name, player), value)` |
+| `playerVar(name).delete(player)`        | `deleteVar(variable(name, player))`     |
+
+`localHandle(name)` (feedback E7) handles one local variable,
+for use inside a trigger or a `defineFunction` body:
+`get()` is `localVar(name)`, and `set(value)` / `add(value)` /
+`remove(value)` / `delete()` are the corresponding statements
+over `localVar(name)`.
+
+The writing methods accept an `Expr` or a plain string /
+number / boolean literal, which is normalized (`str()` /
+`num()` / `bool()`); an `Expr` passes through unchanged. Both
+constructors reject an empty name with a RangeError at the
+definition site (`variable()` itself performs no name check;
+`localVar()`'s non-empty rule is applied eagerly).
+
+Keying note: in the engine, a player used as a variable index
+keys by the player's **UUID** (feedback B6), so a handle's
+slots survive a rename. Skript mode emits the same
+`{name::%player%}` text, and the player index expands per the
+server's Skript configuration (its "use player UUIDs in
+variable names" setting). `examples/varhandles.ts` shows an
+economy flow built on both handles.
+
 ## Custom functions
 
 `defineFunction(name, params, returnType, body)` defines a
