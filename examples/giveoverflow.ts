@@ -19,10 +19,9 @@ import type { Script } from "../src/index.js";
 // intended semantics — for BOTH runtimes — is that the
 // un-fitted remainder drops naturally at the player's feet
 // instead of vanishing, so it can be picked back up once
-// space exists. (Whether the real Skript's give effect
-// really drops overflow this way is not yet verified; the
-// behavior suite below pins the DROP behavior and the
-// coordinator's Skript-mode subset verify is the arbiter.)
+// space exists. (Verified 2026-11-14: the real Skript's
+// give effect drops overflow the same way; the behavior
+// suite pins the shared DROP behavior in both modes.)
 //
 // /fillbags fills every storage slot with a full stack of
 // dirt through giveItem itself, so the same give path is

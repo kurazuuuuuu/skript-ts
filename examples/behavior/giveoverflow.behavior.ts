@@ -15,12 +15,14 @@ import { defineBehavior, type BehaviorBot } from "../../src/behavior.js";
 // the marker arrives — plus the sword itself is in the
 // inventory afterwards.
 //
-// UNVERIFIED ASSUMPTION: whether the real Skript drops
-// overflow the same way is NOT yet verified. This test is
-// written for the DROP behavior; the coordinator's
-// Skript-mode subset verify is the arbiter. If Skript turns
-// out to vanish overflow instead, the design flips and the
-// engine change behind this test gets revisited.
+// VERIFIED 2026-11-14 (coordinator, subset verify in both
+// modes): the real Skript's give effect drops overflow the
+// same way, so both runtimes share the DROP semantics this
+// test pins. (The suite originally failed in both modes on
+// pickup mechanics — a stationary bot and a naturally
+// dropped item that rolls away — not on the drop itself;
+// the flow now works on virgin ground and teleports the
+// bot onto the dropped item after the clear.)
 //
 // The harness's waitForMessage scans the whole message
 // buffer, so the marker expectations use marks (waitNew),
@@ -54,6 +56,14 @@ export default defineBehavior(async (t) => {
     // Start from a cleared inventory (the welcome sample
     // hands every joining bot a wooden sword).
     await t.console("clear PrizeBot");
+    // Work on virgin flat ground far from the shared spawn:
+    // the sandbox world accumulates dropped items and terrain
+    // edits from other suites, and a naturally dropped item
+    // rolls a random short distance — both make a stationary
+    // bot's pickup racy. Out here the only item entity is the
+    // prize sword itself.
+    await t.console("tp PrizeBot 500 -60 500");
+    await t.sleep(1000);
 
     // Fill every storage slot with a full stack of dirt,
     // through the script's own giveItem path.
@@ -78,12 +88,15 @@ export default defineBehavior(async (t) => {
       throw new Error("prize sword is in the inventory despite a full inventory");
     }
 
-    // Free space from the console: the dropped sword at the
-    // bot's feet is now collectable, so the filtered pickup
-    // handler's marker must arrive (mark first — the wait
-    // only counts messages from here on).
+    // Free space from the console: the dropped sword is now
+    // collectable. Teleport the bot onto the nearest item
+    // entity (out here that is the sword) so the pickup does
+    // not depend on where the natural drop happened to roll;
+    // the filtered pickup handler's marker must then arrive
+    // (mark first — the wait only counts messages from here).
     const clearMark = bot.messages.length;
     await t.console("clear PrizeBot");
+    await t.console("tp PrizeBot @e[type=minecraft:item,limit=1,sort=nearest]");
     await waitNew(bot, clearMark, "picked prize");
     await bot.expectInventoryItem("diamond_sword");
   } finally {
