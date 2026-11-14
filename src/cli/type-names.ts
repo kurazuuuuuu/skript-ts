@@ -135,13 +135,13 @@ function levenshtein(left: string, right: string): number {
     return left.length;
   }
 
-  let previous = new Array<number>(right.length + 1);
+  let previous = Array.from({ length: right.length + 1 }, () => 0);
   for (let column = 0; column <= right.length; column += 1) {
     previous[column] = column;
   }
 
   for (let row = 1; row <= left.length; row += 1) {
-    const current = new Array<number>(right.length + 1);
+    const current = Array.from({ length: right.length + 1 }, () => 0);
     current[0] = row;
     const leftChar = left.charAt(row - 1);
 
