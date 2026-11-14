@@ -350,6 +350,13 @@ export type Expr =
   | { kind: "slotItem"; inventory: Expr; slot: Expr }
   | { kind: "clickedSlotIndex" }
   | { kind: "clickedRawSlotIndex" }
+  // GUI identity (feedback B3 / T4): the registered id of the
+  // current inventory event's GUI, as text — no value when the
+  // event's inventory is not a script GUI opened with a
+  // GuiHandle (see openGuiTagged). ENGINE-ONLY: a title can be
+  // spoofed by any renamed container, so identity has no .sk
+  // form; the engine reads it from its own registry.
+  | { kind: "guiEventId" }
   // Phase 28: drag slots and enchantment expressions.
   //
   // Drag events expose the affected slots as slot values
@@ -657,6 +664,11 @@ export type Cond =
   | { kind: "chance"; value: Expr }
   // Engine-builtin condition (SharpSK slice, phase 7): a named timer exists.
   | { kind: "timerActive"; name: TextExpr }
+  // GUI identity condition (feedback B3 / T4), ENGINE-ONLY: the
+  // current inventory event's inventory is a script GUI the
+  // engine registered under this handle id (see openGuiTagged).
+  // The match is by registered id, never by title text.
+  | { kind: "guiEventIs"; guiId: string }
   // Engine-builtin condition (skUtilities slice, phase 9): a file or
   // directory exists under the engine's files root.
   | { kind: "fileExists"; path: TextExpr }
@@ -926,6 +938,19 @@ export type Stmt =
   | { kind: "setSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }
   | { kind: "openInventory"; target: Expr; inventory: Expr; loc?: SourceLoc }
   | { kind: "openGui"; target: Expr; rows: Expr; title?: Expr; loc?: SourceLoc }
+  // GUI identity (feedback B3 / T4), ENGINE-ONLY: openGui with a
+  // GuiHandle. A DISTINCT kind from openGui on purpose: engine-only
+  // detection is kind-based, and tagging must not make the plain
+  // core openGui engine-only. The engine registers the fresh
+  // inventory under guiId; guiEventIs / guiEventId read it back.
+  | {
+      kind: "openGuiTagged";
+      target: Expr;
+      rows: Expr;
+      title?: Expr;
+      guiId: string;
+      loc?: SourceLoc;
+    }
   | { kind: "closeInventory"; target: Expr; loc?: SourceLoc }
   // Inventory operations (feedback lane D, 2026-11-13), probed
   // against the real Skript 2.17.1:
