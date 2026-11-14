@@ -492,6 +492,19 @@ server's Skript configuration (its "use player UUIDs in
 variable names" setting). `examples/varhandles.ts` shows an
 economy flow built on both handles.
 
+`uuidOf(player)` (feedback B6-3) reads a player's UUID as a
+text value, in both runtimes: the engine reads the player's
+UUID directly, and Skript mode emits the original's
+`uuid of %player%` (probed against the real Skript 2.17.1 —
+the form parses and yields the same hyphenated lowercase
+UUID string the engine produces). A non-player target has
+no value. Because the result is plain text it also works as
+a variable index, addressing the same entry a player index
+addresses under UUID keying. `examples/uuidof.ts` exercises
+it as a value and as an index, and
+`examples/behavior/uuidof.behavior.ts` pins both under both
+runtimes.
+
 ## Custom functions
 
 `defineFunction(name, params, returnType, body)` defines a
@@ -2393,13 +2406,13 @@ every script load the engine indexes
 zipFile }`; a manifest that fails to parse disables only that
 pack (a warning is logged).
 
-| TS builder                                   | Meaning                                                                                                                                                                                                                                                                                            |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packSha1(namespace)`                        | the deployed manifest's SHA-1 for the namespace (a builder-level literal); no value when the pack is absent                                                                                                                                                                                        |
-| `packRequired(namespace)`                    | the deployed manifest's `required` flag; `false` when the pack is absent                                                                                                                                                                                                                           |
-| `sendResourcePack(player, url, sha1, opts?)` | offer one pack through Paper's Adventure API (`ResourcePackRequest` + `player.sendResourcePacks(...)`). `opts`: `{ required?: boolean \| expression, prompt?: text }`. A literal sha1 is build-validated as 40 hex digits; the engine re-validates at runtime and refuses (warned no-op) otherwise |
-| `onResourcePackStatus(body)`                 | event fired from Paper's `PlayerResourcePackStatusEvent`; inside it, `player()` is the answering player                                                                                                                                                                                            |
-| `resourcePackStatus()`                       | the status text inside the event: `"accepted"`, `"downloaded"`, `"successfully_loaded"`, `"declined"` or `"failed_download"` (the Bukkit enum name lowercased, so a future status passes through in the same shape)                                                                                |
+| TS builder                                   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packSha1(namespace)`                        | the deployed manifest's SHA-1 for the namespace (a builder-level literal); no value when the pack is absent                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `packRequired(namespace)`                    | the deployed manifest's `required` flag; `false` when the pack is absent                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `sendResourcePack(player, url, sha1, opts?)` | offer one pack through Paper's Adventure API (`ResourcePackRequest` + `player.sendResourcePacks(...)`). `opts`: `{ required?: boolean \| expression, prompt?: text expression }`. The prompt accepts any text-valued expression — `colored(...)`, a variable, a call — not only string / format literals (feedback H3; a plain string is also accepted), and the engine renders it through the general text path. A literal sha1 is build-validated as 40 hex digits; the engine re-validates at runtime and refuses (warned no-op) otherwise |
+| `onResourcePackStatus(body)`                 | event fired from Paper's `PlayerResourcePackStatusEvent`; inside it, `player()` is the answering player                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `resourcePackStatus()`                       | the status text inside the event: `"accepted"`, `"downloaded"`, `"successfully_loaded"`, `"declined"` or `"failed_download"` (the Bukkit enum name lowercased, so a future status passes through in the same shape)                                                                                                                                                                                                                                                                                                                           |
 
 `examples/packdist.ts` is the reference flow: on join it
 uploads the deployed `packs/example.zip` with `cfR2Put`,

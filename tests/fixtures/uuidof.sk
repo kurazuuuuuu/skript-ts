@@ -1,0 +1,12 @@
+command /myuuid:
+    trigger:
+        send "myuuid=%uuid of player%" to player
+
+command /uuidstore:
+    trigger:
+        set {uuidmark::%uuid of player%} to "marked"
+        send "uuidstored under %uuid of player%" to player
+
+command /uuidread:
+    trigger:
+        send "uuidread=%{uuidmark::%uuid of player%}%" to player

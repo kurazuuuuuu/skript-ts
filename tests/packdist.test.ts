@@ -12,6 +12,7 @@ import {
   cfR2Put,
   cfR2Size,
   cfSignedUrl,
+  colored,
   command,
   emit,
   emitIr,
@@ -139,6 +140,42 @@ describe("resource pack distribution slice (RP-3, engine-only)", () => {
     expect((sendNode?.["prompt"] as Node)?.value).toBe("hello");
     expect(isEngineOnlyScript(s)).toBe(true);
     expect(() => emit(s)).toThrow();
+  });
+
+  it("accepts a general text expression as the prompt (feedback H3)", () => {
+    // colored() returns a plain Expr, not a TextExpr: before H3
+    // this shape was a type error even though send() and the
+    // engine's text rendering accept it.
+    const s = script(
+      command("x", null, [
+        sendResourcePack(
+          player(),
+          str("https://e.invalid/p"),
+          "0123456789abcdef0123456789abcdef01234567",
+          {
+            prompt: colored(str("&ahello")),
+          },
+        ),
+        sendResourcePack(
+          player(),
+          str("https://e.invalid/p"),
+          "0123456789abcdef0123456789abcdef01234567",
+          {
+            prompt: variable("packprompt"),
+          },
+        ),
+      ]),
+    );
+    const ir = JSON.parse(emitIr(s)) as unknown;
+    const prompts: Node[] = [];
+    const collect = (value: unknown): void => {
+      if (value === null || typeof value !== "object") return;
+      const node = value as Node;
+      if (node.kind === "sendResourcePack") prompts.push(node["prompt"] as Node);
+      for (const child of Object.values(value)) collect(child);
+    };
+    collect(ir);
+    expect(prompts.map((p) => p?.kind)).toEqual(["coloredText", "variable"]);
   });
 
   it("accepts a literal sha1 and a boolean required flag", () => {

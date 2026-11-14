@@ -356,6 +356,12 @@ export type Expr =
   | { kind: "itemModelOf"; target: Expr }
   | { kind: "customModelDataOf"; target: Expr }
   | { kind: "nameOf"; target: Expr }
+  // Player UUID (feedback B6-3): the target player's UUID as a
+  // text. Dual-mode: the engine reads OfflinePlayer.getUniqueId(),
+  // and Skript mode emits its `uuid of %player%` form (probed
+  // against the real Skript 2.17.1 in the sandbox). A non-player
+  // target has no value in both runtimes.
+  | { kind: "uuidOf"; target: Expr }
   // Hidden item tags (feedback D): ENGINE-ONLY. Skript has no
   // PersistentDataContainer access, so there is no .sk form.
   // itemTag reads the tag stored under `key` in the item's
@@ -1416,7 +1422,11 @@ export type Stmt =
       sha1: TextExpr;
       required?: boolean;
       requiredExpr?: Expr;
-      prompt?: TextExpr;
+      // An expression rather than a TextExpr (feedback H3): the
+      // prompt accepts the same general text expressions other
+      // text positions accept (colored(...), variables, calls),
+      // and the engine renders it through the general text path.
+      prompt?: Expr;
       loc?: SourceLoc;
     }
   // Engine-builtin statements (particles & fireworks, feedback D):

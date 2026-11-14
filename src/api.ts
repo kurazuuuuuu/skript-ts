@@ -2756,6 +2756,11 @@ export function nameOf(target: Expr): Expr {
   return { kind: "nameOf", target };
 }
 
+/** Construct a uuid-of expression: a player's UUID as text (feedback B6-3). Emits `uuid of %player%` under Skript; the engine reads the player's UUID directly. A non-player target has no value. */
+export function uuidOf(target: Expr): Expr {
+  return { kind: "uuidOf", target };
+}
+
 /** Construct a lore-of expression: an item's lore lines as a list (no value when the item has no lore). */
 export function loreOf(target: Expr): Expr {
   return { kind: "loreOf", target };
@@ -4839,7 +4844,7 @@ export function sendResourcePack(
   target: Expr,
   url: Expr,
   sha1: string | Expr,
-  opts?: { required?: boolean | Expr; prompt?: string | TextExpr },
+  opts?: { required?: boolean | Expr; prompt?: string | Expr },
 ): Stmt {
   return withLoc({
     kind: "sendResourcePack",

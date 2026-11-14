@@ -67,6 +67,28 @@ text index that merely equals a player's name is
 indistinguishable from a player index in the store format and
 migrates with it.
 
+That indistinguishability is the migration's known hazard
+(feedback B6-2): data keyed by a player-name _string_ — written
+through the name as text rather than through the player value —
+moves to the UUID key too and is no longer reachable by that
+string. Limiting the migration to player-derived keys is not
+possible for existing stores: the format records no provenance
+for a key segment, so a player-derived segment and a string
+segment are the same bytes, and "player-derived only" would
+mean migrating nothing. The safeguard is therefore a warning,
+not a filter (decided in feedback lane fb3-keys): before
+anything moves, the migration logs a WARNING counting the
+candidate entries and naming example keys, and the startup log
+line afterwards reports the per-category counts — candidates
+examined, entries moved (labelled as containing both
+player-derived and name-spelling string keys), conflicts left
+name-keyed, and names shared by more than one UUID left
+unmapped. An operator who keys data by player-name strings can
+stop the server and select the legacy option instead. The
+migration logic and this contract are pinned by
+`engine/tests/VariablesMigrationTest.java` (run
+`engine/test.sh`).
+
 In `.sk` mode the transpiled text is the same `{growth::%player%}`
 either way; which key form is used is Skript's own config
 setting, `use player UUIDs in variable names` in

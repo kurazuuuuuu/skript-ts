@@ -6,6 +6,7 @@ import {
   cfR2Presign,
   cfR2Put,
   cfSignedUrl,
+  colored,
   command,
   equals,
   fmt,
@@ -96,7 +97,10 @@ export const packdistScript: Script = script(
               [
                 sendResourcePack(player(), cfSignedUrl(), packSha1("example"), {
                   required: packRequired("example"),
-                  prompt: str("このサーバーではカスタムテクスチャを使います"),
+                  // Feedback H3: the prompt accepts a general text
+                  // expression, not only string/format literals —
+                  // colored(str(...)) is the reported shape.
+                  prompt: colored(str("&aこのサーバーではカスタムテクスチャを使います")),
                 }),
               ],
               [broadcast(fmt("packdist[packurl] error ", cfError()))],
