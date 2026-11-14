@@ -678,7 +678,11 @@ export function isPluralType(type: FunctionTypeName): boolean {
  * "objects", ...) makes the parameter collect the remaining
  * arguments as a list; it must be the last parameter.
  */
-export function param(name: string, type: FunctionTypeName, defaultValue?: Expr): FunctionParam {
+export function param<T extends FunctionTypeName>(
+  name: string,
+  type: T,
+  defaultValue?: Expr,
+): FunctionParam<T> {
   if (typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new RangeError(`invalid parameter name: ${String(name)}`);
   }
@@ -719,6 +723,159 @@ export function call(name: string, ...args: Expr[]): Expr {
 /** Construct a function-call statement: invoke a custom function for its effects, discarding any return value. */
 export function callStmt(name: string, ...args: Expr[]): Stmt {
   return withLoc({ kind: "callStmt", name: requireFunctionName(name), args });
+}
+
+// ---------------------------------------------------------------------------
+// Typed function handles (feedback E2): defineFn is defineFunction
+// plus a handle the type checker can call. The handle removes the
+// two unchecked spots of the string-name API — a misspelled name
+// is an unknown identifier (not a runtime string), and argument
+// count / kinds are a mapped tuple over the parameters' declared
+// type literals, so tsc checks every call site.
+// ---------------------------------------------------------------------------
+
+/**
+ * The argument kind one declared parameter type accepts through a
+ * typed handle: JS primitives for "number" / "text" / "boolean"
+ * (normalized to num() / str() / bool() at runtime), an Expr for
+ * every other singular type, and — for a plural type (its name
+ * ends in "s") — one Expr or an array of Exprs, flattened into
+ * the call's argument list at runtime.
+ */
+export type FnArg<T extends FunctionTypeName> = T extends `${string}s`
+  ? Expr | readonly Expr[]
+  : T extends "number"
+    ? number | Expr
+    : T extends "text"
+      ? string | Expr
+      : T extends "boolean"
+        ? boolean | Expr
+        : Expr;
+
+/** The call-argument tuple of a parameter list: one FnArg per declared parameter, in order. */
+export type FnArgs<Ps extends readonly FunctionParam[]> = {
+  [K in keyof Ps]: FnArg<Ps[K]["type"]>;
+};
+
+/** The non-callable part of a typed function handle: the definition and the statement call. */
+export interface FnHandleBase<Ps extends readonly FunctionParam[]> {
+  /** The TopLevel defineFunction produced for this function; script() also accepts the handle itself. */
+  readonly definition: TopLevel;
+  /** Invoke the function as a statement, discarding any return value (the callStmt form). */
+  stmt(...args: FnArgs<Ps>): Stmt;
+}
+
+/**
+ * A typed function handle. For a value-returning function the
+ * handle itself is callable as an expression; for a void function
+ * (return type null) the handle is only FnHandleBase — calling it
+ * as an expression is a type error, and only .stmt / .definition
+ * are available.
+ */
+export type FnHandle<
+  Ps extends readonly FunctionParam[],
+  R extends FunctionTypeName | null,
+> = R extends null ? FnHandleBase<Ps> : FnHandleBase<Ps> & ((...args: FnArgs<Ps>) => Expr);
+
+/** Brand property marking a typed function handle, so script() can unwrap it to its definition. */
+const FN_HANDLE_BRAND: unique symbol = Symbol("skript-ts.fnHandle");
+
+function isFnHandle(value: unknown): value is { definition: TopLevel } {
+  return (
+    typeof value === "function" &&
+    (value as { [FN_HANDLE_BRAND]?: unknown })[FN_HANDLE_BRAND] === true
+  );
+}
+
+/** Normalize one handle argument to the expression(s) it contributes to the call. */
+function normalizeFnArg(fnName: string, paramDef: FunctionParam, arg: unknown): Expr[] {
+  if (isPluralType(paramDef.type)) {
+    if (Array.isArray(arg)) {
+      for (const element of arg) {
+        if (!isExprValue(element)) {
+          throw new RangeError(
+            `function ${fnName}: argument "${paramDef.name}" (${paramDef.type}) must be expressions`,
+          );
+        }
+      }
+      return [...arg];
+    }
+    if (isExprValue(arg)) return [arg];
+    throw new RangeError(
+      `function ${fnName}: argument "${paramDef.name}" (${paramDef.type}) must be an expression or an array of expressions`,
+    );
+  }
+  if (paramDef.type === "number" && typeof arg === "number") return [num(arg)];
+  if (paramDef.type === "text" && typeof arg === "string") return [str(arg)];
+  if (paramDef.type === "boolean" && typeof arg === "boolean") return [bool(arg)];
+  if (isExprValue(arg)) return [arg];
+  const accepted =
+    paramDef.type === "number"
+      ? "a number or an expression"
+      : paramDef.type === "text"
+        ? "a string or an expression"
+        : paramDef.type === "boolean"
+          ? "a boolean or an expression"
+          : "an expression";
+  throw new RangeError(
+    `function ${fnName}: argument "${paramDef.name}" (${paramDef.type}) must be ${accepted}`,
+  );
+}
+
+/**
+ * Validate and normalize handle call arguments at runtime. The
+ * type-level tuple already checks arity for TypeScript callers;
+ * this mirrors it for callers that bypass the types: the count
+ * must match the parameter list (trailing parameters with
+ * defaults may be omitted, as in defineFunction), and each
+ * argument is normalized by its parameter's declared kind.
+ */
+function normalizeFnArgs(
+  fnName: string,
+  params: readonly FunctionParam[],
+  args: readonly unknown[],
+): Expr[] {
+  let minArgs = params.length;
+  while (minArgs > 0 && params[minArgs - 1]?.default !== undefined) minArgs--;
+  if (args.length < minArgs || args.length > params.length) {
+    const expected =
+      minArgs === params.length ? `${params.length}` : `${minArgs} to ${params.length}`;
+    throw new RangeError(
+      `function ${fnName}: expected ${expected} argument(s), got ${args.length}`,
+    );
+  }
+  const normalized: Expr[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const paramDef = params[i];
+    if (paramDef === undefined) break;
+    normalized.push(...normalizeFnArg(fnName, paramDef, args[i]));
+  }
+  return normalized;
+}
+
+/**
+ * Construct a custom function declaration like defineFunction,
+ * and return a typed handle to it. The handle's .definition is
+ * the TopLevel defineFunction produced (script() accepts the
+ * handle directly too); calling the handle builds the function
+ * call expression with arguments checked and normalized by the
+ * declared parameter types, and handle.stmt(...) builds the call
+ * statement. A void function (returnType null) yields a handle
+ * that is not callable as an expression at the type level.
+ */
+export function defineFn<Ps extends readonly FunctionParam[], R extends FunctionTypeName | null>(
+  name: string,
+  params: readonly [...Ps],
+  returnType: R,
+  body: readonly Stmt[],
+): FnHandle<Ps, R> {
+  const definition = defineFunction(name, params, returnType, body);
+  const invoke = (...args: readonly unknown[]): Expr =>
+    call(name, ...normalizeFnArgs(name, params, args));
+  const stmt = (...args: readonly unknown[]): Stmt =>
+    callStmt(name, ...normalizeFnArgs(name, params, args));
+  const handle = Object.assign(invoke, { definition, stmt, [FN_HANDLE_BRAND]: true as const });
+  return handle as unknown as FnHandle<Ps, R>;
 }
 
 /**
@@ -1428,9 +1585,18 @@ export function command(
   });
 }
 
-/** Construct a script from top-level declarations. */
-export function script(...body: TopLevel[]): Script {
-  return { kind: "script", body };
+/**
+ * Construct a script from top-level declarations. Typed function
+ * handles (from defineFn) are accepted directly wherever their
+ * definition belongs: each handle is unwrapped to its
+ * .definition, which is also where the unwrapping happens for
+ * everything downstream (emit / IR read the Script body only).
+ */
+export function script(...body: (TopLevel | FnHandle<any, any>)[]): Script {
+  return {
+    kind: "script",
+    body: body.map((item) => (isFnHandle(item) ? item.definition : item)),
+  };
 }
 
 // ---------------------------------------------------------------------------
