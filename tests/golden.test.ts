@@ -212,6 +212,7 @@ import {
   setWorldTime,
   setWorldWeather,
   slotItem,
+  sortedList,
   spawnEntity,
   splitText,
   sqrt,
@@ -284,6 +285,7 @@ import { inventoryScript } from "../examples/inventory.js";
 import { giveoverflowScript } from "../examples/giveoverflow.js";
 import { literalsScript } from "../examples/literals.js";
 import { issetScript } from "../examples/isset.js";
+import { sortedScript } from "../examples/sorted.js";
 import { invspaceScript } from "../examples/invspace.js";
 
 function fixture(name: string): string {
@@ -380,6 +382,34 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("isset", () => {
     expect(emit(issetScript)).toBe(fixture("isset.sk"));
+  });
+  it("sorted", () => {
+    expect(emit(sortedScript)).toBe(fixture("sorted.sk"));
+  });
+});
+
+describe("sortedList expression (feedback C5)", () => {
+  it("the sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(sortedScript)).toBe(false);
+  });
+  it("emits `sorted <list>` for every list-valued operand shape", () => {
+    expect(emit(script(onJoin([set(listVar("s"), sortedList(listVar("l")))])))).toBe(
+      "on join:\n    set {s::*} to sorted {l::*}\n",
+    );
+    expect(emit(script(onJoin([set(localList("s"), sortedList(localList("l")))])))).toBe(
+      "on join:\n    set {_s::*} to sorted {_l::*}\n",
+    );
+    expect(
+      emit(script(onJoin([set(localList("s"), sortedList(splitText(str("b,a"), str(","))))]))),
+    ).toBe('on join:\n    set {_s::*} to sorted split "b,a" at ","\n');
+    expect(emit(script(onJoin([set(localList("s"), sortedList(call("shuffled")))])))).toBe(
+      "on join:\n    set {_s::*} to sorted shuffled()\n",
+    );
+  });
+  it("emits %-wrapped inside a string", () => {
+    expect(emit(script(onJoin([broadcast(fmt("s=", sortedList(listVar("l"))))])))).toBe(
+      'on join:\n    broadcast "s=%sorted {l::*}%"\n',
+    );
   });
 });
 

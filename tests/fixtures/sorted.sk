@@ -1,0 +1,37 @@
+command /sortnums:
+    trigger:
+        add 3 to {_nums::*}
+        add 1 to {_nums::*}
+        add 2 to {_nums::*}
+        set {_sorted::*} to sorted {_nums::*}
+        send "nums=%{_sorted::*}%" to player
+
+command /sorttexts:
+    trigger:
+        add "banana" to {_words::*}
+        add "Apple" to {_words::*}
+        add "cherry" to {_words::*}
+        set {_sorted::*} to sorted {_words::*}
+        send "texts=%{_sorted::*}%" to player
+
+command /sortmixed:
+    trigger:
+        add 1 to {_mixed::*}
+        add "x" to {_mixed::*}
+        add 2 to {_mixed::*}
+        set {_sorted::*} to sorted {_mixed::*}
+        send "mixed=%{_sorted::*}%" to player
+
+command /sortsplit:
+    trigger:
+        set {_sorted::*} to sorted split "pear,apple,kiwi" at ","
+        send "split=%{_sorted::*}%" to player
+
+command /sortglobal:
+    trigger:
+        delete {scores::*}
+        add 30 to {scores::*}
+        add 10 to {scores::*}
+        add 20 to {scores::*}
+        set {sortedscores::*} to sorted {scores::*}
+        send "global=%{sortedscores::*}%" to player
