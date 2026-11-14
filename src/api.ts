@@ -2025,6 +2025,24 @@ export function script(...body: (TopLevel | FnHandle<any, any>)[]): Script {
   };
 }
 
+/**
+ * Declare a script's load order (feedback B4): the engine
+ * loads scripts in ascending declared order (undeclared
+ * scripts count as 0; ties fall back to the relative path),
+ * which fixes same-priority event handler order, duplicate
+ * definition resolution and periodical scheduling order
+ * across files without encoding it in file names. Skript
+ * loads .sk files in filename order and has no equivalent —
+ * the declaration is engine-only metadata in the IR, and
+ * the emitted .sk is unchanged.
+ */
+export function loadOrder(order: number, value: Script): Script {
+  if (!Number.isFinite(order)) {
+    throw new RangeError("load order must be a finite number");
+  }
+  return { ...value, loadOrder: order };
+}
+
 // ---------------------------------------------------------------------------
 // Engine builtins (MundoSK slice, phase 6)
 //

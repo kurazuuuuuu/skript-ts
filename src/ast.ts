@@ -1516,4 +1516,12 @@ export type TopLevel =
 export interface Script {
   kind: "script";
   body: readonly TopLevel[];
+  /**
+   * Declared load order (feedback B4), set via the loadOrder()
+   * builder. The engine loads scripts in ascending order
+   * (undeclared = 0, ties broken by relative path); Skript
+   * mode cannot express it — Skript loads .sk files in
+   * filename order — so it only exists in the IR.
+   */
+  loadOrder?: number;
 }

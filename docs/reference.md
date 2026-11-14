@@ -34,6 +34,22 @@ Anything not listed here is outside the supported subset.
 | `onToggleSneak`   | `on toggle sneak:`   |
 | `onSwapHand`      | — (engine-only)      |
 
+## Script load order (feedback B4)
+
+`loadOrder(n, script(...))` declares a script's load order.
+The engine loads scripts in ascending declared order —
+undeclared scripts count as 0 and ties fall back to the
+relative path — so same-priority event handler order,
+duplicate definition resolution and periodical scheduling
+order across files are fixed by declaration instead of by
+file name. The declaration travels in the IR root
+(`loadOrder`); the emitted `.sk` is unchanged. Skript has
+no equivalent: it loads `.sk` files in filename order, so
+under Skript the handler order across files follows the
+file names. `examples/loadorder1.ts` /
+`examples/loadorder2.ts` and their behavior suite pin the
+difference in both modes.
+
 ## Commands
 
 `command(name, args, body, options?)` — any number of typed
