@@ -1,0 +1,50 @@
+function maybe(input: text) :: text:
+    if {_input} is "yes":
+        return "found"
+
+command /isset:
+    trigger:
+        if {_probe} is set:
+            send "isset: local=set" to player
+        else:
+            send "isset: local=unset" to player
+        set {_probe} to ""
+        if {_probe} is set:
+            send "isset: empty=set" to player
+        else:
+            send "isset: empty=unset" to player
+        delete {issetglobal}
+        if {issetglobal} is set:
+            send "isset: global=set" to player
+        else:
+            send "isset: global=unset" to player
+        set {issetglobal} to 42
+        if {issetglobal} is set:
+            send "isset: global-after-set=set" to player
+        else:
+            send "isset: global-after-set=unset" to player
+        delete {issetglobal}
+        if {issetglobal} is set:
+            send "isset: global-after-delete=set" to player
+        else:
+            send "isset: global-after-delete=unset" to player
+        if {issetglobal} is not set:
+            send "isset: global-not-set=T" to player
+        if maybe("yes") is set:
+            send "isset: maybe-yes=set" to player
+        else:
+            send "isset: maybe-yes=unset" to player
+        if maybe("no") is set:
+            send "isset: maybe-no=set" to player
+        else:
+            send "isset: maybe-no=unset" to player
+        if maybe("no") is not set:
+            send "isset: maybe-no-not-set=T" to player
+        set {_guard} to 1
+        while {_guard} is set:
+            send "isset: while=ran" to player
+            delete {_guard}
+        if {_guard} is set:
+            send "isset: guard=set" to player
+        else:
+            send "isset: guard=unset" to player
