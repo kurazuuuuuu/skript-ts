@@ -54,8 +54,17 @@ export default defineBehavior(async (t) => {
   try {
     await t.sleep(1000); // let the join sequence settle
     // Start from a cleared inventory (the welcome sample
-    // hands every joining bot a wooden sword).
+    // hands every joining bot a wooden sword). The bot's
+    // playerdata persists across runs, so a prize sword from
+    // an earlier run can still be in hand — and on a busy
+    // server the clear can race the join and miss. Re-issue
+    // it until the leftover sword is actually gone.
     await t.console("clear PrizeBot");
+    for (let attempt = 0; attempt < 10; attempt++) {
+      if ((await bot.inventoryItemInfo("diamond_sword", 300)) === null) break;
+      await t.console("clear PrizeBot");
+      await t.sleep(300);
+    }
     // Work on virgin flat ground far from the shared spawn:
     // the sandbox world accumulates dropped items and terrain
     // edits from other suites, and a naturally dropped item
