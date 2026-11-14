@@ -122,8 +122,18 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         }
         int[] result = variables.migratePlayerNameKeys(nameToUuid);
         if (result[0] > 0 || result[1] > 0 || !ambiguous.isEmpty()) {
-            getLogger().info("skript-ts: variable key migration (player name -> UUID): moved "
-                    + result[0] + " entries; " + result[1]
+            // Per-category counts (feedback B6-2): the candidate
+            // total is split into what moved and what stayed, and
+            // the moved count is labelled with what it contains —
+            // the store format cannot separate player-value-derived
+            // keys from plain string keys that spell a player name,
+            // so both migrate together (see Variables).
+            getLogger().info("skript-ts: variable key migration (player name -> UUID): examined "
+                    + result[2] + " name-matched entries; moved "
+                    + result[0] + " entries to UUID keys (index segment matched a known player"
+                    + " name — player-value-derived keys and plain string keys that spell a"
+                    + " player name are indistinguishable in the store format and migrate"
+                    + " together); " + result[1]
                     + " left name-keyed (a UUID entry already exists); "
                     + ambiguous.size() + " player name(s) shared by more than one UUID left unmapped."
                     + " Entries whose player could not be resolved stay name-keyed and remain"

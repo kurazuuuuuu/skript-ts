@@ -173,6 +173,10 @@ function emitValue(e: Expr): string {
       return e.target.kind === "arith"
         ? `name of (${emitValue(e.target)})`
         : `name of ${emitValue(e.target)}`;
+    case "uuidOf":
+      return e.target.kind === "arith"
+        ? `uuid of (${emitValue(e.target)})`
+        : `uuid of ${emitValue(e.target)}`;
     case "loreOf":
       return e.target.kind === "arith"
         ? `lore of (${emitValue(e.target)})`
@@ -485,6 +489,7 @@ function emitString(e: Expr): string {
     case "itemModelOf":
     case "customModelDataOf":
     case "nameOf":
+    case "uuidOf":
     case "loreOf":
     case "amountOf":
     case "itemCountIn":

@@ -139,12 +139,55 @@ final class Variables {
      * already exists stays under its name key and is counted as a
      * conflict, and segments matching no known player stay as
      * they are — such data remains reachable by selecting the
-     * legacy name-keying option. A text index that merely equals
-     * a player's name is indistinguishable from a player index
-     * in this store format and migrates with it.
-     * Returns {moved, conflicts}; saves once if anything moved.
+     * legacy name-keying option.
+     *
+     * Safety warning (feedback B6-2): the store format records no
+     * provenance for a key segment — a segment written from a
+     * player value and one written from a plain text value that
+     * happens to spell the player's name (for example a name
+     * string produced by formatting the player) are the same
+     * bytes, so the migration cannot limit itself to
+     * player-derived keys: for a store written before provenance
+     * could exist, "player-derived only" would mean migrating
+     * nothing at all. The safeguard is therefore a warning, not
+     * a filter: before anything moves, every candidate key is
+     * counted and a warning naming example keys is logged, so an
+     * operator who keys data by player-name strings can switch
+     * to the legacy name-keying option instead. The migration
+     * itself stays non-destructive either way.
+     *
+     * Returns {moved, conflicts, candidates}; saves once if
+     * anything moved.
      */
     synchronized int[] migratePlayerNameKeys(Map<String, String> nameToUuid) {
+        // First pass: the candidate keys — every entry with an
+        // index segment that a known player's name would rewrite.
+        List<String> candidates = new ArrayList<>();
+        for (String key : values.keySet()) {
+            String[] segments = key.split("::", -1);
+            for (int i = 1; i < segments.length; i++) {
+                String uuid = nameToUuid.get(segments[i]);
+                if (uuid != null && !uuid.equals(segments[i])) {
+                    candidates.add(key);
+                    break;
+                }
+            }
+        }
+        if (!candidates.isEmpty()) {
+            int shown = Math.min(candidates.size(), 5);
+            logger.warning("skript-ts: variable key migration (player name -> UUID): "
+                    + candidates.size() + " stored "
+                    + (candidates.size() == 1 ? "entry has" : "entries have")
+                    + " an index segment equal to a known player name and will be migrated"
+                    + " to UUID keys (for example: "
+                    + String.join(", ", candidates.subList(0, shown)) + ")."
+                    + " The store format cannot tell a player index apart from a plain text"
+                    + " index, so a text key that merely spells a player's name (for example"
+                    + " one written through the player's name as a string) migrates too and"
+                    + " will no longer be reachable by that name string. Nothing is deleted;"
+                    + " to keep name keys instead, stop the server and set"
+                    + " variables.playerKeysUseUuid=false in config.json.");
+        }
         int moved = 0;
         int conflicts = 0;
         for (String key : new ArrayList<>(values.keySet())) {
@@ -167,7 +210,7 @@ final class Variables {
             moved++;
         }
         if (moved > 0) save();
-        return new int[] {moved, conflicts};
+        return new int[] {moved, conflicts, candidates.size()};
     }
 
     synchronized void save() {

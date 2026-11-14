@@ -4014,6 +4014,14 @@ final class Engine {
                 if (target instanceof Player p) yield p.getName();
                 yield null;
             }
+            case "uuidOf" -> {
+                // Feedback B6-3: a player's UUID as text; a
+                // non-player target has no value, like nameOf.
+                // Player is an OfflinePlayer, so one check covers
+                // both (an offline player value keys the same way).
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof OfflinePlayer op ? op.getUniqueId().toString() : null;
+            }
             case "itemTag" -> {
                 // Hidden item tags (feedback D, engine-only): the
                 // tag value from the item's PersistentData-

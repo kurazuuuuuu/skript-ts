@@ -285,6 +285,7 @@ import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
 import { timeScript } from "../examples/time.js";
 import { uuidvarsScript } from "../examples/uuidvars.js";
+import { uuidofScript } from "../examples/uuidof.js";
 import { varhandlesScript } from "../examples/varhandles.js";
 import { priorityScript } from "../examples/priority.js";
 import { randomScript } from "../examples/random.js";
@@ -379,6 +380,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("uuidvars", () => {
     expect(emit(uuidvarsScript)).toBe(fixture("uuidvars.sk"));
+  });
+  it("uuidof", () => {
+    expect(emit(uuidofScript)).toBe(fixture("uuidof.sk"));
   });
   it("varhandles", () => {
     expect(emit(varhandlesScript)).toBe(fixture("varhandles.sk"));
