@@ -1020,6 +1020,19 @@ engine jar. Every semantic below was probed against the
 real Skript 2.17.1 (console probes plus a mineflayer bot
 clicking through a live GUI; see the development log):
 
+- **Type-name validation (feedback A7)**: the CLI checks
+  every `item("...")` string literal at build time against
+  the canonical Bukkit material names (the list in
+  `src/cli/material-names.ts`, generated from the Paper
+  API jar). A near miss (edit distance at most 2 after
+  normalization) fails the build with did-you-mean
+  suggestions — it would otherwise only fail when the
+  server loads the script. A name the material list does
+  not know at all is a printed warning, never an error:
+  it may be a slotted Skript alias (e.g. a potion name),
+  which Skript resolves but the engine (material names
+  only) does not.
+
 - **Item construction** composes suffixes over any
   item-valued expression: `withName(item, nameText)`,
   `withLore(item, ...lines)` and `withAmount(item,

@@ -767,6 +767,7 @@ async function main(): Promise<number> {
       ignore: ["to-sk-files.ts"],
       onFile: (rel) => h.update(rel),
     });
+    for (const warning of build.warnings) console.error(warning);
     const n = build.scripts.length;
     const skippedNote = build.skipped.length > 0 ? `、${build.skipped.length} 件スキップ` : "";
     const packNote = build.packs.length > 0 ? `、パック ${build.packs.length} 件` : "";

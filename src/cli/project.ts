@@ -23,6 +23,7 @@ import {
 } from "../packregistry.js";
 import { parseResourceId, type PackDef } from "../resourcepack.js";
 import { typescriptBinPath } from "./toolchain.js";
+import { findItemNameIssues, formatItemNameIssue } from "./type-names.js";
 import { buildCustomItemTable, resolveCustomItems, type ResolvedCustomItem } from "../resolve.js";
 import type { SourceMapFile } from "../source-map.js";
 
@@ -64,6 +65,8 @@ export interface BuildResult {
   maps: Map<string, SourceMapFile>;
   /** Resource packs generated from exported PackDef values (at most one). */
   packs: BuiltPack[];
+  /** Non-fatal build warnings for the CLI to print (feedback A7 soft issues). */
+  warnings: string[];
 }
 
 function isScript(value: unknown): value is Script {
@@ -150,6 +153,23 @@ export async function buildProject(opts: {
     loaded.push({ absFile, relSource, prog: found[0] as Script });
   }
 
+  // Feedback A7: validate literal item type names against the
+  // canonical material names while the scripts are in hand. A
+  // near miss is a build error (it would fail at server load);
+  // a name the material list does not know at all is only a
+  // warning — it may be a slotted Skript alias (e.g. a potion
+  // name), which the engine cannot resolve but Skript can.
+  const warnings: string[] = [];
+  for (const entry of loaded) {
+    if (entry.prog === null) continue;
+    for (const issue of findItemNameIssues(entry.prog)) {
+      if (issue.hard) {
+        throw new Error(formatItemNameIssue(entry.relSource, issue));
+      }
+      warnings.push(formatItemNameIssue(entry.relSource, issue));
+    }
+  }
+
   // RP-2: allocate CustomModelData numbers for the pack's items
   // (append-only registry, persisted at the project root) and build
   // the custom-item resolution table. With no pack, scripts are
@@ -213,7 +233,13 @@ export async function buildProject(opts: {
     scripts.push({ rel: relSk, engineOnly: false, skPath, mapPath, map, irRel, irPath });
     maps.set(relSk, map);
   }
-  return { scripts, skipped, maps, packs: buildPacks(foundPacks, outDir, packAllocations) };
+  return {
+    scripts,
+    skipped,
+    maps,
+    packs: buildPacks(foundPacks, outDir, packAllocations),
+    warnings,
+  };
 }
 
 /** The project's single pack, or null. Multiple packs are a build error. */
