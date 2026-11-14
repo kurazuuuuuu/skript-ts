@@ -224,7 +224,12 @@ export interface ItemDef {
 export interface FontCharInput {
   id: string;
   texture: TextureDef | string;
-  char: string;
+  /**
+   * The font character to bind (exactly one code point). When
+   * omitted, the project build auto-allocates a private-use
+   * character from the persisted font-char registry (RP-4).
+   */
+  char?: string;
   height?: number;
   ascent: number;
 }
@@ -233,7 +238,13 @@ export interface FontCharDef {
   kind: "fontChar";
   id: string;
   texture: TextureDef | string;
-  char: string;
+  /**
+   * The resolved font character, or undefined when the definition
+   * requested auto-allocation: an unresolved auto-allocation is
+   * resolved by the project build (fontchar-registry.json, RP-4)
+   * before pack generation, and packgen refuses an unresolved def.
+   */
+  char?: string;
   height: number;
   ascent: number;
 }
@@ -537,10 +548,13 @@ export function defineFontChar(input: FontCharInput): FontCharDef {
   );
 
   const charRaw: unknown = input.char;
-  if (typeof charRaw !== "string" || codePointLength(charRaw) !== 1) {
-    fail(`${where}: char must be exactly one code point, got ${describe(charRaw)}`);
+  let char: string | undefined;
+  if (charRaw !== undefined) {
+    if (typeof charRaw !== "string" || codePointLength(charRaw) !== 1) {
+      fail(`${where}: char must be exactly one code point, got ${describe(charRaw)}`);
+    }
+    char = charRaw;
   }
-  const char = charRaw;
 
   const heightRaw: unknown = input.height ?? DEFAULT_FONT_HEIGHT;
   if (
@@ -568,14 +582,17 @@ export function defineFontChar(input: FontCharInput): FontCharDef {
   }
   const ascent = ascentRaw;
 
-  return {
+  const def: FontCharDef = {
     kind: "fontChar",
     id: fontCharId,
     texture: normalizedTexture,
-    char,
     height,
     ascent,
   };
+  if (char !== undefined) {
+    def.char = char;
+  }
+  return def;
 }
 
 /* ------------------------------------------------------------------ */
@@ -674,14 +691,20 @@ export function definePack(input: PackInput): PackDef {
     }
     fontCharIds.set(resolved, fontChar.id);
 
-    const previousChar = fontCharByChar.get(fontChar.char);
-    if (previousChar !== undefined) {
-      fail(
-        `${base}: duplicate font character char ${JSON.stringify(fontChar.char)} at fontChars[${index}].char: ` +
-          `already used by font character ${JSON.stringify(previousChar)}`,
-      );
+    // Duplicate-char check applies only between font chars that
+    // carry an explicit char: unresolved auto-allocations have no
+    // char yet, so they cannot collide with anything here (the
+    // project build allocates them distinct private-use chars).
+    if (fontChar.char !== undefined) {
+      const previousChar = fontCharByChar.get(fontChar.char);
+      if (previousChar !== undefined) {
+        fail(
+          `${base}: duplicate font character char ${JSON.stringify(fontChar.char)} at fontChars[${index}].char: ` +
+            `already used by font character ${JSON.stringify(previousChar)}`,
+        );
+      }
+      fontCharByChar.set(fontChar.char, fontChar.id);
     }
-    fontCharByChar.set(fontChar.char, fontChar.id);
 
     const textureRef: unknown = fontChar.texture;
     if (typeof textureRef === "string") {

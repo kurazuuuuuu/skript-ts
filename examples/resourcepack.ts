@@ -55,12 +55,35 @@ export const coinTexture = defineTexture({
   source: { kind: "png", path: "./art/coin.png" },
 });
 
-// A UI glyph: the coin texture bound to a private-use character in
-// the pack's own font (example:default).
+// A UI glyph: the coin texture bound to a character in the pack's
+// own font (example:default). No char is written here (RP-4): the
+// project build auto-allocates a private-use character from the
+// persisted fontchar-registry.json — on first build this entry
+// receives U+E000, exactly the char it used to spell out.
 export const coinChar = defineFontChar({
   id: "ui/coin_icon",
   texture: coinTexture,
-  char: "\uE000",
+  height: 8,
+  ascent: 7,
+});
+
+// A second auto-allocated glyph: the gem texture as a UI icon.
+// It receives the next private-use character after the coin
+// (U+E001 on a fresh registry).
+export const gemIconChar = defineFontChar({
+  id: "ui/gem_icon",
+  texture: gemTexture,
+  height: 8,
+  ascent: 7,
+});
+
+// An explicitly-charred glyph: the definition pins its character
+// instead of taking an auto-allocation. The build records it in
+// the registry and rejects any other glyph claiming U+E100.
+export const starChar = defineFontChar({
+  id: "ui/star_icon",
+  texture: coinTexture,
+  char: "\uE100",
   height: 8,
   ascent: 7,
 });
@@ -70,5 +93,5 @@ export const resourcePack = definePack({
   description: "Example resource pack",
   textures: [gemTexture, coinTexture],
   items: [gemItem],
-  fontChars: [coinChar],
+  fontChars: [coinChar, gemIconChar, starChar],
 });

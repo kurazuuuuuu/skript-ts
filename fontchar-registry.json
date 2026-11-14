@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "chars": {
+    "example:ui/coin_icon": 57344,
+    "example:ui/gem_icon": 57345,
+    "example:ui/star_icon": 57600
+  }
+}

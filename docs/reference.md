@@ -2208,3 +2208,65 @@ the given shard carries `item_model "example:gem"`, CustomModelData
 `tests/packregistry.test.ts` pins the allocation rules,
 `tests/customitems.test.ts` pins resolution and emission, and the
 manifest entries are pinned in `tests/resourcepack.test.ts`.
+
+## Resource packs: font characters and UI text (RP-4)
+
+A font char's character may be left to the build: omit `char`
+in `defineFontChar` and the project build auto-allocates one
+from a persisted registry, exactly parallel to the RP-2
+CustomModelData registry. Scripts read a font char back as
+text with `fontCharOf` and compose it into UI text through the
+existing text positions.
+
+| TS builder                                         | Meaning                                                                                                                                             |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `defineFontChar({ id, texture, height?, ascent })` | a font glyph with an auto-allocated character (omit `char`; an explicit `char` still pins the character, as in RP-1)                                |
+| `fontCharOf(ref)`                                  | a text expression for a pack font char's character: the id as written (a bare path resolves against the pack namespace) or the `FontCharDef` itself |
+
+Semantics:
+
+- **The font-char registry** (`fontchar-registry.json` at the
+  project root, `{ "version": 1, "chars": { "<ns>:<path>":
+  <code point> } }`) persists id → code point assignments.
+  Allocation is **append-only**: an auto-allocation takes the
+  largest private-use code point on record plus one, starting
+  at U+E000, entries are never removed, so a deleted
+  definition's character stays reserved forever, and
+  re-registering the same id restores its original character.
+  An explicit `char` that collides with any existing
+  assignment — including a reserved one — or that renumbers an
+  existing id is a build error. Explicit characters outside
+  the private use area (U+E000–U+F8FF) are recorded but never
+  move the auto-allocation sequence; running out of private-use
+  code points is a build error ("private use area exhausted").
+  The registry is written back only when a build allocates
+  something new.
+- **Resolution happens at project-build time**, like RP-2.
+  `buildProject` allocates the pack's font chars after the
+  CustomModelData allocation, fills each definition's `char`
+  from the registry before pack generation (pack generation
+  itself refuses a definition whose char is still unresolved),
+  and resolves every `fontCharOf` node in the scripts against
+  the pack — replacing the node with a string literal carrying
+  the resolved character before emit and IR. A ref that names
+  no pack font char, or any `fontCharOf` in a project with no
+  matching font char, is a build error; emitting an unresolved
+  node throws.
+- **UI drawing needs no new machinery**: the resolved character
+  is ordinary text, so it renders wherever text already goes —
+  compose it with `fmt()` into `send` messages, chest GUI
+  titles (`openGui` / `chestInventory` titles), item names and
+  lore, and the client draws the pack font's glyph for it.
+
+`examples/resourcepack.ts` exercises all three definition
+forms — the coin glyph and the gem icon auto-allocate (U+E000
+and U+E001 on a fresh registry), the star glyph pins U+E100
+explicitly — and `examples/fontui.ts` draws them: `/fontui`
+sends a message carrying the coin glyph (the `FontCharDef`
+handle form) and opens a chest GUI titled with the gem icon
+(the string id form). `examples/behavior/fontui.behavior.ts`
+pins both runtimes (the message contains U+E000, the opened
+window's title contains U+E001), the registry rules are pinned
+in `tests/resourcepack.test.ts`, and resolution, emission and
+the sample's golden fixture are pinned in
+`tests/fontchar-resolve.test.ts`.

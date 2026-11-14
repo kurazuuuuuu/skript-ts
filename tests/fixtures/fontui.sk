@@ -1,0 +1,4 @@
+command /fontui:
+    trigger:
+        send "コイン: " to player
+        open chest inventory with 3 rows named "ジェム: " to player

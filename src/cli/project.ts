@@ -16,15 +16,26 @@ import { emitIr, emitWithMap, isEngineOnlyScript, type Script } from "../index.j
 import { generatePack, type PackManifest } from "../packgen.js";
 import {
   allocateCustomModelData,
+  allocateFontChars,
+  emptyFontCharRegistry,
   emptyRegistry,
+  parseFontCharRegistry,
   parseRegistry,
+  serializeFontCharRegistry,
   serializeRegistry,
   type CustomModelDataRequest,
+  type FontCharRequest,
 } from "../packregistry.js";
 import { parseResourceId, type PackDef } from "../resourcepack.js";
 import { typescriptBinPath } from "./toolchain.js";
 import { findItemNameIssues, formatItemNameIssue } from "./type-names.js";
-import { buildCustomItemTable, resolveCustomItems, type ResolvedCustomItem } from "../resolve.js";
+import {
+  buildCustomItemTable,
+  buildFontCharTable,
+  resolveCustomItems,
+  resolvePackFontChars,
+  type ResolvedCustomItem,
+} from "../resolve.js";
 import type { SourceMapFile } from "../source-map.js";
 
 export interface BuiltScript {
@@ -177,18 +188,40 @@ export async function buildProject(opts: {
   // reference fails the build instead of emitting unresolved.
   const packSingle = singlePack(foundPacks);
   let customItemTable: ReadonlyMap<string, ResolvedCustomItem> = new Map();
+  let fontCharTable: ReadonlyMap<string, string> = new Map();
   let customItemNamespace = "minecraft";
   let packAllocations: ReadonlyMap<string, number> = new Map();
+  // The pack as generation sees it: the exported PackDef with its
+  // font chars resolved (RP-4). Defaults to the exported packs
+  // themselves when there is no single pack to resolve.
+  let resolvedPacks = foundPacks;
   if (packSingle !== null) {
     const allocated = allocatePackItems(rootDir, packSingle.pack, packSingle.relSource);
     packAllocations = allocated;
     customItemTable = buildCustomItemTable(packSingle.pack, allocated);
     customItemNamespace = packSingle.pack.namespace;
+    // RP-4: allocate font characters (append-only registry,
+    // persisted at the project root) after the CMD allocation,
+    // resolve the pack's font chars with them, and build the
+    // font-char table the script walk resolves fontCharOf
+    // against. The resolved pack is what buildPacks generates.
+    const fontAllocations = allocatePackFontChars(rootDir, packSingle.pack, packSingle.relSource);
+    fontCharTable = buildFontCharTable(packSingle.pack, fontAllocations);
+    const resolvedPack = resolvePackFontChars(packSingle.pack, fontAllocations);
+    resolvedPacks = foundPacks.map((entry) =>
+      entry === packSingle ? { ...entry, pack: resolvedPack } : entry,
+    );
   }
 
   for (const { absFile, relSource, prog: rawProg } of loaded) {
     if (rawProg === null) continue;
-    const prog = resolveCustomItems(rawProg, customItemTable, relSource, customItemNamespace);
+    const prog = resolveCustomItems(
+      rawProg,
+      customItemTable,
+      relSource,
+      customItemNamespace,
+      fontCharTable,
+    );
     const relSk = toPosix(relative(srcDir, absFile)).replace(/\.ts$/, ".sk");
     const irRel = relSk.replace(/\.sk$/, ".ir.json");
     const irPath = join(outDir, irRel);
@@ -237,7 +270,7 @@ export async function buildProject(opts: {
     scripts,
     skipped,
     maps,
-    packs: buildPacks(foundPacks, outDir, packAllocations),
+    packs: buildPacks(resolvedPacks, outDir, packAllocations),
     warnings,
   };
 }
@@ -299,6 +332,55 @@ function allocatePackItems(
   }
   if (result.changed) {
     writeFileSync(registryPath, serializeRegistry(result.registry), "utf8");
+  }
+  return result.allocations;
+}
+
+/** File name of the persisted font character registry at the project root. */
+const FONTCHAR_REGISTRY_FILE = "fontchar-registry.json";
+
+/**
+ * Allocate font characters for every font char of the pack
+ * (RP-4). The registry persists id -> code point assignments at
+ * the project root (`fontchar-registry.json`): allocations are
+ * append-only, a deleted definition's character stays reserved
+ * forever, an explicit char in a definition that collides with
+ * any existing assignment is a build error, and a definition
+ * without a char auto-allocates the next private-use code point
+ * (U+E000..U+F8FF). The registry is written back only when a new
+ * allocation happened.
+ */
+function allocatePackFontChars(
+  rootDir: string,
+  pack: PackDef,
+  relSource: string,
+): ReadonlyMap<string, string> {
+  const registryPath = join(rootDir, FONTCHAR_REGISTRY_FILE);
+  let registry = emptyFontCharRegistry();
+  if (existsSync(registryPath)) {
+    try {
+      registry = parseFontCharRegistry(readFileSync(registryPath, "utf8"));
+    } catch (err) {
+      throw new Error(
+        `${relSource}: cannot use ${FONTCHAR_REGISTRY_FILE}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  const requests: FontCharRequest[] = pack.fontChars.map((fontChar) => {
+    const id = parseResourceId(fontChar.id, pack.namespace);
+    return {
+      id: `${id.namespace}:${id.path}`,
+      ...(fontChar.char !== undefined ? { char: fontChar.char } : {}),
+    };
+  });
+  let result: ReturnType<typeof allocateFontChars>;
+  try {
+    result = allocateFontChars(registry, requests);
+  } catch (err) {
+    throw new Error(`${relSource}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (result.changed) {
+    writeFileSync(registryPath, serializeFontCharRegistry(result.registry), "utf8");
   }
   return result.allocations;
 }

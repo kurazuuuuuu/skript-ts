@@ -321,6 +321,15 @@ export type Expr =
       customModelData?: number;
       displayName?: string;
     }
+  // Resource pack font chars (RP-4). fontCharOf starts
+  // UNRESOLVED, like customItem: only `ref` (the pack font
+  // char's id as written, or the FontCharDef's id) is set by
+  // the builder. The project build resolves it against the
+  // project's pack (src/resolve.ts) and replaces the node with
+  // a string literal carrying the resolved character (explicit,
+  // or auto-allocated from the font-char registry); emit and
+  // the engine refuse an unresolved node.
+  | { kind: "fontCharOf"; ref: string }
   | { kind: "itemModelOf"; target: Expr }
   | { kind: "customModelDataOf"; target: Expr }
   | { kind: "nameOf"; target: Expr }

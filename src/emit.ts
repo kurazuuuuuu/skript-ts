@@ -140,6 +140,10 @@ function emitValue(e: Expr): string {
       return `${emitValue(e.base)} with lore ${andList(e.lines.map((l) => emitValue(l)))}`;
     case "itemWithAmount":
       return `${emitValue(e.amount)} of ${emitValue(e.base)}`;
+    case "fontCharOf":
+      // RP-4: the project build replaces this node with a string
+      // literal; reaching emit means it never went through one.
+      throw new Error("emit: fontCharOf must be resolved by the project build before emitting");
     case "customItem": {
       // The probed Skript 2.17.1 suffix chain (RP-2 findings):
       // `<base> with item model "<id>" [with custom model data <n>]
@@ -472,6 +476,7 @@ function emitString(e: Expr): string {
     case "itemWithLore":
     case "itemWithAmount":
     case "customItem":
+    case "fontCharOf":
     case "itemModelOf":
     case "customModelDataOf":
     case "nameOf":

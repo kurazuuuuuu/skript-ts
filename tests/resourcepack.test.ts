@@ -10,6 +10,13 @@ import {
   type PackDef,
 } from "../src/resourcepack.js";
 import { buildZip, encodePng, generatePack, pixelMapToRgba } from "../src/packgen.js";
+import {
+  allocateFontChars,
+  emptyFontCharRegistry,
+  parseFontCharRegistry,
+  serializeFontCharRegistry,
+  type FontCharRegistry,
+} from "../src/packregistry.js";
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
@@ -500,6 +507,188 @@ describe("manifest items (RP-2)", () => {
       customModelData: 3,
     });
     expect(ok.customModelData).toBe(3);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* font char auto-allocation (RP-4)                                    */
+/* ------------------------------------------------------------------ */
+
+describe("defineFontChar auto-allocation (RP-4)", () => {
+  it("allows omitting char, leaving the def unresolved", () => {
+    const tex = gemTexture();
+    const def = defineFontChar({ id: "ui/x", texture: tex, ascent: 7 });
+    expect(def.char).toBeUndefined();
+  });
+
+  it("still validates an explicit char as exactly one code point", () => {
+    const tex = gemTexture();
+    expect(() => defineFontChar({ id: "ui/x", texture: tex, char: "ab", ascent: 7 })).toThrow(
+      /exactly one code point/,
+    );
+  });
+
+  it("lets char-less font chars coexist in a pack (no duplicate-char collision)", () => {
+    const tex = gemTexture();
+    const a = defineFontChar({ id: "ui/a", texture: tex, ascent: 7 });
+    const b = defineFontChar({ id: "ui/b", texture: tex, ascent: 7 });
+    const c = defineFontChar({ id: "ui/c", texture: tex, char: "\uE000", ascent: 7 });
+    const pack = definePack({
+      namespace: "example",
+      description: "x",
+      textures: [tex],
+      fontChars: [a, b, c],
+    });
+    expect(pack.fontChars).toHaveLength(3);
+  });
+
+  it("makes packgen refuse an unresolved (auto-allocated) font char", () => {
+    const tex = gemTexture();
+    const pack = definePack({
+      namespace: "example",
+      description: "x",
+      textures: [tex],
+      fontChars: [defineFontChar({ id: "ui/a", texture: tex, ascent: 7 })],
+    });
+    expect(() =>
+      generatePack(pack, () => {
+        throw new Error("no PNG reads expected");
+      }),
+    ).toThrow(/font char "ui\/a" has no resolved char/);
+  });
+});
+
+describe("allocateFontChars (RP-4)", () => {
+  function fontRegistry(chars: Record<string, number>): FontCharRegistry {
+    return { version: 1, chars };
+  }
+
+  it("auto-allocates sequential private-use chars from U+E000", () => {
+    const {
+      allocations,
+      registry: next,
+      changed,
+    } = allocateFontChars(emptyFontCharRegistry(), [
+      { id: "example:ui/coin_icon" },
+      { id: "example:ui/gem_icon" },
+    ]);
+    expect(changed).toBe(true);
+    expect(allocations.get("example:ui/coin_icon")).toBe("\uE000");
+    expect(allocations.get("example:ui/gem_icon")).toBe("\uE001");
+    expect(next.chars).toEqual({ "example:ui/coin_icon": 0xe000, "example:ui/gem_icon": 0xe001 });
+  });
+
+  it("continues the sequence on the next build and restores known ids unchanged", () => {
+    const start = fontRegistry({ "example:ui/coin_icon": 0xe000 });
+    const again = allocateFontChars(start, [{ id: "example:ui/coin_icon" }]);
+    expect(again.allocations.get("example:ui/coin_icon")).toBe("\uE000");
+    expect(again.changed).toBe(false);
+    expect(again.registry).toBe(start);
+    const appended = allocateFontChars(start, [
+      { id: "example:ui/coin_icon" },
+      { id: "example:ui/gem_icon" },
+    ]);
+    expect(appended.allocations.get("example:ui/gem_icon")).toBe("\uE001");
+  });
+
+  it("does not mutate the input registry", () => {
+    const start = fontRegistry({ "example:ui/coin_icon": 0xe000 });
+    allocateFontChars(start, [{ id: "example:ui/gem_icon" }]);
+    expect(start.chars).toEqual({ "example:ui/coin_icon": 0xe000 });
+  });
+
+  it("mixes explicit chars with auto-allocation; PUA-external chars do not move the sequence", () => {
+    const { allocations, registry: next } = allocateFontChars(emptyFontCharRegistry(), [
+      { id: "example:ui/coin_icon" },
+      { id: "example:ui/star_icon", char: "\uE100" },
+      { id: "example:ui/letter", char: "A" },
+    ]);
+    expect(allocations.get("example:ui/coin_icon")).toBe("\uE000");
+    expect(allocations.get("example:ui/star_icon")).toBe("\uE100");
+    expect(allocations.get("example:ui/letter")).toBe("A");
+    // The explicit PUA char is on record now, so the next auto
+    // allocation continues after the highest PUA assignment.
+    const later = allocateFontChars(next, [{ id: "example:ui/new_icon" }]);
+    expect(later.allocations.get("example:ui/new_icon")).toBe("\uE101");
+  });
+
+  it("rejects an explicit char held by another id, in the registry or the same batch", () => {
+    const start = fontRegistry({ "example:ui/old_icon": 0xe000 });
+    expect(() =>
+      allocateFontChars(start, [{ id: "example:ui/coin_icon", char: "\uE000" }]),
+    ).toThrow(/already held by id "example:ui\/old_icon"/);
+    expect(() =>
+      allocateFontChars(emptyFontCharRegistry(), [
+        { id: "example:ui/a", char: "\uE000" },
+        { id: "example:ui/b", char: "\uE000" },
+      ]),
+    ).toThrow(/already held by id "example:ui\/a"/);
+  });
+
+  it("rejects re-registering an id with a different char", () => {
+    const start = fontRegistry({ "example:ui/coin_icon": 0xe000 });
+    expect(() =>
+      allocateFontChars(start, [{ id: "example:ui/coin_icon", char: "\uE001" }]),
+    ).toThrow(/already has char/);
+  });
+
+  it("never reuses a deleted definition's char", () => {
+    // "example:ui/deleted" was removed from the definitions; its
+    // registry entry (and char) stays reserved, so the next auto
+    // allocation lands after every recorded assignment.
+    const start = fontRegistry({ "example:ui/deleted": 0xe000, "example:ui/coin_icon": 0xe001 });
+    const { allocations } = allocateFontChars(start, [{ id: "example:ui/new_icon" }]);
+    expect(allocations.get("example:ui/new_icon")).toBe("\uE002");
+    expect(() => allocateFontChars(start, [{ id: "example:ui/new_icon", char: "\uE000" }])).toThrow(
+      /already held by id "example:ui\/deleted"/,
+    );
+  });
+
+  it("rejects invalid explicit chars (multi-code-point and lone surrogate)", () => {
+    expect(() =>
+      allocateFontChars(emptyFontCharRegistry(), [{ id: "example:ui/a", char: "ab" }]),
+    ).toThrow(/invalid char/);
+    expect(() =>
+      allocateFontChars(emptyFontCharRegistry(), [{ id: "example:ui/a", char: "\uD800" }]),
+    ).toThrow(/invalid char/);
+  });
+
+  it("fails with private use area exhausted once U+F8FF is taken", () => {
+    const full = parseFontCharRegistry(
+      JSON.stringify({ version: 1, chars: { "example:ui/last": 0xf8ff } }),
+    );
+    expect(() => allocateFontChars(full, [{ id: "example:ui/one_more" }])).toThrow(
+      /private use area exhausted/,
+    );
+  });
+});
+
+describe("parseFontCharRegistry / serializeFontCharRegistry (RP-4)", () => {
+  it("round-trips with sorted keys and a trailing newline", () => {
+    const text = serializeFontCharRegistry({
+      version: 1,
+      chars: { "example:ui/gem_icon": 0xe001, "example:ui/coin_icon": 0xe000 },
+    });
+    expect(text).toBe(
+      '{\n  "version": 1,\n  "chars": {\n    "example:ui/coin_icon": 57344,\n    "example:ui/gem_icon": 57345\n  }\n}\n',
+    );
+    expect(parseFontCharRegistry(text)).toEqual({
+      version: 1,
+      chars: { "example:ui/coin_icon": 0xe000, "example:ui/gem_icon": 0xe001 },
+    });
+  });
+
+  it("rejects malformed registries", () => {
+    expect(() => parseFontCharRegistry("not json")).toThrow(/invalid JSON/);
+    expect(() => parseFontCharRegistry('{"version":2,"chars":{}}')).toThrow(/expected version 1/);
+    expect(() => parseFontCharRegistry('{"version":1,"chars":[]}')).toThrow(/plain object/);
+    expect(() => parseFontCharRegistry('{"version":1,"chars":{"a":-1}}')).toThrow(/code point/);
+    expect(() => parseFontCharRegistry('{"version":1,"chars":{"a":1114112}}')).toThrow(
+      /code point/,
+    );
+    expect(() => parseFontCharRegistry('{"version":1,"chars":{"a":1.5}}')).toThrow(/code point/);
+    // A lone surrogate (U+D800 = 55296) is not a usable character.
+    expect(() => parseFontCharRegistry('{"version":1,"chars":{"a":55296}}')).toThrow(/code point/);
   });
 });
 

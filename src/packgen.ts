@@ -284,6 +284,12 @@ function fontProviders(
   packNamespace: string,
 ): FontProvider[] {
   const providers: FontProvider[] = fontChars.map((fontChar) => {
+    if (fontChar.char === undefined) {
+      fail(
+        `font char "${fontChar.id}" has no resolved char; ` +
+          `auto-allocated chars are resolved by the project build`,
+      );
+    }
     const tex = lookupTexture(
       textures,
       fontChar.texture,

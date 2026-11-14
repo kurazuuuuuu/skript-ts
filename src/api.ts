@@ -39,7 +39,7 @@ import type {
   FireworkType,
 } from "./ast.js";
 import { captureLoc } from "./loc.js";
-import type { ItemDef } from "./resourcepack.js";
+import type { FontCharDef, ItemDef } from "./resourcepack.js";
 
 /** Attach the TypeScript call-site location to a freshly built AST node. */
 function withLoc<T extends Stmt | TopLevel>(node: T): T {
@@ -2710,6 +2710,35 @@ export function customItem(ref: string | ItemDef): Expr {
     value = ref.id;
   }
   return { kind: "customItem", ref: value };
+}
+
+/**
+ * Reference a font character from the project's resource pack
+ * (RP-4): the character a `defineFontChar` definition binds its
+ * texture to, as a text expression for composing into messages
+ * with fmt(), GUI titles and other text positions.
+ *
+ * The node is UNRESOLVED at script-build time, like customItem.
+ * The project build resolves `ref` against the project's pack —
+ * an explicit char, or the private-use char auto-allocated from
+ * `fontchar-registry.json` — and replaces the node with a string
+ * literal before Skript emit/IR. Using it in a project with no
+ * matching pack font char is a build error.
+ */
+export function fontCharOf(ref: string | FontCharDef): TextExpr {
+  let value: string;
+  if (typeof ref === "string") {
+    if (ref.length === 0) {
+      throw new RangeError("fontCharOf: ref must be a non-empty string");
+    }
+    value = ref;
+  } else {
+    if (ref.kind !== "fontChar") {
+      throw new RangeError('fontCharOf: FontCharDef must have kind "fontChar"');
+    }
+    value = ref.id;
+  }
+  return { kind: "fontCharOf", ref: value } as unknown as TextExpr;
 }
 
 /** Construct an item-model-of expression: the item's `item_model` component id (no value when unset). */
