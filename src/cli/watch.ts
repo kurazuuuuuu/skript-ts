@@ -281,6 +281,7 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
         transformStage.finish("failed", errMessage(err));
       }
       if (build === null) return false;
+      for (const warning of build.warnings) humanStream.write(`${warning}\n`);
 
       // --- 配置 (with no-change detection) --------------------------------
       const deployStage = stageLog.begin("配置");
