@@ -281,6 +281,7 @@ import { varhandlesScript } from "../examples/varhandles.js";
 import { priorityScript } from "../examples/priority.js";
 import { randomScript } from "../examples/random.js";
 import { inventoryScript } from "../examples/inventory.js";
+import { giveoverflowScript } from "../examples/giveoverflow.js";
 import { literalsScript } from "../examples/literals.js";
 import { issetScript } from "../examples/isset.js";
 import { invspaceScript } from "../examples/invspace.js";
@@ -370,6 +371,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("inventory", () => {
     expect(emit(inventoryScript)).toBe(fixture("inventory.sk"));
+  });
+  it("giveoverflow", () => {
+    expect(emit(giveoverflowScript)).toBe(fixture("giveoverflow.sk"));
   });
   it("literals", () => {
     expect(emit(literalsScript)).toBe(fixture("literals.sk"));
@@ -2775,6 +2779,7 @@ describe("inventory operations (feedback lane D)", () => {
   const n = [broadcast(str("n"))];
   it("the core sample is core language, not engine-only", () => {
     expect(isEngineOnlyScript(inventoryScript)).toBe(false);
+    expect(isEngineOnlyScript(giveoverflowScript)).toBe(false);
   });
   it("has emits for player and inventory targets, with the native negation", () => {
     expect(

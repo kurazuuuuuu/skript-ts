@@ -1,0 +1,13 @@
+command /fillbags:
+    trigger:
+        loop 36 times:
+            give 64 of dirt to player
+        send "fillbags: done" to player
+
+command /giveprize:
+    trigger:
+        give diamond sword to player
+        send "giveprize: done" to player
+
+on pick up of diamond sword:
+    broadcast "picked prize"

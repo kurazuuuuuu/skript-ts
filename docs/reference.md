@@ -982,7 +982,15 @@ clicking through a live GUI; see the development log):
   holding a bare type name is materialized first; a
   variable with no item value is left untouched.
   `giveItem(player, item)` hands an item-valued
-  expression (meta included) to a player.
+  expression (meta included) to a player. Overflow:
+  if the item does not fit — in whole or in part — the
+  part that does not fit drops naturally at the
+  player's feet instead of vanishing, so it can be
+  picked back up once space exists (the engine drops
+  exactly the un-fitted remainder reported by the
+  inventory add; `examples/giveoverflow.ts` and
+  `examples/behavior/giveoverflow.behavior.ts` pin
+  the flow).
 - **Held items**: `toolOf(player)` is the item in the
   player's main hand (`tool of %player%`, Skript's
   player-tool expression) and `offHandToolOf(player)` the

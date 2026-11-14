@@ -1567,10 +1567,37 @@ final class Engine {
                 // player's inventory, so later rewrites of the
                 // source variable do not reach the handed-out copy
                 // (and vice versa).
+                //
+                // Overflow (feedback B5): Inventory.addItem
+                // returns the stacks that did not fit, and its
+                // values already carry the un-fitted amounts
+                // (toItemStack cloned the source stack above, so
+                // the leftovers are safe to hand to the world
+                // as-is). Drop each leftover naturally at the
+                // player's location instead of discarding it —
+                // discarding silently vanished items that did
+                // not fit. This is intended to mirror the give
+                // effect's overflow handling in the original
+                // (the Skript side of this parity is pinned by
+                // the coordinator's verify subset; see
+                // examples/behavior/giveoverflow.behavior.ts).
                 if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
                     ItemStack stack = toItemStack(evalExpr(node(stmt.get("item")), ctx));
                     if (stack != null && !stack.getType().isAir() && stack.getAmount() > 0) {
-                        target.getInventory().addItem(stack);
+                        Map<Integer, ItemStack> leftover = target.getInventory().addItem(stack);
+                        if (!leftover.isEmpty()) {
+                            Location loc = target.getLocation();
+                            World world = loc.getWorld();
+                            if (world != null) {
+                                for (ItemStack overflow : leftover.values()) {
+                                    if (overflow != null
+                                            && !overflow.getType().isAir()
+                                            && overflow.getAmount() > 0) {
+                                        world.dropItemNaturally(loc, overflow);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 cont.run();
