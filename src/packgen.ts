@@ -8,8 +8,12 @@
  *
  * Formats pinned against the real 1.21.11 client jar (2026-11-12):
  * - pack.mcmeta carries "min_format" / "max_format" [75, 0] (the
- *   resource pack format of 1.21.11; the legacy lone "pack_format"
- *   number is not used on 1.21.9+).
+ *   resource pack format of 1.21.11) by default. `definePack`'s
+ *   `packFormat` option (fb3 H2) can instead target a single
+ *   version — a bare number emits the legacy lone "pack_format"
+ *   form — or an inclusive min/max range, each side kept in the
+ *   shape it was written in (number or [major, minor] pair); both
+ *   shapes are legal for these fields on 1.21.9+.
  * - Item definitions are data-driven: assets/<ns>/items/<path>.json
  *   holds { "model": { "type": "minecraft:model", "model": <id> } }.
  * - Models are { "parent": ..., "textures": { "layer0": <texId> } }.
@@ -26,10 +30,13 @@
 import { createHash } from "node:crypto";
 import { deflateRawSync, deflateSync } from "node:zlib";
 import {
+  packFormatJson,
+  packFormatPair,
   parseResourceId,
   type FontCharDef,
   type ItemDef,
   type PackDef,
+  type PackFormatSpec,
   type TextureDef,
 } from "./resourcepack.js";
 
@@ -229,8 +236,7 @@ export function generatePack(
     jsonFile({
       pack: {
         description: pack.description,
-        min_format: [...PACK_FORMAT],
-        max_format: [...PACK_FORMAT],
+        ...mcmetaFormatFields(pack.packFormat),
       },
     }),
     "pack.mcmeta",
@@ -241,11 +247,34 @@ export function generatePack(
   }
 
   if (pack.fontChars.length > 0) {
+    const providers = fontProviders(pack.fontChars, textures, namespace);
     addFile(
       files,
       `assets/${namespace}/font/default.json`,
-      jsonFile({ providers: fontProviders(pack.fontChars, textures, namespace) }),
+      jsonFile({ providers }),
       "font definition",
+    );
+    // fb3 H1: the same providers are also registered in the
+    // vanilla font, assets/minecraft/font/default.json. A font
+    // file at assets/<ns>/font/default.json defines the font
+    // "<ns>:default", which the client uses only for text whose
+    // component explicitly names that font — but skript-ts font
+    // chars are plain text (fontCharOf resolves to a string
+    // literal, RP-4), and untagged text is drawn with
+    // minecraft:default, so a glyph registered only in the pack
+    // font renders as tofu (a box). Font definitions for the
+    // same font id combine across the pack stack (a pack's
+    // providers are added to the font, they do not replace the
+    // lower packs' providers), so mirroring the providers into
+    // minecraft:default makes the glyphs render in ordinary text
+    // while the vanilla glyphs stay intact. When the pack
+    // namespace is "minecraft" both paths coincide and addFile
+    // dedups the identical content.
+    addFile(
+      files,
+      "assets/minecraft/font/default.json",
+      jsonFile({ providers }),
+      "vanilla default font definition",
     );
   }
 
@@ -288,7 +317,7 @@ export function generatePack(
     zipFile: `${namespace}.zip`,
     sha1,
     size: zip.length,
-    packFormat: PACK_FORMAT,
+    packFormat: manifestPackFormat(pack.packFormat),
     contents: [...files.keys()].sort(),
     items: manifestItems,
     textures: manifestTextures,
@@ -328,6 +357,41 @@ function addItemFiles(
     }),
     `item "${item.id}" model`,
   );
+}
+
+/**
+ * The format fields of pack.mcmeta for a validated spec (fb3 H2).
+ * No spec is the pre-H2 default: an equal-ended range at the
+ * 1.21.11 format. A single bare number is the one shape that
+ * generates the legacy lone `pack_format` field; every other
+ * shape generates `min_format` / `max_format`, each side in the
+ * shape it was written in.
+ */
+function mcmetaFormatFields(
+  spec: PackFormatSpec | undefined,
+): Record<string, number | [number, number]> {
+  if (spec === undefined) {
+    return { min_format: [...PACK_FORMAT], max_format: [...PACK_FORMAT] };
+  }
+  if (spec.kind === "single") {
+    if (spec.single.kind === "number") {
+      return { pack_format: spec.single.value };
+    }
+    const pair = packFormatJson(spec.single);
+    return { min_format: pair, max_format: pair };
+  }
+  return { min_format: packFormatJson(spec.min), max_format: packFormatJson(spec.max) };
+}
+
+/**
+ * The manifest's `packFormat` is the spec's minimum as a
+ * [major, minor] pair (a bare number n reads as [n, 0]) — for the
+ * default spec that is PACK_FORMAT itself, so existing manifests
+ * are unchanged in shape.
+ */
+function manifestPackFormat(spec: PackFormatSpec | undefined): readonly [number, number] {
+  if (spec === undefined) return PACK_FORMAT;
+  return packFormatPair(spec.kind === "single" ? spec.single : spec.min);
 }
 
 interface FontProvider {

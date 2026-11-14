@@ -347,6 +347,7 @@ describe("generatePack", () => {
       "assets/example/models/item/gem.json",
       "assets/example/textures/item/gem.png",
       "assets/example/textures/ui/coin.png",
+      "assets/minecraft/font/default.json",
       "pack.mcmeta",
     ]);
   });
@@ -356,6 +357,72 @@ describe("generatePack", () => {
     const mcmeta = JSON.parse(files.get("pack.mcmeta")!.toString("utf8"));
     expect(mcmeta).toEqual({
       pack: { description: "Example resource pack", min_format: [75, 0], max_format: [75, 0] },
+    });
+  });
+
+  describe("packFormat (fb3 H2)", () => {
+    function mcmetaOf(packFormat: Parameters<typeof definePack>[0]["packFormat"]) {
+      const pack = definePack({
+        namespace: "example",
+        description: "fmt",
+        textures: [gemTexture()],
+        ...(packFormat !== undefined ? { packFormat } : {}),
+      });
+      const generated = generatePack(pack, () => {
+        throw new Error("no PNG reads expected");
+      });
+      const mcmeta = JSON.parse(generated.files.get("pack.mcmeta")!.toString("utf8"));
+      return { mcmeta, manifest: generated.manifest };
+    }
+
+    it("defaults to the equal-ended [75, 0] range, unchanged from before H2", () => {
+      const { mcmeta, manifest } = mcmetaOf(undefined);
+      expect(mcmeta.pack).toEqual({ description: "fmt", min_format: [75, 0], max_format: [75, 0] });
+      expect(manifest.packFormat).toEqual([75, 0]);
+    });
+
+    it("a single bare number generates the lone pack_format form", () => {
+      const { mcmeta, manifest } = mcmetaOf(75);
+      expect(mcmeta.pack).toEqual({ description: "fmt", pack_format: 75 });
+      expect(manifest.packFormat).toEqual([75, 0]);
+    });
+
+    it("a single pair generates an equal-ended min/max range", () => {
+      const { mcmeta, manifest } = mcmetaOf([64, 0]);
+      expect(mcmeta.pack).toEqual({ description: "fmt", min_format: [64, 0], max_format: [64, 0] });
+      expect(manifest.packFormat).toEqual([64, 0]);
+    });
+
+    it("a range keeps each side in the shape it was written in", () => {
+      const { mcmeta, manifest } = mcmetaOf({ min: 34, max: [75, 0] });
+      expect(mcmeta.pack).toEqual({ description: "fmt", min_format: 34, max_format: [75, 0] });
+      expect(manifest.packFormat).toEqual([34, 0]);
+    });
+
+    it("a range of pairs generates both sides as pairs", () => {
+      const { mcmeta } = mcmetaOf({ min: [46, 0], max: [75, 0] });
+      expect(mcmeta.pack.min_format).toEqual([46, 0]);
+      expect(mcmeta.pack.max_format).toEqual([75, 0]);
+    });
+
+    it("rejects a range whose min is greater than its max", () => {
+      expect(() => mcmetaOf({ min: [75, 0], max: 34 })).toThrow(/greater than max/);
+      expect(() => mcmetaOf({ min: [75, 1], max: [75, 0] })).toThrow(/greater than max/);
+    });
+
+    it("rejects negative, fractional and malformed formats at define time", () => {
+      const bad = (packFormat: unknown) => () =>
+        definePack({
+          namespace: "example",
+          description: "fmt",
+          packFormat: packFormat as never,
+        });
+      expect(bad(-1)).toThrow(/non-negative integer/);
+      expect(bad(1.5)).toThrow(/non-negative integer/);
+      expect(bad([75])).toThrow(/\[major, minor\] pair/);
+      expect(bad([75, -1])).toThrow(/non-negative integer/);
+      expect(bad("75")).toThrow(/non-negative integer or a \[major, minor\] pair/);
+      expect(bad({ min: 34 })).toThrow(/both "min" and "max"/);
     });
   });
 
@@ -380,6 +447,32 @@ describe("generatePack", () => {
         { type: "bitmap", file: "example:ui/coin.png", height: 8, ascent: 7, chars: ["\uE000"] },
       ],
     });
+  });
+
+  it("mirrors the glyph providers into minecraft:default, the font plain text renders with (fb3 H1)", () => {
+    const { files } = sampleGenerated();
+    const packFont = JSON.parse(files.get("assets/example/font/default.json")!.toString("utf8"));
+    const vanillaFont = JSON.parse(
+      files.get("assets/minecraft/font/default.json")!.toString("utf8"),
+    );
+    // Untagged text (everything fontCharOf produces) is drawn with
+    // minecraft:default, so the glyph must be registered there —
+    // the pack font alone leaves it a tofu box on the client.
+    expect(vanillaFont).toEqual(packFont);
+    expect(vanillaFont.providers[0].chars).toEqual(["\uE000"]);
+  });
+
+  it("emits no vanilla font file when the pack has no font chars", () => {
+    const pack = definePack({
+      namespace: "example",
+      description: "no fonts",
+      textures: [gemTexture()],
+    });
+    const { files } = generatePack(pack, () => {
+      throw new Error("no PNG reads expected");
+    });
+    expect(files.has("assets/minecraft/font/default.json")).toBe(false);
+    expect(files.has("assets/example/font/default.json")).toBe(false);
   });
 
   it("renders the pixel-map texture to a PNG with the exact pixels", () => {
