@@ -22,6 +22,7 @@ import {
   lowerCase,
   not,
   num,
+  offHandToolOf,
   player,
   replaceAllIn,
   replaceFirstIn,
@@ -33,6 +34,7 @@ import {
   str,
   substring,
   textLength,
+  toolOf,
   uncolored,
   upperCase,
 } from "../src/index.js";
@@ -65,6 +67,23 @@ import type { Script } from "../src/index.js";
 //                   load check reports the simplification)
 //   /fmteq <b>Bold</b>
 //                   "fmt-eq=T": the same for a formatted value
+//   /hueq bob       "hue-eq=T": a color code at the END of one
+//                   fmt part colors the NEXT part's value — a
+//                   format is color-parsed as one text, not part
+//                   by part (feedback G2, third batch). The name
+//                   comes from the argument so Skript's literal
+//                   simplifier cannot constant-fold the check
+//                   (the /paeq lesson)
+//   /huepart go     "huepart-eq=T": a str("&a") fmt part does
+//                   not vanish; its code colors what follows
+//   /huetail go     "huetail-eq=T": a code at the very end of
+//                   the WHOLE format formats nothing and stays
+//                   out of the value (the G2 boundary)
+//   /hands          the caller's two hands as plain text: the
+//                   engine reads an empty hand as "air"
+//                   (feedback G3 normalization); Skript's own
+//                   string form of the amount-0 hand stack is
+//                   "0 airs" — the behavior test branches
 export const textScript: Script = script(
   command("shout", "text", [
     ifElse(
@@ -146,5 +165,32 @@ export const textScript: Script = script(
       [broadcast(str("fmt-eq=T"))],
       [broadcast(str("fmt-eq=F"))],
     ),
+  ]),
+  command("hueq", "text", [
+    ifElse(
+      equals(
+        colored(fmt("&7", argument(1), ": &a", str("go"))),
+        fmt(str("§7"), argument(1), str(": §ago")),
+      ),
+      [broadcast(str("hue-eq=T"))],
+      [broadcast(str("hue-eq=F"))],
+    ),
+  ]),
+  command("huepart", "text", [
+    ifElse(
+      equals(colored(fmt(str("&a"), argument(1))), fmt(str("§a"), argument(1))),
+      [broadcast(str("huepart-eq=T"))],
+      [broadcast(str("huepart-eq=F"))],
+    ),
+  ]),
+  command("huetail", "text", [
+    ifElse(
+      equals(colored(fmt(argument(1), "&a")), argument(1)),
+      [broadcast(str("huetail-eq=T"))],
+      [broadcast(str("huetail-eq=F"))],
+    ),
+  ]),
+  command("hands", null, [
+    broadcast(fmt("hands: ", toolOf(player()), " / ", offHandToolOf(player()))),
   ]),
 );

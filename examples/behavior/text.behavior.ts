@@ -105,6 +105,35 @@ export default defineBehavior(async (t) => {
     mark = bot.messages.length;
     await cmd("/fmteq <b>Bold</b>");
     await waitNew(bot, mark, "fmt-eq=T");
+
+    // Feedback G2 (third batch): a format is color-parsed as
+    // ONE text in both runtimes — a code at the end of a fmt
+    // part colors the next part's value (hueq), a str("&a")
+    // part does not vanish (huepart), and a code at the very
+    // end of the whole format formats nothing (huetail).
+    mark = bot.messages.length;
+    await cmd("/hueq bob");
+    await waitNew(bot, mark, "hue-eq=T");
+    mark = bot.messages.length;
+    await cmd("/huepart go");
+    await waitNew(bot, mark, "huepart-eq=T");
+    mark = bot.messages.length;
+    await cmd("/huetail go");
+    await waitNew(bot, mark, "huetail-eq=T");
+
+    // Feedback G3: an empty hand's string form. The engine
+    // normalizes the hand read to a plain air item ("air");
+    // Skript's own tool expression reports the amount-0 stack
+    // ("0 airs") — the one recorded string-form divergence of
+    // the G3 unification (type/equality agree: air in both).
+    // The welcome sample put a wooden sword in the main hand
+    // at join, so clear the inventory first (the gameplay
+    // suite's lesson) and let the clear settle.
+    await t.console("clear TextBot");
+    await t.sleep(600);
+    mark = bot.messages.length;
+    await cmd("/hands");
+    await waitNew(bot, mark, t.mode === "engine" ? "hands: air / air" : "hands: 0 airs / 0 airs");
   } finally {
     bot.disconnect();
   }

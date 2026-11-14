@@ -3957,31 +3957,34 @@ final class Engine {
             // The player's tool (held item): the MAIN hand's
             // stack, read live — not an event value, so in a
             // block break this is the digging tool while
-            // event-item is the broken block in item form. The
-            // stack is returned exactly as Bukkit reports it,
-            // AIR included: Skript's own tool expression reads
-            // an empty hand as the air item type (verified on a
-            // real server — a bare-handed break broadcasts
-            // "tool: air"), NOT as no value, so normalizing air
-            // away here would diverge from the .sk runtime.
-            // Only a non-player target has no value. As with
-            // event items the stack is live; the meta writers
-            // clone before rewriting.
+            // event-item is the broken block in item form. An
+            // empty hand reads as the air ITEM (amount 1), NOT
+            // as no value: the tool expressions were probed on
+            // the real Skript to have a value whose type is air
+            // for an empty hand — the deliberate contrast with
+            // event-item, whose empty hand is absent. Bukkit,
+            // however, reports the empty hand as an amount-0 air
+            // stack, whose string form is the useless "0 airs";
+            // feedback G3 asked for that form to be unified, and
+            // the hand is normalized to a plain air stack here
+            // (type, equality and item-parameter binding keep
+            // working exactly as probed; only the amount-0
+            // artifact goes away). Only a non-player target has
+            // no value. As with event items the stack is live;
+            // the meta writers clone before rewriting.
             case "toolOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 yield target instanceof Player p
-                        ? p.getInventory().getItemInMainHand()
+                        ? normalizeHand(p.getInventory().getItemInMainHand())
                         : null;
             }
             // The OFF hand's stack, under exactly the toolOf
-            // rules above: Skript's `offhand tool of %player%`
-            // reads an empty off hand as the air item type too
-            // (probed on the real server alongside the main
-            // hand), so the stack is returned unnormalized.
+            // rules above: an empty off hand is the air item
+            // too, normalized the same way.
             case "offHandToolOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 yield target instanceof Player p
-                        ? p.getInventory().getItemInOffHand()
+                        ? normalizeHand(p.getInventory().getItemInOffHand())
                         : null;
             }
             case "attacker" -> ctx.attacker;
@@ -4883,7 +4886,19 @@ final class Engine {
     /** Parse & codes and named tags in a text into § formatting codes. */
     static String colorize(String s) {
         StringBuilder out = new StringBuilder();
-        ColorState state = new ColorState();
+        colorizeInto(s, new ColorState(), out);
+        return stripTrailingCodes(out.toString());
+    }
+
+    /**
+     * The colorize parse loop, writing into {@code out} under a
+     * caller-supplied style state and WITHOUT the trailing-code
+     * strip: a format is parsed as one text (see renderParts), so
+     * the state — and codes that format no character YET — must
+     * survive across its parts. Single-value callers use
+     * {@link #colorize(String)}, which strips at the end.
+     */
+    static void colorizeInto(String s, ColorState state, StringBuilder out) {
         int i = 0;
         while (i < s.length()) {
             char c = s.charAt(i);
@@ -4902,7 +4917,6 @@ final class Engine {
             out.append(c);
             i++;
         }
-        return stripTrailingCodes(out.toString());
     }
 
     /**
@@ -5065,18 +5079,50 @@ final class Engine {
         };
     }
 
+    /**
+     * Render one format as ONE text, the way the emitted .sk
+     * reads it — a single string literal with %...% holes, which
+     * Skript color-parses as a whole. The literal parts therefore
+     * share one colorize pass (one style state): a code at the
+     * end of a part formats the NEXT part's value, exactly as in
+     * the .sk form (feedback G2: per-part colorize dropped those
+     * codes via stripTrailingCodes, so colored(fmt("&7", name,
+     * ": &a", value)) lost every color and a str("&a") part
+     * vanished entirely). Expression parts are appended verbatim
+     * — runtime values are NOT color-parsed (phase 15) — except
+     * string-literal and nested-format parts, which are literal
+     * text and join the shared parse instead of being evaluated
+     * (and stripped) on their own. Trailing codes are stripped
+     * once, at the end of the WHOLE format: a code with nothing
+     * after it formats no characters and stays out of the result,
+     * as before. SQL text never comes through here (buildQuery
+     * assembles its parts itself, verbatim).
+     */
     private String renderParts(List<Object> parts, Ctx ctx) {
         StringBuilder sb = new StringBuilder();
+        appendParts(parts, ctx, new ColorState(), sb);
+        return stripTrailingCodes(sb.toString());
+    }
+
+    private void appendParts(List<Object> parts, Ctx ctx, ColorState state, StringBuilder sb) {
         for (Object part : parts) {
             if (part instanceof String s) {
                 // Literal parts of a format are string literals:
-                // color-parsed like any other (see evalExpr).
-                sb.append(colorize(s));
+                // color-parsed like any other (see evalExpr) —
+                // but into the format's shared parse, not alone.
+                colorizeInto(s, state, sb);
             } else if (part instanceof Map<?, ?>) {
-                sb.append(stringifyText(evalExpr(node(part), ctx)));
+                Map<String, Object> partNode = node(part);
+                switch (kind(partNode)) {
+                    case "string" -> {
+                        String v = str(partNode.get("value"));
+                        if (v != null) colorizeInto(v, state, sb);
+                    }
+                    case "format" -> appendParts(list(partNode.get("parts")), ctx, state, sb);
+                    default -> sb.append(stringifyText(evalExpr(partNode, ctx)));
+                }
             }
         }
-        return sb.toString();
     }
 
     /**
@@ -5547,6 +5593,44 @@ final class Engine {
      * its item form. Anything else — including a missing value —
      * yields null.
      */
+    /**
+     * Normalize a hand read (toolOf / offHandToolOf): Bukkit
+     * reports an empty hand as an amount-0 air stack (or, on some
+     * paths, null), which stringifies as "0 airs". The hand value
+     * is the air item itself (feedback G3), so an empty hand
+     * becomes an {@link AirItemStack}; a real held stack passes
+     * through untouched. (A plain {@code new ItemStack(AIR, 1)}
+     * cannot do this: Bukkit's constructor collapses every air
+     * stack onto the empty singleton, whose amount reads 0 —
+     * verified live, the first G3 attempt with a plain stack
+     * still printed "0 airs".)
+     */
+    private static ItemStack normalizeHand(ItemStack stack) {
+        return stack == null || stack.getType().isAir() ? new AirItemStack() : stack;
+    }
+
+    /**
+     * The empty hand as an item value: an air stack that reads
+     * as amount 1, so it stringifies as "air" and its type is
+     * "air", while staying an ItemStack for every consumer
+     * (item-parameter binding, toItemStack materialization,
+     * type-bridged equality against item("air")). Only the
+     * amount read is overridden; the underlying stack is
+     * Bukkit's empty stack.
+     */
+    private static final class AirItemStack extends ItemStack {
+        private static final long serialVersionUID = 1L;
+
+        AirItemStack() {
+            super(Material.AIR, 1);
+        }
+
+        @Override
+        public int getAmount() {
+            return 1;
+        }
+    }
+
     private static ItemStack toItemStack(Object value) {
         if (value instanceof ItemStack stack) return stack.clone();
         if (value instanceof String name) {
