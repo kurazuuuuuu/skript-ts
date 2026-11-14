@@ -16,6 +16,7 @@ import type {
   Script,
   CommandArgType,
   CommandArgSpec,
+  CommandExecutableBy,
   SourceLoc,
   ArithOp,
   TimeUnit,
@@ -1780,6 +1781,40 @@ export interface CommandOptions {
   usage?: string;
   /** Alternative names for the command, with or without a leading slash. */
   aliases?: readonly string[];
+  /**
+   * Per-player cooldown in seconds (feedback C6): after a player
+   * runs the command, running it again before this many seconds
+   * have passed does not run the body. Must be a positive finite
+   * number; fractions are allowed (`2.5` emits `2.5 seconds`).
+   * Console senders are never cooled down.
+   */
+  cooldown?: number;
+  /**
+   * Text sent to a player who runs the command while it is on
+   * cooldown for them (a single line). Under the engine the text
+   * is sent with the usual color-code parsing but otherwise
+   * as-is: the `%remaining time%` / `%elapsed time%`
+   * substitutions the original performs are NOT applied in this
+   * version, so those placeholders stay literal under the engine
+   * (they are substituted under Skript). With no message, a
+   * blocked run is silent under the engine.
+   */
+  cooldownMessage?: string;
+  /**
+   * A permission node whose holders skip the cooldown entirely
+   * (the original's `cooldown bypass:` entry).
+   */
+  cooldownBypass?: string;
+  /**
+   * Who may execute the command (the original's
+   * `executable by:` entry): `"players"` rejects non-player
+   * senders, `"console"` rejects player senders, and `"both"`
+   * (emitted as `players and console`) allows everyone. Under
+   * the engine a rejected sender gets the same
+   * unknown-command failure as a sender who fails the
+   * permission check.
+   */
+  executableBy?: CommandExecutableBy;
 }
 
 const COMMAND_ARG_TYPES: ReadonlySet<string> = new Set([
@@ -1822,7 +1857,8 @@ function requireCommandName(name: string): void {
  *   options?)` — any number of typed arguments, plus the
  *   permission / usage / aliases section entries via
  *   CommandOptions (the legacy form accepts an options object as
- *   its fourth argument too).
+ *   its fourth argument too). Feedback C6 adds the cooldown /
+ *   executable-by entries to the same options object.
  */
 export function command(
   name: string,
@@ -1859,6 +1895,33 @@ export function command(
     }
     return a;
   });
+  if (
+    options?.cooldown !== undefined &&
+    (typeof options.cooldown !== "number" ||
+      !Number.isFinite(options.cooldown) ||
+      options.cooldown <= 0)
+  ) {
+    throw new RangeError(`invalid command cooldown: ${JSON.stringify(options.cooldown)}`);
+  }
+  if (
+    options?.cooldownMessage !== undefined &&
+    (options.cooldownMessage === "" || /[\r\n]/.test(options.cooldownMessage))
+  ) {
+    throw new RangeError("command cooldown message must be a single non-empty line");
+  }
+  if (options?.cooldownBypass !== undefined && !/^\S+$/.test(options.cooldownBypass)) {
+    throw new RangeError(
+      `invalid command cooldown bypass: ${JSON.stringify(options.cooldownBypass)}`,
+    );
+  }
+  if (
+    options?.executableBy !== undefined &&
+    options.executableBy !== "players" &&
+    options.executableBy !== "console" &&
+    options.executableBy !== "both"
+  ) {
+    throw new RangeError(`invalid command executableBy: ${JSON.stringify(options.executableBy)}`);
+  }
   return withLoc({
     kind: "command",
     name,
@@ -1866,6 +1929,10 @@ export function command(
     ...(options?.permission !== undefined ? { permission: options.permission } : {}),
     ...(options?.usage !== undefined ? { usage: options.usage } : {}),
     ...(aliases !== undefined && aliases.length > 0 ? { aliases } : {}),
+    ...(options?.cooldown !== undefined ? { cooldown: options.cooldown } : {}),
+    ...(options?.cooldownMessage !== undefined ? { cooldownMessage: options.cooldownMessage } : {}),
+    ...(options?.cooldownBypass !== undefined ? { cooldownBypass: options.cooldownBypass } : {}),
+    ...(options?.executableBy !== undefined ? { executableBy: options.executableBy } : {}),
     body,
   });
 }

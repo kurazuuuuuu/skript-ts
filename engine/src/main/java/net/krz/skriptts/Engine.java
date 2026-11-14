@@ -45,6 +45,7 @@ import java.time.Duration;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -418,6 +419,18 @@ final class Engine {
      */
     private final Map<Inventory, String> guiTitles =
             java.util.Collections.synchronizedMap(new WeakHashMap<>());
+    /**
+     * Command cooldown state (feedback C6): the last successful
+     * run of each cooldown command, keyed by command name +
+     * player UUID, as epoch milliseconds. Held only in memory —
+     * like the original's cooldowns without a `cooldown storage:`
+     * entry, the state is forgotten when the program is replaced
+     * ({@link #setProgram} clears it, mirroring a script reload).
+     * Console senders never appear here: they are never cooled
+     * down. Command dispatch runs on the server's main thread, so
+     * a plain map is enough.
+     */
+    private final Map<String, Long> commandCooldownLastUse = new HashMap<>();
 
     Engine(Variables variables, Logger logger) {
         this.variables = variables;
@@ -615,6 +628,9 @@ final class Engine {
     /** Replace the running program (flat list of top-level IR nodes, in load order). */
     void setProgram(List<Map<String, Object>> topLevels) {
         this.topLevels = topLevels;
+        // A (re)load forgets command cooldowns, mirroring the
+        // original's in-memory cooldowns on a script reload.
+        commandCooldownLastUse.clear();
         // Index the custom functions. A duplicate name+signature
         // keeps the first definition (under Skript the later file
         // fails to load with an error and the first one serves);
@@ -783,6 +799,20 @@ final class Engine {
         return ctx.papiResult;
     }
 
+    /**
+     * The failure a sender who may not address the command gets:
+     * exactly the unknown-command failure (a single Component
+     * message, like ArgMatcher.sendError — the String overload
+     * would split the two lines into separate packets). Shared by
+     * the permission gate and the executable-by gate (feedback
+     * C6), which both make the command behave as unknown.
+     */
+    private static void rejectAsUnknownCommand(CommandSender sender, String input) {
+        sender.sendMessage(net.kyori.adventure.text.Component.text(
+                "Unknown or incomplete command. See below for error\n"
+                        + syntaxContext(input, input.length())));
+    }
+
     void runCommand(Map<String, Object> node, CommandSender sender, String label, String[] args) {
         String input = args.length == 0 ? label : label + " " + String.join(" ", args);
         // Permission gate (probed against the real Skript 2.17.1):
@@ -792,13 +822,20 @@ final class Engine {
         // entry is deprecated there and never delivered, so there
         // is nothing else to send.
         if (node.get("permission") instanceof String permission && !sender.hasPermission(permission)) {
-            // A single Component message, like ArgMatcher.sendError:
-            // the String overload would split the two lines into
-            // separate packets.
-            sender.sendMessage(net.kyori.adventure.text.Component.text(
-                    "Unknown or incomplete command. See below for error\n"
-                            + syntaxContext(input, input.length())));
+            rejectAsUnknownCommand(sender, input);
             return;
+        }
+        // Executable-by gate (feedback C6): "players" rejects
+        // non-player senders and "console" rejects player senders,
+        // with the same unknown-command failure as the permission
+        // gate above; "both" / absent allows every sender.
+        if (node.get("executableBy") instanceof String executableBy) {
+            boolean isPlayer = sender instanceof Player;
+            if (("players".equals(executableBy) && !isPlayer)
+                    || ("console".equals(executableBy) && isPlayer)) {
+                rejectAsUnknownCommand(sender, input);
+                return;
+            }
         }
         List<Map<String, Object>> specs = new ArrayList<>();
         if (node.get("args") instanceof List<?> rawSpecs) {
@@ -812,6 +849,36 @@ final class Engine {
         if (values == null) {
             matcher.sendError(sender);
             return;
+        }
+        // Cooldown gate (feedback C6), checked only once the
+        // invocation is known to be executable (permission,
+        // executable-by and argument parsing all passed — a failed
+        // invocation neither starts nor is blocked by a cooldown).
+        // Per (command name, player UUID); console senders are
+        // never cooled down, and holders of the cooldown-bypass
+        // permission skip the check (and leave no timestamp). A
+        // blocked run does not run the body and sends the declared
+        // cooldown message, with the usual text color parsing but
+        // NO placeholder substitution — the original's
+        // %remaining time% / %elapsed time% forms stay literal in
+        // this version (documented in docs/reference.md). With no
+        // declared message a blocked run is silent. A run that is
+        // not blocked records its timestamp before the body runs.
+        if (sender instanceof Player p && node.get("cooldown") instanceof Number cooldown) {
+            String bypass = node.get("cooldownBypass") instanceof String b ? b : null;
+            if (bypass == null || !p.hasPermission(bypass)) {
+                long cooldownMs = Math.round(cooldown.doubleValue() * 1000.0);
+                String key = str(node.get("name")) + "\n" + p.getUniqueId();
+                long now = System.currentTimeMillis();
+                Long last = commandCooldownLastUse.get(key);
+                if (last != null && now - last < cooldownMs) {
+                    if (node.get("cooldownMessage") instanceof String message) {
+                        sender.sendMessage(LEGACY.deserialize(colorize(message)));
+                    }
+                    return;
+                }
+                commandCooldownLastUse.put(key, now);
+            }
         }
         Ctx ctx = new Ctx();
         if (sender instanceof Player p) {

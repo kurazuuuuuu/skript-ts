@@ -1347,6 +1347,9 @@ export interface CommandArgSpec {
   optional: boolean;
 }
 
+/** Who may execute a command (the `executable by` section): players only, the console only, or both. */
+export type CommandExecutableBy = "players" | "console" | "both";
+
 /** Represents a Skript top-level declaration. */
 export type TopLevel =
   // `prefixes` is set only for the papiRequest event (phase 10): the
@@ -1372,6 +1375,13 @@ export type TopLevel =
   // and never delivers the message — a sender without permission
   // cannot address the command at all and gets the same
   // "Unknown or incomplete command" failure as an unknown command.
+  // Feedback C6 adds the cooldown trio and `executableBy`:
+  // `cooldown` is a plain number of seconds (fractional allowed),
+  // emitted as a timespan (`cooldown: 2.5 seconds`);
+  // `cooldownMessage` / `cooldownBypass` map to the original's
+  // `cooldown message:` / `cooldown bypass:` entries, and
+  // `executableBy` to `executable by:` ("both" spells
+  // "players and console" there).
   | {
       kind: "command";
       name: string;
@@ -1379,6 +1389,10 @@ export type TopLevel =
       permission?: string;
       usage?: string;
       aliases?: readonly string[];
+      cooldown?: number;
+      cooldownMessage?: string;
+      cooldownBypass?: string;
+      executableBy?: CommandExecutableBy;
       body: readonly Stmt[];
       loc?: SourceLoc;
     }

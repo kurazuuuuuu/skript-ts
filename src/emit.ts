@@ -1575,6 +1575,26 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
       if (t.aliases !== undefined && t.aliases.length > 0) {
         lines.push(own(`    aliases: ${t.aliases.join(", ")}`, path, t.loc));
       }
+      // Feedback C6: the cooldown trio and the executable-by
+      // entry, after the phase-20 sections (section order is
+      // free in the original; the cooldown-first order was
+      // probed against the real Skript 2.17.1). The cooldown
+      // amount is a plain number of seconds, fractional amounts
+      // printing plainly like timespan literals. "both" spells
+      // "players and console" in the original's grammar.
+      if (t.cooldown !== undefined) {
+        lines.push(own(`    cooldown: ${String(t.cooldown)} seconds`, path, t.loc));
+      }
+      if (t.cooldownMessage !== undefined) {
+        lines.push(own(`    cooldown message: ${t.cooldownMessage}`, path, t.loc));
+      }
+      if (t.cooldownBypass !== undefined) {
+        lines.push(own(`    cooldown bypass: ${t.cooldownBypass}`, path, t.loc));
+      }
+      if (t.executableBy !== undefined) {
+        const who = t.executableBy === "both" ? "players and console" : t.executableBy;
+        lines.push(own(`    executable by: ${who}`, path, t.loc));
+      }
       lines.push(own("    trigger:", path, t.loc));
       lines.push(...emitBlock(t.body, 2, path, "body"));
       return lines;
