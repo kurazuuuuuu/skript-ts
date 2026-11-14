@@ -1464,8 +1464,10 @@ original's type system).
 ## Command definitions
 
 Commands take any number of typed arguments, plus the
-`permission`, `usage` and `aliases` section entries — core
-language, identical under Skript and under the engine jar.
+`permission`, `usage` and `aliases` section entries and —
+since feedback C6 — the cooldown entries and `executableBy`
+— core language, identical under Skript and under the
+engine jar.
 Every behavior below was probed against the real Skript
 2.17.1 (see the development log): the original registers its
 commands with **Brigadier**, so argument failures are
@@ -1508,6 +1510,37 @@ engine's matcher reproduces them exactly.
   failure), `aliases` (extra names, with or without a
   leading slash). **`permission message` is not offered**:
   deprecated in the original and never delivered (probed).
+- **Executable by** (`executableBy`, feedback C6):
+  `"players"` rejects non-player senders, `"console"`
+  rejects player senders, `"both"` (emitted as
+  `executable by: players and console`) allows everyone;
+  absent allows everyone. Under the engine a rejected
+  sender gets exactly the permission gate's failure — the
+  command behaves as an unknown command and the body never
+  runs.
+- **Cooldown** (`cooldown`, `cooldownMessage`,
+  `cooldownBypass`, feedback C6): `cooldown` is a plain
+  number of **seconds** (positive, fractions allowed;
+  emitted as a timespan, `cooldown: 2.5 seconds`). The
+  engine keeps the last successful run per (command name,
+  player UUID) in memory: a player who runs the command
+  again inside the cooldown does not run the body and is
+  sent the `cooldownMessage` instead; a run that is not
+  blocked records the timestamp. Holders of the
+  `cooldownBypass` permission skip the cooldown entirely,
+  console senders are never cooled down, and an invocation
+  that fails the permission / executable-by / argument
+  checks neither starts nor is blocked by a cooldown. The
+  state is forgotten when the program is (re)loaded, like
+  the original's cooldowns without a storage entry
+  (`cooldown storage:` is not offered). **Verbatim-message
+  limitation**: the engine sends the cooldown message with
+  the usual color-code parsing but otherwise as-is — the
+  `%remaining time%` / `%elapsed time%` substitutions the
+  original performs are **not** applied under the engine in
+  this version, so those placeholders stay literal there
+  (they are substituted under Skript); with no declared
+  message, a blocked run is silent under the engine.
 
 `examples/commands.ts` exercises all of it — `/cpoke`,
 `/croll`, `/citem`, `/ctell`, `/cmix`, `/coff`, `/cadmin`,
@@ -1515,16 +1548,24 @@ engine's matcher reproduces them exactly.
 `examples/behavior/commands.behavior.ts` drives two bots
 through the whole flow under both runtimes, including the
 exact failure messages and the permission gate seen from a
-sender without the permission.
+sender without the permission. `examples/cooldown.ts`
+exercises the C6 entries — `/ccool` (all four options),
+`/cponly`, `/cconly`, `/cboth` — and
+`examples/behavior/cooldown.behavior.ts` drives the
+cooldown sequence (run, blocked run with the message,
+post-cooldown run) and the console/player executable-by
+rejections under both runtimes with identical expectations.
 
 Deliberate divergences and deferrals (recorded): the
 engine matches whole space-separated tokens where
 Brigadier's reader can stop mid-token (junk fused to a
 number is a whole-token error here, not a partial parse);
 tab completion is the platform default in engine mode
-versus Brigadier's suggestions; `executable by` /
-`prefix` / cooldown sections and expression-typed custom
-arguments are out of scope for this slice.
+versus Brigadier's suggestions; the engine's cooldown
+message is not placeholder-substituted (see above);
+`prefix` sections, `cooldown storage:` and
+expression-typed custom arguments are out of scope for
+this slice.
 
 ## Display effects and boss bars
 
