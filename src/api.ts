@@ -252,6 +252,7 @@ const COND_KINDS: ReadonlySet<string> = new Set([
   "isSet",
   "hasItem",
   "canHoldItem",
+  "hasItemTag",
   "chance",
   "timerActive",
   "fileExists",
@@ -817,6 +818,7 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "hasPermission",
   "hasItem",
   "canHoldItem",
+  "hasItemTag",
   "isOp",
   "equals",
   "notEquals",
@@ -2580,6 +2582,73 @@ export function setItemLore(target: ScalarVarExpr, ...lines: Expr[]): Stmt {
 /** Construct a set-item-amount statement: resize the stack a scalar variable holds. */
 export function setItemAmount(target: ScalarVarExpr, amount: Expr): Stmt {
   return withLoc({ kind: "setItemAmount", target, amount });
+}
+
+// ---------------------------------------------------------------------------
+// Hidden item tags (feedback D): ENGINE-ONLY
+//
+// Names and lore can be faked by a modified client, so authenticity
+// markers must live where display data cannot reach: the item's
+// PersistentDataContainer. Skript has no PDC access at all, so —
+// like the other engine builtins — these three builders have no
+// .sk form: a script using any of them is engine-only and deploys
+// as IR only (see ir.ts).
+//
+// - The engine namespaces every key with the plugin's own
+//   NamespacedKey (namespace "skript-ts"), so script tags can
+//   neither collide with nor read another plugin's tags.
+// - Keys are validated HERE, at build time: lowercase
+//   [a-z0-9._-] only (a non-empty string). Anything else is a
+//   RangeError before any IR is written.
+// - Type mapping (the value's runtime type decides the stored
+//   PDC type): text -> STRING, number -> DOUBLE, boolean -> BYTE
+//   (1/0, read back as a boolean). A value of any other type
+//   makes setItemTag a no-op.
+// - setItemTag mirrors setItemName: it rewrites the item a scalar
+//   variable holds (a bare type name is materialized first) and a
+//   variable holding no item value is left untouched.
+// - itemTag yields the tag value, or no value when the tag is
+//   missing, the item has no meta, or the value is not an item.
+//   hasItemTag is the leaf-condition form: false in exactly those
+//   cases (it can head a while loop, like the other leaf
+//   conditions).
+// - Persistence: tags survive the engine's variable store — the
+//   `__item` encoding in Variables.java carries them alongside
+//   material / amount / name / lore, so a tagged stack stored in
+//   a global variable keeps its tags across restarts. Saves
+//   written before tags existed have no tag field and still
+//   decode (as untagged stacks).
+// ---------------------------------------------------------------------------
+
+const ITEM_TAG_KEY_PATTERN = /^[a-z0-9._-]+$/;
+
+/** Validate a hidden item tag key at build time: lowercase [a-z0-9._-] only. */
+function requireItemTagKey(key: string): string {
+  if (typeof key !== "string" || !ITEM_TAG_KEY_PATTERN.test(key)) {
+    throw new RangeError(
+      "item tag key must be a non-empty lowercase [a-z0-9._-] string: " + JSON.stringify(key),
+    );
+  }
+  return key;
+}
+
+/**
+ * Construct a set-item-tag statement (engine-only): write a hidden tag into the
+ * PersistentDataContainer of the item a scalar variable holds. A variable with
+ * no item value is left untouched, mirroring setItemName.
+ */
+export function setItemTag(target: ScalarVarExpr, key: string, value: Value): Stmt {
+  return withLoc({ kind: "setItemTag", target, key: requireItemTagKey(key), value: toExpr(value) });
+}
+
+/** Construct an item-tag expression (engine-only): the tag value stored on an item, or no value when absent. */
+export function itemTag(item: Expr, key: string): Expr {
+  return { kind: "itemTag", item, key: requireItemTagKey(key) };
+}
+
+/** Construct a has-item-tag condition (engine-only): the item carries a hidden tag under the key. */
+export function hasItemTag(item: Expr, key: string): Cond {
+  return { kind: "hasItemTag", item, key: requireItemTagKey(key) };
 }
 
 /** Construct a set-slot statement: write an item into a 0-based slot of an inventory (a player means their own inventory). */

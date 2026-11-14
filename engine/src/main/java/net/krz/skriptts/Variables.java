@@ -37,8 +37,9 @@ import java.util.logging.Logger;
  * Locations are encoded as tagged objects so they survive restarts.
  * Item stacks (phase 17) are encoded as tagged objects too —
  * material, amount, and the display name / lore in §-coded legacy
- * form, plus the item model and CustomModelData floats (RP-2)
- * and the enchantments as a key-to-level map (phase 28) —
+ * form, plus the item model and CustomModelData floats (RP-2),
+ * the enchantments as a key-to-level map (phase 28), and the
+ * hidden item tags (feedback D) as a raw-key-to-value map —
  * while inventories are runtime-only values and are never
  * written (like data sources).
  */
@@ -273,6 +274,18 @@ final class Variables {
                 }
                 m.put("ench", ench);
             }
+            // Hidden item tags (feedback D): this plugin's PDC
+            // entries as raw key -> value (text stays text,
+            // numbers stay numbers, booleans stay booleans — the
+            // PDC type is re-derived from the value on decode).
+            // The field is omitted entirely for an untagged
+            // stack, so entries written by older versions (which
+            // simply have no "tags" field) and entries for
+            // untagged stacks keep exactly their old shape.
+            Map<String, Object> tags = ItemTags.encode(stack);
+            if (!tags.isEmpty()) {
+                m.put("tags", tags);
+            }
             return m;
         }
         if (value instanceof Location loc) {
@@ -362,6 +375,14 @@ final class Variables {
                             touched = true;
                         }
                     }
+                }
+                // Hidden item tags (feedback D): re-applied under
+                // the plugin's NamespacedKey with the PDC type
+                // re-derived from each value. A missing field
+                // (saves written before tags existed) means the
+                // stack is untagged — old saves decode unchanged.
+                if (map.get("tags") instanceof Map<?, ?> tagsMap) {
+                    if (ItemTags.apply(meta, tagsMap)) touched = true;
                 }
                 if (touched) stack.setItemMeta(meta);
             }

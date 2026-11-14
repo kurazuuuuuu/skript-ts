@@ -381,10 +381,13 @@ function emitValue(e: Expr): string {
     case "noiseFill":
     case "eventCursor":
     case "freeSpaceFor":
+    case "itemTag":
       // Engine-builtin expressions (phases 6-10, 26, the
-      // world paint family, phase 28's cursor and the
+      // world paint family, phase 28's cursor, the
       // inventory free-space count, which the original has
-      // no expression for) exist only in the engine jar;
+      // no expression for, and hidden item tags, which live
+      // in the PersistentDataContainer Skript cannot reach)
+      // exist only in the engine jar;
       // there is no Skript text form to emit.
       throw new Error(
         `Unhandled Expr in emitValue: '${e.kind}' is an engine-only builtin with no .sk form`,
@@ -561,6 +564,7 @@ function emitString(e: Expr): string {
     case "noiseFill":
     case "eventCursor":
     case "freeSpaceFor":
+    case "itemTag":
       throw new Error(
         `Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -701,6 +705,7 @@ function emitLeafCond(c: Cond, negated: boolean): string {
     case "fileExists":
     case "httpOk":
     case "cfOk":
+    case "hasItemTag":
       throw new Error(
         `Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -1413,6 +1418,7 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     case "httpDownload":
     case "cfD1Query":
     case "paint":
+    case "setItemTag":
       throw new Error(
         `Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`,
       );
