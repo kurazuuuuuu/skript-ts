@@ -47,5 +47,13 @@ find src/main/java -name '*.java' | sort > build/sources.txt
 # -proc:none: never run annotation processors found on the classpath.
 "$JDK/bin/javac" -proc:none -encoding UTF-8 -cp "$CP" -d build/classes @build/sources.txt
 cp src/main/resources/plugin.yml build/classes/plugin.yml
+# Stamp the packaged plugin.yml with the release version from
+# package.json plus the short commit hash, so a deployed jar
+# always names the exact source it was built from (feedback
+# A4). The committed plugin.yml keeps the plain version and
+# is bumped together with package.json at release time.
+pkg_version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' ../package.json | head -n 1)
+short_hash=$(git -C .. rev-parse --short HEAD 2>/dev/null || echo unknown)
+sed -i "s/^version: .*/version: ${pkg_version}+${short_hash}/" build/classes/plugin.yml
 "$JDK/bin/jar" --create --file build/skript-ts.jar -C build/classes .
 echo "built engine/build/skript-ts.jar"

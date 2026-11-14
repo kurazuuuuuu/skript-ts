@@ -24,6 +24,15 @@ on Paper with no Skript plugin involved (see
 [docs/engine.md](docs/engine.md)). Both runtimes are held to the same
 behavior tests.
 
+**Supported versions (feedback A5):** development and the full
+behavior suite target **Paper 1.21.11** with **Skript 2.17.1** —
+that pair is the verified, guaranteed combination. The engine
+compiles against the Paper 1.21 API line. A user's server has
+been observed running these scripts on a much newer Paper API
+build (26.3.build.249) without issues, but that is an
+observation, not a guarantee: other Paper/Skript versions are
+unverified.
+
 ## Features
 
 - **Typed builder API** — scripts are ordinary TypeScript; `tsc`
