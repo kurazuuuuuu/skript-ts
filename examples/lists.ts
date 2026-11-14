@@ -47,6 +47,12 @@ import type { Script } from "../src/index.js";
 //   /countup <int>     sum 1..n with a times loop
 //   /rangesum <int>    sum 1..n with a range loop
 //   /whilesum <int>    sum 1..n with a while loop
+//   /bigcount          sum 1..10000 with a times loop (feedback
+//                      G1: the engine's continuation executor used
+//                      to overflow the stack around 2000 iterations)
+//   /bigrange          sum 1..10000 with a range loop
+//   /biglist           build {big::1..5000} with a times loop, then
+//                      sum it back with a list loop
 //   /delayed           "start", a 2-second wait, then "done"
 //   /delayloop         two 1-second waits inside a times loop,
 //                      sending "tick 1" and "tick 2"
@@ -102,6 +108,23 @@ export const listsScript: Script = script(
       add(variable("total"), variable("n")),
     ]),
     send(player(), fmt("whilesum=", variable("total"))),
+  ]),
+  command("bigcount", null, [
+    set(variable("total"), num(0)),
+    loopTimes(num(10000), [add(variable("total"), loopValue())]),
+    send(player(), fmt("bigsum=", variable("total"))),
+  ]),
+  command("bigrange", null, [
+    set(variable("total"), num(0)),
+    loopRange(num(1), num(10000), [add(variable("total"), loopValue())]),
+    send(player(), fmt("bigrangesum=", variable("total"))),
+  ]),
+  command("biglist", null, [
+    deleteVar(listVar("big")),
+    loopTimes(num(5000), [set(variable("big", loopValue()), loopValue())]),
+    set(variable("total"), num(0)),
+    loopList(listVar("big"), [add(variable("total"), loopValue())]),
+    send(player(), fmt("biglist size=", listSize(listVar("big")), "; sum=", variable("total"))),
   ]),
   command("delayed", null, [
     send(player(), str("start")),
