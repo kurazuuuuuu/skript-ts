@@ -1308,7 +1308,7 @@ export type Stmt =
 /** A firework effect shape: the Bukkit FireworkEffect.Type names offered by launchFirework. */
 export type FireworkType = "BALL" | "BALL_LARGE" | "BURST" | "CREEPER" | "STAR";
 
-/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. Phase 22 generalized death (any entity, victim filter), added the entity pickup / drop forms, and split fishing into its state sub-events. */
+/** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. Phase 22 generalized death (any entity, victim filter), added the entity pickup / drop forms, and split fishing into its state sub-events. The consume / craft / projectileHit / toggleSneak kinds are feedback batch D (both runtimes); swapHand is engine-only (no Skript header exists for it under any spelling). */
 export type EventKind =
   | "join"
   | "firstJoin"
@@ -1325,6 +1325,11 @@ export type EventKind =
   | "respawn"
   | "bedEnter"
   | "bedLeave"
+  | "consume"
+  | "craft"
+  | "projectileHit"
+  | "toggleSneak"
+  | "swapHand"
   | "inventoryClick"
   | "inventoryClose"
   | "inventoryDrag"

@@ -1731,6 +1731,64 @@ export function onBedLeave(body: readonly Stmt[], options?: EventOptions): TopLe
   return withLoc(plainEvent("bedLeave", body, options, "onBedLeave"));
 }
 
+// ---------------------------------------------------------------------------
+// More events (feedback batch D): consume, craft, projectile
+// hit, toggle sneak, and the engine-only swap-hand event. The
+// five core headers were probed live against the real Skript
+// 2.17.1 ("on consume:", "on craft:", "on inventory drag:",
+// "on projectile hit:", "on toggle sneak:" all parse); the
+// swap-hand event exists under NO spelling in the original
+// (on swap hand / on item swap / on hand swap / on swap /
+// on offhand swap all rejected), so onSwapHand is engine-only
+// and scripts using it deploy IR-only, per the established
+// ENGINE_ONLY_EVENTS mechanism.
+//
+// Event values, by Bukkit event:
+// - consume (PlayerItemConsumeEvent): player(), eventItem()
+//   is the consumed stack. Cancellable — cancelling leaves
+//   the item uneaten.
+// - craft (CraftItemEvent): player() is the clicking player,
+//   eventItem() is the crafted result, eventInventory() is
+//   the crafting inventory. Cancellable.
+// - projectile hit (ProjectileHitEvent): attacker() is the
+//   shooter when it is an entity (no value for a dispenser
+//   shot), victim() the hit entity (no value for a block
+//   hit), eventBlock() the hit block (no value for an entity
+//   hit). NOT cancellable in Bukkit, so no cancellable is
+//   packed — a cancelEvent() in the handler is a no-op, the
+//   onRespawn precedent.
+// - toggle sneak (PlayerToggleSneakEvent): player().
+//   Cancellable — cancelling keeps the previous sneak state.
+// - swap hand (PlayerSwapHandItemsEvent, engine-only):
+//   player(), eventItem() is the item moving INTO the main
+//   hand. Cancellable.
+// ---------------------------------------------------------------------------
+
+/** Construct an on-consume event: a player consumes an item (eats, drinks). eventItem() is the consumed stack; the event is cancellable. */
+export function onConsume(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("consume", body, options, "onConsume"));
+}
+
+/** Construct an on-craft event: a player takes a crafted result out of a crafting inventory. eventItem() is the result, eventInventory() the crafting inventory; the event is cancellable. */
+export function onCraft(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("craft", body, options, "onCraft"));
+}
+
+/** Construct a projectile-hit event: a projectile hits an entity or a block. attacker() is the shooter (entity shooters only), victim() the hit entity, eventBlock() the hit block. Not cancellable. */
+export function onProjectileHit(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("projectileHit", body, options, "onProjectileHit"));
+}
+
+/** Construct a toggle-sneak event: a player starts or stops sneaking. The event is cancellable. */
+export function onToggleSneak(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("toggleSneak", body, options, "onToggleSneak"));
+}
+
+/** Construct a swap-hand event: a player swaps their main-hand and off-hand items. eventItem() is the item moving into the main hand; the event is cancellable. ENGINE-ONLY: Skript has no swap-hand event under any spelling, so scripts using it deploy IR-only. */
+export function onSwapHand(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("swapHand", body, options, "onSwapHand"));
+}
+
 /** Construct an event-block expression: the block of a block break / place / click event (no value for air clicks). */
 export function eventBlock(): Expr {
   return { kind: "eventBlock" };
@@ -3080,8 +3138,8 @@ export function setCursorItem(target: Expr, itemValue: Expr): Stmt {
 }
 
 /** Construct an inventory-drag event: fires for every drag in an inventory view, with eventItem (the post-drag cursor) / eventInventory / dragged slots set. */
-export function onInventoryDrag(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "inventoryDrag", body });
+export function onInventoryDrag(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("inventoryDrag", body, options, "onInventoryDrag"));
 }
 
 // ---------------------------------------------------------------------------

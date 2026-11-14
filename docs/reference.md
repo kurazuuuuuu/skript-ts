@@ -11,23 +11,28 @@ Anything not listed here is outside the supported subset.
 
 ## Events
 
-| TypeScript     | Skript            |
-| -------------- | ----------------- |
-| `onJoin`       | `on join:`        |
-| `onFirstJoin`  | `on first join:`  |
-| `onQuit`       | `on quit:`        |
-| `onChat`       | `on chat:`        |
-| `onDeath`      | `on death:`       |
-| `onBlockBreak` | `on block break:` |
-| `onBlockPlace` | `on block place:` |
-| `onRightClick` | `on right click:` |
-| `onLeftClick`  | `on left click:`  |
-| `onDamage`     | `on damage:`      |
-| `onPickup`     | `on pick up:`     |
-| `onDrop`       | `on drop:`        |
-| `onRespawn`    | `on respawn:`     |
-| `onBedEnter`   | `on bed enter:`   |
-| `onBedLeave`   | `on bed leave:`   |
+| TypeScript        | Skript               |
+| ----------------- | -------------------- |
+| `onJoin`          | `on join:`           |
+| `onFirstJoin`     | `on first join:`     |
+| `onQuit`          | `on quit:`           |
+| `onChat`          | `on chat:`           |
+| `onDeath`         | `on death:`          |
+| `onBlockBreak`    | `on block break:`    |
+| `onBlockPlace`    | `on block place:`    |
+| `onRightClick`    | `on right click:`    |
+| `onLeftClick`     | `on left click:`     |
+| `onDamage`        | `on damage:`         |
+| `onPickup`        | `on pick up:`        |
+| `onDrop`          | `on drop:`           |
+| `onRespawn`       | `on respawn:`        |
+| `onBedEnter`      | `on bed enter:`      |
+| `onBedLeave`      | `on bed leave:`      |
+| `onConsume`       | `on consume:`        |
+| `onCraft`         | `on craft:`          |
+| `onProjectileHit` | `on projectile hit:` |
+| `onToggleSneak`   | `on toggle sneak:`   |
+| `onSwapHand`      | — (engine-only)      |
 
 ## Commands
 
@@ -860,6 +865,68 @@ handler pinning the high-slot rule — and
 `examples/behavior/priority.behavior.ts` asserts the exact
 broadcast sequence per victim (and the guarded bot's
 untouched health) under both runtimes.
+
+## More events (feedback D)
+
+Six more event builders, all taking the standard
+`(body, options?)` shape (a priority rides in the options
+object, as with every unfiltered builder). The five core
+headers were probed live against the real Skript 2.17.1 —
+`on consume:`, `on craft:`, `on inventory drag:`,
+`on projectile hit:` and `on toggle sneak:` all parse —
+and the same scripts run under the engine jar from its own
+Bukkit listeners.
+
+- `onConsume` — a player consumes an item (eats or
+  drinks; Bukkit `PlayerItemConsumeEvent`). `player()` is
+  the consumer, `eventItem()` the consumed stack.
+  **Cancellable**: cancelling leaves the item uneaten.
+- `onCraft` — a player takes a crafted result out of a
+  crafting inventory (Bukkit `CraftItemEvent`).
+  `player()` is the clicking player, `eventItem()` the
+  crafted result, `eventInventory()` the crafting
+  inventory. **Cancellable**.
+- `onInventoryDrag` — an inventory drag (Bukkit
+  `InventoryDragEvent`); `player()`, `eventInventory()`
+  and the drag values documented with the GUI slice above
+  (`eventItem()` is the post-drag cursor — see the phase
+  28 notes). **Cancellable**. The builder predates this
+  batch and originally took no options; it now accepts
+  the standard options object like the other builders.
+- `onProjectileHit` — a projectile hits something
+  (Bukkit `ProjectileHitEvent`). `attacker()` is the
+  shooter when it is an entity (no value for a dispenser
+  shot), `victim()` the hit entity (no value for a block
+  hit), `eventBlock()` the hit block (no value for an
+  entity hit). **Not cancellable** in Bukkit, so no
+  cancellable is packed and a `cancelEvent()` in the
+  handler is a no-op — the `onRespawn` precedent.
+- `onToggleSneak` — a player starts or stops sneaking
+  (Bukkit `PlayerToggleSneakEvent`); fires on both
+  transitions. `player()` only. **Cancellable**:
+  cancelling keeps the previous sneak state.
+- `onSwapHand` — a player swaps their main-hand and
+  off-hand items (Bukkit `PlayerSwapHandItemsEvent`).
+  `player()`, and `eventItem()` is the item moving
+  **into** the main hand. **Cancellable**. **Engine-only**:
+  the swap-hand event exists in Skript under no spelling
+  (`on swap hand`, `on item swap`, `on hand swap`,
+  `on swap`, `on offhand swap` were all tried and
+  rejected), so it is registered in `ENGINE_ONLY_EVENTS`
+  and scripts using it deploy IR-only, per the
+  established mechanism.
+
+`examples/events4.ts` exercises the five core events (plus
+a `/ev4open` GUI command the drag test uses), and
+`examples/behavior/events4.behavior.ts` drives a bot
+through sneak toggles, a table-free planks craft, a GUI
+drag and a skeleton's arrows under both runtimes. Consume
+is covered by the golden fixture and load checks only:
+mineflayer bots spawn with full hunger and vanilla
+refuses to eat at full hunger, so no bot action drives
+it; swap hand likewise has no bot action (mineflayer
+exposes no swap-hands control) on top of being
+engine-only.
 
 ## Text operations
 
