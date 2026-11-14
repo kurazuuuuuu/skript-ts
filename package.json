@@ -1,6 +1,6 @@
 {
   "name": "skript-ts",
-  "version": "2026.11.14",
+  "version": "2026.11.14.1",
   "description": "Write Minecraft Skript scripts in typed TypeScript and transpile them to .sk files.",
   "bin": {
     "skript-ts": "bin/skript-ts.mjs"

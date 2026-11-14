@@ -2,7 +2,9 @@ name: Release
 
 # Pushing a version tag (vYYYY.MM.DD, e.g. v2026.11.11) builds the
 # engine jar and publishes a GitHub Release with the jar and a CLI
-# bundle attached. The fast gates and the dependency audit run
+# bundle attached. A second release on the same day appends a
+# counter suffix (vYYYY.MM.DD.1, .2, ...) instead of reusing the
+# date tag. The fast gates and the dependency audit run
 # first, so a tag whose tree does not typecheck, pass tests, or
 # audit clean at high severity never becomes a release.
 #
@@ -51,7 +53,7 @@ jobs:
         run: |
           set -eu
           tag="${GITHUB_REF_NAME}"
-          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}$'; then
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$'; then
             echo "tag '$tag' does not match the vYYYY.MM.DD versioning format" >&2
             exit 1
           fi
