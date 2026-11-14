@@ -162,6 +162,25 @@ export interface BehaviorBot {
   setSneak(on: boolean): void;
   /** Craft one batch of the named item from inventory materials, without a crafting table (the 2x2 grid). Throws when no usable recipe exists. */
   craftItem(itemName: string, timeoutMs?: number): Promise<void>;
+  // RP-3 controls: resource-pack offers — enough to exercise the
+  // engine's sendResourcePack and the resourcePackStatus event by
+  // what the client was offered and how it answered.
+  /** Resource-pack offers the server has sent this bot, oldest first. */
+  resourcePackOffers(): readonly ResourcePackOffer[];
+  /**
+   * Answer the most recent pack offer with the given status
+   * sequence (protocol statuses: "accepted", "downloaded",
+   * "successfully_loaded", "declined", "failed_download"). The
+   * caller fetches the pack bytes itself when it wants the
+   * "downloaded" step to be honest.
+   */
+  answerResourcePack(statuses: readonly string[]): void;
+}
+
+/** A resource-pack offer the server sent a bot (RP-3): the download URL and the hash the server declared, when it sent one. */
+export interface ResourcePackOffer {
+  url: string;
+  hash: string | null;
 }
 
 /**
@@ -282,6 +301,13 @@ interface RawCursorItemPacket {
   };
 }
 
+/** The raw add_resource_pack packet shape on the wire (RP-3). */
+interface RawResourcePackPacket {
+  uuid?: unknown;
+  url?: string;
+  hash?: string;
+}
+
 /** The raw display packet shapes on the wire (phase 21): text fields are chat components in NBT form. */
 interface RawTextPacket {
   text?: unknown;
@@ -348,6 +374,8 @@ class MineflayerBehaviorBot implements BehaviorBot {
   private readonly titleClearLog: boolean[] = [];
   private readonly actionBarLog: string[] = [];
   private readonly bossBarLog: BossBarPacket[] = [];
+  private readonly packOffers: ResourcePackOffer[] = [];
+  private latestPackUuid: unknown = null;
   private serverCursor: WindowSlotItem | null = null;
   private serverCursorFresh = false;
   private readonly waiters: {
@@ -426,6 +454,22 @@ class MineflayerBehaviorBot implements BehaviorBot {
     displayClient.on<RawCursorItemPacket>("set_cursor_item", (p) => {
       this.serverCursor = readCursorPacketItem(this.bot, p);
       this.serverCursorFresh = true;
+    });
+    // Raw resource-pack packets (RP-3): mineflayer's own plugin
+    // only auto-answers during the configuration phase, so the
+    // offer (uuid + url + hash) is captured here for tests to
+    // inspect and answer explicitly via answerResourcePack().
+    const packClient = (
+      this.bot as unknown as {
+        _client: {
+          on(ev: string, fn: (p: RawResourcePackPacket) => void): void;
+          write(name: string, data: unknown): void;
+        };
+      }
+    )._client;
+    packClient.on("add_resource_pack", (p) => {
+      this.packOffers.push({ url: String(p.url ?? ""), hash: p.hash ?? null });
+      this.latestPackUuid = p.uuid ?? null;
     });
     this.bot.on("messagestr", (raw) => {
       const msg = stripColor(raw);
@@ -875,6 +919,31 @@ class MineflayerBehaviorBot implements BehaviorBot {
 
   setSneak(on: boolean): void {
     this.bot.setControlState("sneak", on);
+  }
+
+  resourcePackOffers(): readonly ResourcePackOffer[] {
+    return this.packOffers;
+  }
+
+  answerResourcePack(statuses: readonly string[]): void {
+    // Protocol result codes (clientbound resource_pack_receive):
+    // 0 successfully loaded, 1 declined, 2 failed download,
+    // 3 accepted, 4 downloaded.
+    const codes: Record<string, number> = {
+      successfully_loaded: 0,
+      declined: 1,
+      failed_download: 2,
+      accepted: 3,
+      downloaded: 4,
+    };
+    const client = (
+      this.bot as unknown as { _client: { write(name: string, data: unknown): void } }
+    )._client;
+    for (const status of statuses) {
+      const code = codes[status];
+      if (code === undefined) throw new Error(`unknown resource pack status "${status}"`);
+      client.write("resource_pack_receive", { uuid: this.latestPackUuid, result: code });
+    }
   }
 
   async craftItem(itemName: string, timeoutMs = 10_000): Promise<void> {

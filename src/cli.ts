@@ -64,6 +64,7 @@ import { createProgress, type ProgressReporter, type StageHandle } from "./cli/p
 import {
   buildProject,
   deployEngineScripts,
+  deployPacks,
   deployScripts,
   runTypecheck,
   type BuildResult,
@@ -785,13 +786,19 @@ async function main(): Promise<number> {
         scripts: build.scripts,
         engineScriptsDir: join(serverDir, "plugins", "skript-ts", "scripts"),
       });
+      const packRes = deployPacks({
+        packs: build.packs,
+        enginePacksDir: join(serverDir, "plugins", "skript-ts", "packs"),
+      });
       const set = installEngine(
         rootDir,
         serverDir,
         opts.engineJar !== null ? { jarPath: resolve(rootDir, opts.engineJar) } : {},
       );
       const removedNote = res.removed.length > 0 ? `、${res.removed.length} 件削除` : "";
-      return { note: `IR ${res.deployed.length} ファイル${removedNote}、${set.note}` };
+      const packNote =
+        packRes.deployed.length > 0 ? `、パック ${packRes.deployed.length} ファイル` : "";
+      return { note: `IR ${res.deployed.length} ファイル${removedNote}${packNote}、${set.note}` };
     });
   } else {
     await runStage("配置", async () => {

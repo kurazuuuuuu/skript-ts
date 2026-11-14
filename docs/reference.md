@@ -2270,3 +2270,136 @@ window's title contains U+E001), the registry rules are pinned
 in `tests/resourcepack.test.ts`, and resolution, emission and
 the sample's golden fixture are pinned in
 `tests/fontchar-resolve.test.ts`.
+
+## Cloudflare: R2 objects (CF-3)
+
+The R2 client extends the CF-1 common base (handles, the async
+completion discipline, the `cfResponse` event, and the fixed
+error vocabulary) with S3-compatible object operations. All of
+it is **engine-only**: every kind below is registered in
+`ENGINE_ONLY_KINDS`, so a script using any of them builds IR
+only and Skript-mode deployment skips it.
+
+Handles resolve from environment variables, exactly as in CF-1
+(the handle is uppercased, non `[A-Z0-9]` characters fold to
+`_`): for handle `H`, `SKRIPTTS_CF_<H>_ACCOUNT_ID`,
+`SKRIPTTS_CF_<H>_R2_ACCESS_KEY_ID` and
+`SKRIPTTS_CF_<H>_R2_SECRET_ACCESS_KEY`. The handle named
+`default` additionally falls back to the unprefixed
+`SKRIPTTS_CF_ACCOUNT_ID` / `SKRIPTTS_CF_R2_ACCESS_KEY_ID` /
+`SKRIPTTS_CF_R2_SECRET_ACCESS_KEY`. A handle that cannot be
+fully resolved completes with error kind `policy`, naming the
+missing variables in the server log (values are never logged).
+Scripts name a handle, a bucket and a key — never a URL or a
+credential. The destination is fixed to
+`https://<accountId>.r2.cloudflarestorage.com` with
+virtual-host-style addressing (`<bucket>.<host>/<key>`).
+
+`SKRIPTTS_CF_<H>_R2_ENDPOINT`, when set, replaces the endpoint
+for that handle and switches addressing to **path-style**
+(`<endpoint>/<bucket>/<key>`); the plugin and the client both
+log a loud warning, because the override exists for
+verification stubs only.
+
+Signing is AWS Signature V4 (region `auto`, service `s3`),
+JDK-only. Operations are asynchronous: the statement returns
+immediately and the outcome arrives as a `cfResponse` event
+read through `cfId()`, `cfError()` and `cfOk()` (the CF-1
+accessors). The completion restores the player whose context
+started the operation (a join handler, a command executor) as
+the event's player when they are still online, so a
+`cfResponse` handler can use `player()` — CF-1's D1 path
+created a playerless context, and carrying the originator
+through is backward compatible because D1 scripts never read
+`player()` there.
+
+| TS builder                                             | Meaning                                                                                                                                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cfR2Put(id, handle, bucket, key, path, opts?)`        | upload the server file at `path` to `bucket`/`key` (Class A)                                                                                                                               |
+| `cfR2Get(id, handle, bucket, key, path, opts?)`        | download `bucket`/`key` to `path`, via a `.part-<seq>` file renamed into place (Class B)                                                                                                   |
+| `cfR2Head(id, handle, bucket, key, opts?)`             | read the object's size; the completion carries it in `cfR2Size()` (Class B)                                                                                                                |
+| `cfR2Delete(id, handle, bucket, key, opts?)`           | delete the object (Class A)                                                                                                                                                                |
+| `cfR2List(id, handle, bucket, prefix?, store?, opts?)` | list keys under `prefix` (first page, at most 1000 keys); the store variable receives `<var>::1..<n>` key texts and the count as its own value, the database list convention (Class A)     |
+| `cfR2Presign(id, handle, bucket, key, ttlSeconds)`     | sign a GET URL locally — no request is sent; the completion carries it in `cfSignedUrl()` (Class B, charged as the download proxy). A literal ttl is build-validated to 60..604800 seconds |
+| `cfSignedUrl()`                                        | the presigned GET URL of a `cfR2Presign` completion; no value for other operations                                                                                                         |
+| `cfR2Size()`                                           | the object size in bytes of a `cfR2Head` completion; no value otherwise                                                                                                                    |
+
+`opts` accepts `{ timeoutSeconds }` with the CF-1 / HTTP range
+(1..120, default 15). File paths are relative to the engine
+data folder root (`plugins/skript-ts/`); absolute paths and
+`..` escapes complete with error kind `policy` and nothing is
+read or written.
+
+Error mapping (onto the CF-1 vocabulary `policy | network |
+timeout | size | io | busy | auth | notfound | quota | api`):
+S3 `401`/`403`, `SignatureDoesNotMatch`, `AccessDenied`,
+`InvalidAccessKeyId`, `AuthFailure` → `auth`; `404`,
+`NoSuchKey`, `NoSuchBucket` → `notfound`; `429`, `SlowDown`,
+`TooManyRequests` → `quota`; anything else → `api`. Transport
+failures follow the phase-26 discipline (`timeout`, `network`,
+`io`, `size` for an over-8 MiB non-download body, `busy` past 8
+concurrent operations).
+
+**The quota breakwater (mandatory).** R2 bills overages, so
+every operation is counted _before dispatch_ in a persistent
+monthly counter, `plugins/skript-ts/cf-r2-usage.json`
+(`{"month": "YYYY-MM", "classA": n, "classB": n}`, UTC month,
+reset when the month changes, written via temp file + rename
+under a lock). Put / Delete / List are Class A; Get / Head /
+presign issuance are Class B. The limits come from
+`plugins/skript-ts/config.json`:
+`"cloudflare": { "r2MonthlyClassALimit": 100000,
+"r2MonthlyClassBLimit": 1000000 }` — 10% of the R2 free tier
+(1M / 10M operations a month). An operation that would exceed
+its class limit is never sent: it completes with error kind
+`quota` and a SEVERE log line.
+
+`examples/behavior/packdist.behavior.ts` verifies the client
+against a local S3 stub (signatures unverified there); the
+real-account connection is verified separately by the
+coordinator, never by the behavior suite.
+
+## Resource packs: distribution and status branching (RP-3)
+
+Pack _generation_ (RP-1/RP-2/RP-4) works in both runtimes.
+Pack _distribution_ is **engine-only**, for one reason: the
+distribution flow hands the client a presigned R2 URL, and a
+presigned URL has no Skript equivalent — Skript can only point
+a player at a fixed URL from `server.properties`, it cannot
+sign per-join URLs or branch on the client's answer with
+script-visible values. The builders below are therefore all
+registered in `ENGINE_ONLY_KINDS` / `ENGINE_ONLY_EVENTS`.
+
+**Deployment.** The CLI's engine deploy (and the watch loop)
+copies each built pack's zip and manifest into
+`plugins/skript-ts/packs/` (deployPacks in
+`src/cli/project.ts`), tracked by a dedicated manifest file
+(`.skript-ts-packs-manifest.json`) so a pack a previous deploy
+placed but the current build no longer produces is swept, and
+script deployment never sweeps pack files. At enable and on
+every script load the engine indexes
+`packs/*.resourcepack.json` into namespace → `{ sha1, required,
+zipFile }`; a manifest that fails to parse disables only that
+pack (a warning is logged).
+
+| TS builder                                   | Meaning                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packSha1(namespace)`                        | the deployed manifest's SHA-1 for the namespace (a builder-level literal); no value when the pack is absent                                                                                                                                                                                        |
+| `packRequired(namespace)`                    | the deployed manifest's `required` flag; `false` when the pack is absent                                                                                                                                                                                                                           |
+| `sendResourcePack(player, url, sha1, opts?)` | offer one pack through Paper's Adventure API (`ResourcePackRequest` + `player.sendResourcePacks(...)`). `opts`: `{ required?: boolean \| expression, prompt?: text }`. A literal sha1 is build-validated as 40 hex digits; the engine re-validates at runtime and refuses (warned no-op) otherwise |
+| `onResourcePackStatus(body)`                 | event fired from Paper's `PlayerResourcePackStatusEvent`; inside it, `player()` is the answering player                                                                                                                                                                                            |
+| `resourcePackStatus()`                       | the status text inside the event: `"accepted"`, `"downloaded"`, `"successfully_loaded"`, `"declined"` or `"failed_download"` (the Bukkit enum name lowercased, so a future status passes through in the same shape)                                                                                |
+
+`examples/packdist.ts` is the reference flow: on join it
+uploads the deployed `packs/example.zip` with `cfR2Put`,
+presigns it on the put's `cfResponse`, offers it with
+`sendResourcePack(player(), cfSignedUrl(), packSha1("example"),
+{ required: packRequired("example"), prompt: ... })`, and
+reports each `onResourcePackStatus` back to the player.
+`examples/behavior/packdist.behavior.ts` pins the flow against
+the S3 stub: the bot is offered the pack, downloads the
+presigned URL itself, its SHA-1 matches the manifest, and the
+accepted → downloaded → successfully_loaded transitions are
+observed through the script; a quota section (gated on a tiny
+configured Class A limit) pins the breakwater's `quota`
+completion.

@@ -62,6 +62,25 @@ export type Expr =
   // stays in the server log, and a success has no cfError value.
   | { kind: "cfId" }
   | { kind: "cfError" }
+  // Engine-builtin expressions (Cloudflare R2, CF-3): the payload
+  // of an R2 completion inside a cfResponse event. cfSignedUrl is
+  // the presigned GET URL of a cfR2Presign completion (no value for
+  // any other operation); cfR2Size is the object size in bytes of a
+  // cfR2Head completion (no value otherwise).
+  | { kind: "cfSignedUrl" }
+  | { kind: "cfR2Size" }
+  // Engine-builtin expressions (resource packs, RP-3): values read
+  // from the manifests the engine indexed under
+  // plugins/skript-ts/packs/. packSha1 has no value when the pack
+  // is absent; packRequired is false then. The namespace is a
+  // builder-level literal, like a timer or GUI id.
+  | { kind: "packSha1"; namespace: string }
+  | { kind: "packRequired"; namespace: string }
+  // Engine-builtin expression (resource packs, RP-3): the status
+  // text inside a resourcePackStatus event ("accepted",
+  // "downloaded", "successfully_loaded", "declined",
+  // "failed_download", or a future status lowercased).
+  | { kind: "resourcePackStatus" }
   // Engine-builtin expressions (skUtilities slice, phase 9): reads
   // from text files under the engine's files root. All three yield
   // no value when the file is missing.
@@ -1310,6 +1329,92 @@ export type Stmt =
       timeoutSeconds?: number;
       loc?: SourceLoc;
     }
+  // Engine-builtin statements (Cloudflare R2, CF-3): asynchronous
+  // S3-compatible object operations against the R2 bucket bound to
+  // a named handle. File paths are relative to the engine data
+  // folder root (plugins/skript-ts/); the engine refuses absolute
+  // paths and ".." escapes with a policy error. Completions arrive
+  // as cfResponse events. cfR2List maps its keys onto the store
+  // variable like a database result: <var>::1..<n> hold the key
+  // texts and the variable itself holds the count. cfR2Presign
+  // performs no request: it signs a GET URL locally (counted as a
+  // Class B operation by the monthly quota counter) and completes
+  // with cfSignedUrl() set.
+  | {
+      kind: "cfR2Put";
+      id: string;
+      handle: string;
+      bucket: TextExpr;
+      key: TextExpr;
+      path: TextExpr;
+      timeoutSeconds?: number;
+      loc?: SourceLoc;
+    }
+  | {
+      kind: "cfR2Get";
+      id: string;
+      handle: string;
+      bucket: TextExpr;
+      key: TextExpr;
+      path: TextExpr;
+      timeoutSeconds?: number;
+      loc?: SourceLoc;
+    }
+  | {
+      kind: "cfR2Head";
+      id: string;
+      handle: string;
+      bucket: TextExpr;
+      key: TextExpr;
+      timeoutSeconds?: number;
+      loc?: SourceLoc;
+    }
+  | {
+      kind: "cfR2Delete";
+      id: string;
+      handle: string;
+      bucket: TextExpr;
+      key: TextExpr;
+      timeoutSeconds?: number;
+      loc?: SourceLoc;
+    }
+  | {
+      kind: "cfR2List";
+      id: string;
+      handle: string;
+      bucket: TextExpr;
+      prefix?: TextExpr;
+      store?: VariableExpr;
+      timeoutSeconds?: number;
+      loc?: SourceLoc;
+    }
+  | {
+      kind: "cfR2Presign";
+      id: string;
+      handle: string;
+      bucket: TextExpr;
+      key: TextExpr;
+      ttlSeconds: Expr;
+      loc?: SourceLoc;
+    }
+  // Engine-builtin statement (resource packs, RP-3): offer one
+  // resource pack to a player through Paper's Adventure API. The
+  // sha1 is a text expression (packSha1(...) in practice); a
+  // literal is validated as 40 hex digits at build time, and the
+  // engine re-validates at runtime and refuses to send otherwise.
+  | {
+      kind: "sendResourcePack";
+      target: Expr;
+      // An expression rather than a TextExpr: the URL normally
+      // comes from cfSignedUrl(), an engine expression of its own
+      // kind; the engine renders it through the general text path.
+      url: Expr;
+      sha1: TextExpr;
+      required?: boolean;
+      requiredExpr?: Expr;
+      prompt?: TextExpr;
+      loc?: SourceLoc;
+    }
   // Engine-builtin statements (particles & fireworks, feedback D):
   // fire-and-forget visual effects executed natively on the Bukkit
   // API. spawnParticle carries the Bukkit Particle enum name as a
@@ -1386,7 +1491,8 @@ export type EventKind =
   | "timerComplete"
   | "papiRequest"
   | "httpResponse"
-  | "cfResponse";
+  | "cfResponse"
+  | "resourcePackStatus";
 
 /**
  * A Skript event filter (phase 16): the type-name lists of the

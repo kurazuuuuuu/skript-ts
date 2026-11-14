@@ -15,6 +15,7 @@ import { createProgress, type ProgressReporter } from "./progress.js";
 import {
   buildProject,
   deployEngineScripts,
+  deployPacks,
   runTypecheck,
   type BuildResult,
   type BuiltScript,
@@ -308,6 +309,7 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
           scripts: build.scripts,
           engineScriptsDir: scriptsDir,
         });
+        deployPacks({ packs: build.packs, enginePacksDir: path.join(pluginDir, "packs") });
         deployStage.finish(
           "passed",
           deployed.deployed.length > 0 ? `${deployed.deployed.length} 件配置` : undefined,
@@ -433,9 +435,11 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
       // running server's jar unconditionally.
       humanStream.write("エンジン jar は配置しません（--no-engine-jar）\n");
     } else {
-      const installed = installEngine(rootDir, serverDir, {
-        ...(opts.engineJar !== null ? { jarPath: opts.engineJar } : {}),
-      });
+      const installed = installEngine(
+        rootDir,
+        serverDir,
+        opts.engineJar !== null ? { jarPath: opts.engineJar } : {},
+      );
       humanStream.write(`${installed.note}\n`);
     }
 

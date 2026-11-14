@@ -579,3 +579,59 @@ export function deployEngineScripts(opts: {
   atomicWriteFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n");
   return { deployed, removed };
 }
+
+const PACKS_MANIFEST_NAME = ".skript-ts-packs-manifest.json";
+
+/**
+ * Copy built resource packs into the engine plugin's packs folder
+ * (`plugins/skript-ts/packs`, RP-3). Each pack contributes its zip
+ * and its `<namespace>.resourcepack.json` manifest; the engine
+ * indexes the manifests there at load time (namespace → sha1 /
+ * required / zip file) for packSha1(), packRequired() and the R2
+ * distribution sample. Same manifest discipline as
+ * deployEngineScripts: files deployed by a previous run but no
+ * longer built are removed, tracked in a dedicated manifest file
+ * so script deployment never sweeps pack files (or vice versa).
+ */
+export function deployPacks(opts: { packs: readonly BuiltPack[]; enginePacksDir: string }): {
+  deployed: string[];
+  removed: string[];
+} {
+  const { enginePacksDir } = opts;
+  mkdirSync(enginePacksDir, { recursive: true });
+  const manifestPath = join(enginePacksDir, PACKS_MANIFEST_NAME);
+  let previous: string[] = [];
+  if (existsSync(manifestPath)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (Array.isArray(parsed))
+        previous = parsed.filter((x): x is string => typeof x === "string");
+    } catch {
+      previous = [];
+    }
+  }
+  const files: { source: string; name: string }[] = [];
+  for (const pack of opts.packs) {
+    files.push({ source: pack.zipPath, name: pack.manifest.zipFile });
+    files.push({ source: pack.manifestPath, name: `${pack.namespace}.resourcepack.json` });
+  }
+  const next = files.map((f) => f.name);
+  const removed: string[] = [];
+  for (const rel of previous) {
+    if (!next.includes(rel)) {
+      const target = join(enginePacksDir, rel);
+      if (existsSync(target)) {
+        rmSync(target);
+        removed.push(rel);
+      }
+    }
+  }
+  const deployed: string[] = [];
+  for (const f of files) {
+    const target = join(enginePacksDir, f.name);
+    atomicCopyFileSync(f.source, target);
+    deployed.push(f.name);
+  }
+  atomicWriteFileSync(manifestPath, JSON.stringify(next, null, 2) + "\n");
+  return { deployed, removed };
+}

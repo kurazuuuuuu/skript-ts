@@ -4627,3 +4627,241 @@ export function cfError(): Expr {
 export function cfOk(): Cond {
   return { kind: "cfOk" };
 }
+
+// ---------------------------------------------------------------------------
+// Engine builtins (Cloudflare R2, CF-3 + resource packs, RP-3)
+//
+// R2 operations are asynchronous like D1: a cfR2* statement starts
+// one S3-compatible operation against the bucket named in the call
+// under a caller-chosen literal id and a named handle, and returns
+// immediately. The handle resolves from SKRIPTTS_CF_<H>_ACCOUNT_ID,
+// SKRIPTTS_CF_<H>_R2_ACCESS_KEY_ID and
+// SKRIPTTS_CF_<H>_R2_SECRET_ACCESS_KEY (plus the optional stub-only
+// SKRIPTTS_CF_<H>_R2_ENDPOINT override, which switches the client
+// to path-style addressing and logs a warning). File paths are
+// relative to plugins/skript-ts/; absolute paths and ".." escapes
+// complete with error kind "policy". Every operation is counted
+// by a persistent monthly quota counter in the engine
+// (plugins/skript-ts/cf-r2-usage.json; Put/Delete/List are Class A,
+// Get/Head/presign are Class B): an operation that would exceed
+// the configured limit never leaves the server and completes with
+// error kind "quota". Completions arrive as cfResponse events;
+// cfR2Head completions carry cfR2Size(), cfR2Presign completions
+// carry cfSignedUrl(), and cfR2List stores its keys in the store
+// variable (<var>::1..<n>, the variable itself holding the count).
+//
+// Resource-pack distribution (RP-3) is engine-only because a
+// presigned URL has no Skript equivalent: packSha1()/packRequired()
+// read the manifests deployed to plugins/skript-ts/packs/,
+// sendResourcePack offers a pack through Paper's Adventure API,
+// and onResourcePackStatus reports the client's answer.
+// ---------------------------------------------------------------------------
+
+function requirePackNamespace(namespace: string): string {
+  if (typeof namespace !== "string" || namespace.trim() === "") {
+    throw new RangeError("pack namespace must be a non-empty string");
+  }
+  return namespace;
+}
+
+function requirePresignTtl(ttlSeconds: number | Expr): Expr {
+  if (typeof ttlSeconds === "number") {
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 604800) {
+      throw new RangeError("cfR2Presign ttlSeconds must be a number between 60 and 604800");
+    }
+    return { kind: "number", value: ttlSeconds };
+  }
+  if (ttlSeconds.kind === "number") {
+    const value = ttlSeconds.value;
+    if (!Number.isFinite(value) || value < 60 || value > 604800) {
+      throw new RangeError("cfR2Presign ttlSeconds must be a number between 60 and 604800");
+    }
+  }
+  return ttlSeconds;
+}
+
+/** Construct a cf-r2-put statement: upload a server file to R2 (engine builtin). */
+export function cfR2Put(
+  id: string,
+  handle: string,
+  bucket: TextExpr,
+  key: TextExpr,
+  path: TextExpr,
+  opts?: { timeoutSeconds?: number },
+): Stmt {
+  const timeout = requireTimeoutSeconds(opts);
+  return withLoc({
+    kind: "cfR2Put",
+    id: requireCfId(id),
+    handle: requireCfHandle(handle),
+    bucket,
+    key,
+    path,
+    ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
+  });
+}
+
+/** Construct a cf-r2-get statement: download an R2 object to a server file (engine builtin). */
+export function cfR2Get(
+  id: string,
+  handle: string,
+  bucket: TextExpr,
+  key: TextExpr,
+  path: TextExpr,
+  opts?: { timeoutSeconds?: number },
+): Stmt {
+  const timeout = requireTimeoutSeconds(opts);
+  return withLoc({
+    kind: "cfR2Get",
+    id: requireCfId(id),
+    handle: requireCfHandle(handle),
+    bucket,
+    key,
+    path,
+    ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
+  });
+}
+
+/** Construct a cf-r2-head statement: read an R2 object's size into cfR2Size() (engine builtin). */
+export function cfR2Head(
+  id: string,
+  handle: string,
+  bucket: TextExpr,
+  key: TextExpr,
+  opts?: { timeoutSeconds?: number },
+): Stmt {
+  const timeout = requireTimeoutSeconds(opts);
+  return withLoc({
+    kind: "cfR2Head",
+    id: requireCfId(id),
+    handle: requireCfHandle(handle),
+    bucket,
+    key,
+    ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
+  });
+}
+
+/** Construct a cf-r2-delete statement: delete an R2 object (engine builtin). */
+export function cfR2Delete(
+  id: string,
+  handle: string,
+  bucket: TextExpr,
+  key: TextExpr,
+  opts?: { timeoutSeconds?: number },
+): Stmt {
+  const timeout = requireTimeoutSeconds(opts);
+  return withLoc({
+    kind: "cfR2Delete",
+    id: requireCfId(id),
+    handle: requireCfHandle(handle),
+    bucket,
+    key,
+    ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
+  });
+}
+
+/** Construct a cf-r2-list statement: list R2 keys under a prefix into a store variable (engine builtin). */
+export function cfR2List(
+  id: string,
+  handle: string,
+  bucket: TextExpr,
+  prefix?: TextExpr,
+  store?: VariableExpr,
+  opts?: { timeoutSeconds?: number },
+): Stmt {
+  const timeout = requireTimeoutSeconds(opts);
+  return withLoc({
+    kind: "cfR2List",
+    id: requireCfId(id),
+    handle: requireCfHandle(handle),
+    bucket,
+    ...(prefix !== undefined ? { prefix } : {}),
+    ...(store !== undefined ? { store } : {}),
+    ...(timeout !== undefined ? { timeoutSeconds: timeout } : {}),
+  });
+}
+
+/** Construct a cf-r2-presign statement: sign a GET URL locally into cfSignedUrl() (engine builtin). */
+export function cfR2Presign(
+  id: string,
+  handle: string,
+  bucket: TextExpr,
+  key: TextExpr,
+  ttlSeconds: number | Expr,
+): Stmt {
+  return withLoc({
+    kind: "cfR2Presign",
+    id: requireCfId(id),
+    handle: requireCfHandle(handle),
+    bucket,
+    key,
+    ttlSeconds: requirePresignTtl(ttlSeconds),
+  });
+}
+
+/** Construct a cf-signed-url expression: the presigned GET URL of a cfR2Presign completion. */
+export function cfSignedUrl(): Expr {
+  return { kind: "cfSignedUrl" };
+}
+
+/** Construct a cf-r2-size expression: the object size in bytes of a cfR2Head completion. */
+export function cfR2Size(): Expr {
+  return { kind: "cfR2Size" };
+}
+
+/** Construct a pack-sha1 expression: the deployed pack manifest's SHA-1, no value when absent. */
+export function packSha1(namespace: string): Expr {
+  return { kind: "packSha1", namespace: requirePackNamespace(namespace) };
+}
+
+/** Construct a pack-required expression: the deployed pack manifest's required flag, false when absent. */
+export function packRequired(namespace: string): Expr {
+  return { kind: "packRequired", namespace: requirePackNamespace(namespace) };
+}
+
+const SHA1_HEX = /^[0-9a-fA-F]{40}$/;
+
+function requirePackSha1(sha1: string | Expr): TextExpr {
+  if (typeof sha1 === "string") {
+    if (!SHA1_HEX.test(sha1)) {
+      throw new RangeError("sendResourcePack sha1 must be 40 hexadecimal characters");
+    }
+    return str(sha1);
+  }
+  if (sha1.kind === "string" && !SHA1_HEX.test(sha1.value)) {
+    throw new RangeError("sendResourcePack sha1 must be 40 hexadecimal characters");
+  }
+  return sha1 as TextExpr;
+}
+
+/** Construct a send-resource-pack statement: offer a resource pack to a player (engine builtin). */
+export function sendResourcePack(
+  target: Expr,
+  url: Expr,
+  sha1: string | Expr,
+  opts?: { required?: boolean | Expr; prompt?: string | TextExpr },
+): Stmt {
+  return withLoc({
+    kind: "sendResourcePack",
+    target,
+    url,
+    sha1: requirePackSha1(sha1),
+    ...(typeof opts?.required === "boolean" ? { required: opts.required } : {}),
+    ...(opts?.required !== undefined && typeof opts.required !== "boolean"
+      ? { requiredExpr: opts.required }
+      : {}),
+    ...(opts?.prompt !== undefined
+      ? { prompt: typeof opts.prompt === "string" ? str(opts.prompt) : opts.prompt }
+      : {}),
+  });
+}
+
+/** Construct an on-resource-pack-status event (engine builtin). */
+export function onResourcePackStatus(body: readonly Stmt[]): TopLevel {
+  return withLoc({ kind: "event", event: "resourcePackStatus", body });
+}
+
+/** Construct a resource-pack-status expression: the status text inside resourcePackStatus events. */
+export function resourcePackStatus(): Expr {
+  return { kind: "resourcePackStatus" };
+}

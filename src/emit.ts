@@ -378,6 +378,11 @@ function emitValue(e: Expr): string {
     case "envVar":
     case "cfId":
     case "cfError":
+    case "cfSignedUrl":
+    case "cfR2Size":
+    case "packSha1":
+    case "packRequired":
+    case "resourcePackStatus":
     case "cuboidShape":
     case "sphereShape":
     case "cylinderShape":
@@ -564,6 +569,11 @@ function emitString(e: Expr): string {
     case "envVar":
     case "cfId":
     case "cfError":
+    case "cfSignedUrl":
+    case "cfR2Size":
+    case "packSha1":
+    case "packRequired":
+    case "resourcePackStatus":
     case "cuboidShape":
     case "sphereShape":
     case "cylinderShape":
@@ -1428,6 +1438,13 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     case "httpFetch":
     case "httpDownload":
     case "cfD1Query":
+    case "cfR2Put":
+    case "cfR2Get":
+    case "cfR2Head":
+    case "cfR2Delete":
+    case "cfR2List":
+    case "cfR2Presign":
+    case "sendResourcePack":
     case "paint":
     case "setItemTag":
     case "spawnParticle":
@@ -1570,6 +1587,7 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
         t.event === "papiRequest" ||
         t.event === "httpResponse" ||
         t.event === "cfResponse" ||
+        t.event === "resourcePackStatus" ||
         t.event === "swapHand"
       ) {
         throw new Error(

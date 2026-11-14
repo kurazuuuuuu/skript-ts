@@ -1,5 +1,7 @@
 package net.krz.skriptts;
 
+import net.kyori.adventure.resource.ResourcePackInfo;
+import net.kyori.adventure.resource.ResourcePackRequest;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.title.Title;
@@ -58,6 +60,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.function.Function;
 import java.util.logging.Logger;
@@ -271,6 +274,9 @@ final class Engine {
         String httpSavedPath; // saved file path in http response events (download only)
         String cfId;        // cf operation id in cf response events (M4 CF-1)
         String cfError;     // cf error kind in cf response events; null on success
+        String cfSignedUrl; // presigned R2 GET URL in cf response events (CF-3); null except after cfR2Presign
+        Double cfR2Size;    // R2 object size in cf response events (CF-3); null except after cfR2Head
+        String packStatus;  // resource pack status text in resourcePackStatus events (RP-3); null elsewhere
         String papiPrefix;  // matched expansion prefix in placeholder request events
         String papiIdentifier; // parameter part of the placeholder being requested
         String papiResult;  // answer set by the set-result statement (read back after dispatch)
@@ -314,6 +320,9 @@ final class Engine {
             c.httpSavedPath = httpSavedPath;
             c.cfId = cfId;
             c.cfError = cfError;
+            c.cfSignedUrl = cfSignedUrl;
+            c.cfR2Size = cfR2Size;
+            c.packStatus = packStatus;
             c.papiPrefix = papiPrefix;
             c.papiIdentifier = papiIdentifier;
             c.papiResult = papiResult;
@@ -350,7 +359,17 @@ final class Engine {
      * completions come back as engine events fired by the plugin.
      */
     interface CfHost {
-        void d1Query(String id, String handle, String sql, List<Object> params, String storeVar, double timeoutSeconds);
+        void d1Query(String id, String handle, String sql, List<Object> params, String storeVar, double timeoutSeconds, UUID playerUuid);
+        void r2Put(String id, String handle, String bucket, String key, String path, double timeoutSeconds, UUID playerUuid);
+        void r2Get(String id, String handle, String bucket, String key, String path, double timeoutSeconds, UUID playerUuid);
+        void r2Head(String id, String handle, String bucket, String key, double timeoutSeconds, UUID playerUuid);
+        void r2Delete(String id, String handle, String bucket, String key, double timeoutSeconds, UUID playerUuid);
+        void r2List(String id, String handle, String bucket, String prefix, String storeVar, double timeoutSeconds, UUID playerUuid);
+        void r2Presign(String id, String handle, String bucket, String key, double ttlSeconds, UUID playerUuid);
+    }
+
+    /** One deployed resource pack, as indexed from its manifest (RP-3). */
+    record PackEntry(String sha1, boolean required) {
     }
 
     /**
@@ -407,6 +426,8 @@ final class Engine {
     private WsHost wsHost;
     private HttpHost httpHost;
     private CfHost cfHost;
+    /** Deployed resource packs by namespace (RP-3), installed by the plugin from plugins/skript-ts/packs/*.resourcepack.json. */
+    private Map<String, PackEntry> packIndex = Map.of();
     private TimerHost timerHost;
     private DelayHost delayHost;
     private PlaceholderHost placeholderHost;
@@ -484,6 +505,12 @@ final class Engine {
         this.httpHost = httpHost;
     }
 
+    /** The UUID of the player in whose context a statement runs (event player preferred), or null outside player contexts. CF operations carry it through to their completion so cfResponse can restore player() (CF-3). */
+    private static UUID originPlayerUuid(Ctx ctx) {
+        Player origin = ctx.eventPlayer != null ? ctx.eventPlayer : ctx.player;
+        return origin != null ? origin.getUniqueId() : null;
+    }
+
     /** The timeout of an http statement: the IR timeoutSeconds when numeric, otherwise 15 seconds. */
     private static double httpTimeoutSeconds(Map<String, Object> stmt) {
         Object value = stmt.get("timeoutSeconds");
@@ -493,6 +520,11 @@ final class Engine {
     /** Install the Cloudflare host (called by the plugin on enable). */
     void setCfHost(CfHost cfHost) {
         this.cfHost = cfHost;
+    }
+
+    /** Install the deployed-pack index (called by the plugin on enable and on every script load). */
+    void setPackIndex(Map<String, PackEntry> packIndex) {
+        this.packIndex = packIndex != null ? packIndex : Map.of();
     }
 
     /**
@@ -506,12 +538,54 @@ final class Engine {
      */
     void completeCf(Cloudflare.Result result) {
         if (result.ok() && result.storeVar() != null) {
-            applyCfStore(result);
+            if (result.listKeys() != null) {
+                applyCfListStore(result);
+            } else {
+                applyCfStore(result);
+            }
         }
         Ctx ctx = new Ctx();
         ctx.cfId = result.id();
         ctx.cfError = result.ok() ? null : result.errorKind();
+        ctx.cfSignedUrl = result.signedUrl();
+        ctx.cfR2Size = result.r2Size();
+        // Player preservation (CF-3): the operation captured the
+        // UUID of the player whose context started it (a join
+        // handler, a command executor), and the completion restores
+        // that player as the event player when they are still
+        // online — so a cfResponse handler chained from a join can
+        // use player() (the packdist flow: presign on join, then
+        // sendResourcePack(player(), ...) on completion). The CF-1
+        // code path created a fresh context with no player; D1
+        // scripts never read player() in cfResponse, so carrying
+        // the originator through is backward compatible. A player
+        // who logged out in the meantime restores to no player.
+        if (result.playerUuid() != null) {
+            Player originator = Bukkit.getPlayer(result.playerUuid());
+            if (originator != null) {
+                ctx.player = originator;
+                ctx.eventPlayer = originator;
+            }
+        }
         fireEvent("cfResponse", ctx, false);
+    }
+
+    /**
+     * The R2 List store mapping (CF-3), following the database
+     * list convention: the keys become {@code <var>::1..<n>} text
+     * entries in order after clearing the variable's previous
+     * entries, and the variable itself holds the key count.
+     */
+    private void applyCfListStore(Cloudflare.Result result) {
+        String storeKey = result.storeVar();
+        List<String> keys = result.listKeys();
+        LinkedHashMap<String, Object> cells = new LinkedHashMap<>();
+        for (int i = 0; i < keys.size(); i++) {
+            cells.put(storeKey + "::" + (i + 1), keys.get(i));
+        }
+        variables.removePrefix(storeKey + "::");
+        variables.setAll(cells);
+        variables.set(storeKey, (double) keys.size());
     }
 
     /**
@@ -2634,7 +2708,111 @@ final class Engine {
                     String storeKey = stmt.get("store") != null
                             ? varKey(node(stmt.get("store")), ctx)
                             : null;
-                    cfHost.d1Query(str(stmt.get("id")), str(stmt.get("handle")), query.sql, query.params, storeKey, httpTimeoutSeconds(stmt));
+                    cfHost.d1Query(str(stmt.get("id")), str(stmt.get("handle")), query.sql, query.params, storeKey, httpTimeoutSeconds(stmt), originPlayerUuid(ctx));
+                }
+                cont.run();
+            }
+            case "cfR2Put" -> {
+                if (cfHost == null) {
+                    logger.warning("skript-ts: cfR2Put without a cloudflare host installed");
+                } else {
+                    cfHost.r2Put(str(stmt.get("id")), str(stmt.get("handle")),
+                            renderText(node(stmt.get("bucket")), ctx), renderText(node(stmt.get("key")), ctx),
+                            renderText(node(stmt.get("path")), ctx), httpTimeoutSeconds(stmt), originPlayerUuid(ctx));
+                }
+                cont.run();
+            }
+            case "cfR2Get" -> {
+                if (cfHost == null) {
+                    logger.warning("skript-ts: cfR2Get without a cloudflare host installed");
+                } else {
+                    cfHost.r2Get(str(stmt.get("id")), str(stmt.get("handle")),
+                            renderText(node(stmt.get("bucket")), ctx), renderText(node(stmt.get("key")), ctx),
+                            renderText(node(stmt.get("path")), ctx), httpTimeoutSeconds(stmt), originPlayerUuid(ctx));
+                }
+                cont.run();
+            }
+            case "cfR2Head" -> {
+                if (cfHost == null) {
+                    logger.warning("skript-ts: cfR2Head without a cloudflare host installed");
+                } else {
+                    cfHost.r2Head(str(stmt.get("id")), str(stmt.get("handle")),
+                            renderText(node(stmt.get("bucket")), ctx), renderText(node(stmt.get("key")), ctx),
+                            httpTimeoutSeconds(stmt), originPlayerUuid(ctx));
+                }
+                cont.run();
+            }
+            case "cfR2Delete" -> {
+                if (cfHost == null) {
+                    logger.warning("skript-ts: cfR2Delete without a cloudflare host installed");
+                } else {
+                    cfHost.r2Delete(str(stmt.get("id")), str(stmt.get("handle")),
+                            renderText(node(stmt.get("bucket")), ctx), renderText(node(stmt.get("key")), ctx),
+                            httpTimeoutSeconds(stmt), originPlayerUuid(ctx));
+                }
+                cont.run();
+            }
+            case "cfR2List" -> {
+                if (cfHost == null) {
+                    logger.warning("skript-ts: cfR2List without a cloudflare host installed");
+                } else {
+                    String storeKey = stmt.get("store") != null
+                            ? varKey(node(stmt.get("store")), ctx)
+                            : null;
+                    String prefix = stmt.get("prefix") != null
+                            ? renderText(node(stmt.get("prefix")), ctx)
+                            : null;
+                    cfHost.r2List(str(stmt.get("id")), str(stmt.get("handle")),
+                            renderText(node(stmt.get("bucket")), ctx), prefix, storeKey,
+                            httpTimeoutSeconds(stmt), originPlayerUuid(ctx));
+                }
+                cont.run();
+            }
+            case "cfR2Presign" -> {
+                if (cfHost == null) {
+                    logger.warning("skript-ts: cfR2Presign without a cloudflare host installed");
+                } else {
+                    Object ttl = evalExpr(node(stmt.get("ttlSeconds")), ctx);
+                    cfHost.r2Presign(str(stmt.get("id")), str(stmt.get("handle")),
+                            renderText(node(stmt.get("bucket")), ctx), renderText(node(stmt.get("key")), ctx),
+                            ttl instanceof Number n ? n.doubleValue() : 3600.0, originPlayerUuid(ctx));
+                }
+                cont.run();
+            }
+            case "sendResourcePack" -> {
+                // Resource-pack distribution (RP-3): build an
+                // Adventure ResourcePackRequest and offer it to the
+                // target player. The sha1 is re-validated here (the
+                // builder can only check literals): an invalid hash
+                // is a warned no-op rather than a broken offer.
+                Object target = evalExpr(node(stmt.get("target")), ctx);
+                String url = renderText(node(stmt.get("url")), ctx);
+                String sha1 = renderText(node(stmt.get("sha1")), ctx);
+                if (target instanceof Player player && url != null) {
+                    if (sha1 == null || !sha1.matches("[0-9a-fA-F]{40}")) {
+                        logger.warning("skript-ts: sendResourcePack refused: sha1 is not 40 hex characters");
+                    } else {
+                        try {
+                            ResourcePackInfo info = ResourcePackInfo.resourcePackInfo(
+                                    UUID.randomUUID(), java.net.URI.create(url), sha1.toLowerCase(Locale.ROOT));
+                            boolean required = Boolean.TRUE.equals(stmt.get("required"));
+                            if (!required && stmt.get("requiredExpr") != null) {
+                                required = Boolean.TRUE.equals(evalExpr(node(stmt.get("requiredExpr")), ctx));
+                            }
+                            ResourcePackRequest.Builder request = ResourcePackRequest.resourcePackRequest()
+                                    .packs(info)
+                                    .required(required);
+                            if (stmt.get("prompt") != null) {
+                                String prompt = renderText(node(stmt.get("prompt")), ctx);
+                                if (prompt != null) {
+                                    request.prompt(LEGACY.deserialize(prompt));
+                                }
+                            }
+                            player.sendResourcePacks(request.build());
+                        } catch (RuntimeException e) {
+                            logger.warning("skript-ts: sendResourcePack failed: " + e.getMessage());
+                        }
+                    }
                 }
                 cont.run();
             }
@@ -3980,6 +4158,17 @@ final class Engine {
             case "httpSavedPath" -> ctx.httpSavedPath;
             case "cfId" -> ctx.cfId;
             case "cfError" -> ctx.cfError;
+            case "cfSignedUrl" -> ctx.cfSignedUrl;
+            case "cfR2Size" -> ctx.cfR2Size;
+            case "resourcePackStatus" -> ctx.packStatus;
+            case "packSha1" -> {
+                PackEntry pack = packIndex.get(str(expr.get("namespace")));
+                yield pack != null ? pack.sha1() : null;
+            }
+            case "packRequired" -> {
+                PackEntry pack = packIndex.get(str(expr.get("namespace")));
+                yield pack != null && pack.required();
+            }
             case "worldOf" -> {
                 // Core language since phase 18 (`world of ...`
                 // is plain Skript, probed for player, location

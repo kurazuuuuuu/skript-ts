@@ -32,6 +32,7 @@ import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
@@ -162,6 +163,20 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
                 && httpConfig.get("allowPrivateAddresses") instanceof Boolean allow) {
             allowPrivateAddresses = allow;
         }
+        // R2 monthly quota breakwater (CF-3): the persistent
+        // counter's class limits, defaulting to 10% of the R2 free
+        // tier (1M Class A / 10M Class B operations a month).
+        long r2ClassALimit = 100_000L;
+        long r2ClassBLimit = 1_000_000L;
+        if (configMap != null
+                && configMap.get("cloudflare") instanceof Map<?, ?> cfConfig) {
+            if (cfConfig.get("r2MonthlyClassALimit") instanceof Number limitA) {
+                r2ClassALimit = Math.max(0L, limitA.longValue());
+            }
+            if (cfConfig.get("r2MonthlyClassBLimit") instanceof Number limitB) {
+                r2ClassBLimit = Math.max(0L, limitB.longValue());
+            }
+        }
         variables = new Variables(dataDir.resolve("variables.json"), getLogger());
         variables.load();
         if (playerKeysUseUuid) {
@@ -237,13 +252,51 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         if (cfBaseUrl != null && !cfBaseUrl.isBlank()) {
             getLogger().warning("skript-ts: WARNING SKRIPTTS_CF_API_BASE_URL is set — Cloudflare API traffic goes to that base URL instead of api.cloudflare.com. This override exists for verification stubs only; do not set it on a production server.");
         }
+        // R2 endpoint overrides (CF-3) are per-handle environment
+        // variables; warn loudly for every one that is set, like
+        // the CF-1 base-URL override above.
+        for (String name : System.getenv().keySet()) {
+            if (name.startsWith("SKRIPTTS_CF_") && name.endsWith("_R2_ENDPOINT")) {
+                getLogger().warning("skript-ts: WARNING " + name + " is set — R2 traffic for that handle goes to that endpoint (path-style) instead of <account>.r2.cloudflarestorage.com. This override exists for verification stubs only; do not set it on a production server.");
+            }
+        }
         cloudflare = new Cloudflare(
                 result -> getServer().getScheduler().runTask(this, () -> engine.completeCf(result)),
-                getLogger());
+                dataDir, r2ClassALimit, r2ClassBLimit, getLogger());
         engine.setCfHost(new Engine.CfHost() {
             @Override
-            public void d1Query(String id, String handle, String sql, List<Object> params, String storeVar, double timeoutSeconds) {
-                cloudflare.d1Query(id, handle, sql, params, storeVar, timeoutSeconds);
+            public void d1Query(String id, String handle, String sql, List<Object> params, String storeVar, double timeoutSeconds, java.util.UUID playerUuid) {
+                cloudflare.d1Query(id, handle, sql, params, storeVar, timeoutSeconds, playerUuid);
+            }
+
+            @Override
+            public void r2Put(String id, String handle, String bucket, String key, String path, double timeoutSeconds, java.util.UUID playerUuid) {
+                cloudflare.r2Put(id, handle, bucket, key, path, timeoutSeconds, playerUuid);
+            }
+
+            @Override
+            public void r2Get(String id, String handle, String bucket, String key, String path, double timeoutSeconds, java.util.UUID playerUuid) {
+                cloudflare.r2Get(id, handle, bucket, key, path, timeoutSeconds, playerUuid);
+            }
+
+            @Override
+            public void r2Head(String id, String handle, String bucket, String key, double timeoutSeconds, java.util.UUID playerUuid) {
+                cloudflare.r2Head(id, handle, bucket, key, timeoutSeconds, playerUuid);
+            }
+
+            @Override
+            public void r2Delete(String id, String handle, String bucket, String key, double timeoutSeconds, java.util.UUID playerUuid) {
+                cloudflare.r2Delete(id, handle, bucket, key, timeoutSeconds, playerUuid);
+            }
+
+            @Override
+            public void r2List(String id, String handle, String bucket, String prefix, String storeVar, double timeoutSeconds, java.util.UUID playerUuid) {
+                cloudflare.r2List(id, handle, bucket, prefix, storeVar, timeoutSeconds, playerUuid);
+            }
+
+            @Override
+            public void r2Presign(String id, String handle, String bucket, String key, double ttlSeconds, java.util.UUID playerUuid) {
+                cloudflare.r2Presign(id, handle, bucket, key, ttlSeconds, playerUuid);
             }
         });
         timers = new Timers(this, new Timers.Events() {
@@ -496,6 +549,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
             getLogger().severe("Failed to read scripts folder " + dir + ": " + e.getMessage());
         }
         engine.setProgram(tops);
+        engine.setPackIndex(loadPackIndex());
         reschedulePeriodicals();
         // The placeholder expansions mirror the loaded program:
         // prefixes the new program no longer serves are unregistered.
@@ -508,6 +562,63 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     /** A script file's identifier: its path relative to the scripts folder, '/'-separated on every OS. */
     private static String relativeScriptId(Path scriptsDir, Path file) {
         return scriptsDir.relativize(file).toString().replace('\\', '/');
+    }
+
+    // ------------------------------------------------------------------
+    // Resource packs (RP-3): the deployed-pack index + status event
+    // ------------------------------------------------------------------
+
+    /**
+     * Index the pack manifests deployed under
+     * `plugins/skript-ts/packs/` (namespace → sha1 / required). A
+     * manifest that cannot be read or lacks its sha1 disables only
+     * that pack (a warning is logged); the rest still index.
+     */
+    private Map<String, Engine.PackEntry> loadPackIndex() {
+        Path packsDir = getDataFolder().toPath().resolve("packs");
+        Map<String, Engine.PackEntry> index = new HashMap<>();
+        if (!Files.isDirectory(packsDir)) {
+            return index;
+        }
+        try (Stream<Path> stream = Files.list(packsDir)) {
+            for (Path file : stream
+                    .filter(p -> p.getFileName().toString().endsWith(".resourcepack.json"))
+                    .toList()) {
+                try {
+                    Object parsed = Json.parse(Files.readString(file, StandardCharsets.UTF_8));
+                    if (!(parsed instanceof Map<?, ?> manifest)) {
+                        throw new IllegalArgumentException("manifest is not an object");
+                    }
+                    String namespace = manifest.get("namespace") instanceof String ns ? ns : null;
+                    String sha1 = manifest.get("sha1") instanceof String sh ? sh : null;
+                    if (namespace == null || sha1 == null) {
+                        throw new IllegalArgumentException("manifest lacks namespace or sha1");
+                    }
+                    boolean required = Boolean.TRUE.equals(manifest.get("required"));
+                    index.put(namespace, new Engine.PackEntry(sha1, required));
+                } catch (Exception e) {
+                    getLogger().warning("skript-ts: resource pack manifest " + file.getFileName()
+                            + " could not be indexed (" + e.getMessage() + "); that pack is disabled");
+                }
+            }
+        } catch (IOException e) {
+            getLogger().warning("skript-ts: could not list the packs folder: " + e.getMessage());
+        }
+        return index;
+    }
+
+    /**
+     * Resource-pack status (RP-3): the client's answer to a pack
+     * offer, dispatched as the engine-only resourcePackStatus
+     * event with the player restored and resourcePackStatus()
+     * carrying the status text (the enum name lowercased, so a
+     * future status passes through unchanged in shape).
+     */
+    @EventHandler
+    public void onPlayerResourcePackStatus(PlayerResourcePackStatusEvent event) {
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.packStatus = event.getStatus().name().toLowerCase(Locale.ROOT);
+        engine.fireEvent("resourcePackStatus", ctx, false);
     }
 
     // ------------------------------------------------------------------
