@@ -538,6 +538,27 @@ carries the compile-time negative checks (wrong arity, a text
 literal in a player slot, a void handle called as an expression)
 as suppressed type errors in a never-called function.
 
+**Branded value kinds (feedback T1).** The common accessors
+return phantom-branded expression types — `player()`,
+`eventPlayer()` and `loopPlayer()` return `PlayerExpr`;
+`victim()`, `attacker()` and `eventEntity()` return
+`EntityExpr`; `eventBlock()` and `blockAt()` return
+`BlockExpr`; `eventItem()` and `item()` return `ItemExpr`;
+`locationOf()` returns `LocationExpr`. The brand is type-only
+(the runtime node is unchanged), and a `PlayerExpr` is accepted
+wherever an `EntityExpr` is (a player is an entity), never the
+other way round. Through a `defineFn` handle, a parameter
+declared `player` / `entity` / `block` / `item` / `location`
+(or a plural of one) accepts only expressions of that brand, so
+passing e.g. `victim()` (an entity) into a player parameter —
+which otherwise fails silently at runtime with an unset
+argument — is a compile error. Values whose kind the compiler
+cannot see (read back from variables, lists, function results)
+are branded explicitly with `asPlayer` / `asEntity` / `asBlock`
+/ `asItem` / `asLocation`, identity functions that assert the
+provenance. Plain (unbranded) positions elsewhere in the API
+are unaffected: the brands only gate handle parameters.
+
 Semantics (verified against the real Skript 2.17.1 with probe
 scripts, in value and string positions alike):
 
