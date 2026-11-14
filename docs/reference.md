@@ -108,6 +108,7 @@ section.
 | `round(e)` / `round(e, places)`                                  | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` etc.                    |
 | `min(...es)` / `max(...es)` (one or more arguments)              | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` etc.                     |
 | `fmt(...parts)`                                                  | `"<parts>"`                                                  | flattened into the enclosing string    |
+| `` t`...${e}...` `` (tagged template)                            | `"<parts>"`                                                  | flattened into the enclosing string    |
 | `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                      |
 | `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%`   |
 | `firstChars(t, n)` / `lastChars(t, n)`                           | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` etc.   |
@@ -117,6 +118,18 @@ section.
 | `joinText(list, delim?)`                                         | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`               |
 | `colored(t)` / `formatted(t)`                                    | `colored <t>` / `formatted <t>`                              | `%colored <t>%` etc.                   |
 | `uncolored(t)` / `unformatted(t)`                                | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` etc.                 |
+
+Tagged templates: `` t`&a${label} &f+${amount} XP` `` is sugar
+over `fmt()` — it builds the same format node, so it emits
+exactly what the `fmt()`-written equivalent emits (`` t`a${x}b` ``
+is `fmt("a", x, "b")`). Interpolated expressions become
+expression parts; interpolated strings, numbers and booleans
+merge into the adjacent literal text (numbers and booleans via
+`String(value)`), and empty literal parts are dropped. The
+literal parts are ordinary `fmt()` literal text, so `&` color
+codes in them work exactly as in `fmt()`. `examples/tagged.ts`
+exercises it in `send` / `broadcast` and composed inside
+`fmt()` (and the other way round).
 
 Arithmetic semantics (verified against the real Skript 2.17.1):
 operands must both be numbers, except that `+` over two texts
