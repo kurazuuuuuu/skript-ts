@@ -214,6 +214,7 @@ import {
   splitText,
   sqrt,
   startsWith,
+  stopIf,
   stopTrigger,
   str,
   substring,
@@ -228,12 +229,14 @@ import {
   unixTimestamp,
   uncolored,
   unformatted,
+  unless,
   upperCase,
   variable,
   victim,
   wait,
   waitFor,
   weatherType,
+  when,
   world,
   worldOf,
   worldTime,
@@ -252,6 +255,7 @@ import { chatLogScript } from "../examples/chatlog.js";
 import { deathScript } from "../examples/death.js";
 import { spawnScript } from "../examples/spawn.js";
 import { logicScript } from "../examples/logic.js";
+import { boolcondScript } from "../examples/boolcond.js";
 import { mathScript } from "../examples/math.js";
 import { listsScript } from "../examples/lists.js";
 import { functionsScript } from "../examples/functions.js";
@@ -299,6 +303,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("logic", () => {
     expect(emit(logicScript)).toBe(fixture("logic.sk"));
+  });
+  it("boolcond", () => {
+    expect(emit(boolcondScript)).toBe(fixture("boolcond.sk"));
   });
   it("math", () => {
     expect(emit(mathScript)).toBe(fixture("math.sk"));
@@ -1270,6 +1277,70 @@ describe("logic conditions lower to control flow (phase 11)", () => {
     ).toBe(
       'on join:\n    if {a} is 1:\n        if {b} is 2:\n            if {c} is 3:\n                broadcast "y"\n',
     );
+  });
+});
+
+describe("boolean expressions as conditions (feedback E3/E4)", () => {
+  const y = [broadcast(str("y"))];
+  const n = [broadcast(str("n"))];
+  it("a boolean variable lowers to `is true` in an if head, with and without else", () => {
+    expect(emit(script(onJoin([ifElse(localVar("t"), y)])))).toBe(
+      'on join:\n    if {_t} is true:\n        broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([ifElse(variable("flag"), y, n)])))).toBe(
+      'on join:\n    if {flag} is true:\n        broadcast "y"\n    else:\n        broadcast "n"\n',
+    );
+  });
+  it("a boolean-returning function call lowers to `is true`", () => {
+    expect(emit(script(onJoin([ifElse(call("pbool", bool(true)), y)])))).toBe(
+      'on join:\n    if pbool(true) is true:\n        broadcast "y"\n',
+    );
+  });
+  it("a boolean expression heads a while loop as `is true`", () => {
+    expect(emit(script(onJoin([whileLoop(localVar("go"), y)])))).toBe(
+      'on join:\n    while {_go} is true:\n        broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([whileLoop(call("pbool", bool(true)), y)])))).toBe(
+      'on join:\n    while pbool(true) is true:\n        broadcast "y"\n',
+    );
+  });
+  it("and / or / not accept boolean expressions", () => {
+    expect(emit(script(onJoin([ifElse(and(localVar("a"), localVar("b")), y)])))).toBe(
+      'on join:\n    if {_a} is true:\n        if {_b} is true:\n            broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([ifElse(or(localVar("a"), bool(false)), y, n)])))).toBe(
+      'on join:\n    if {_a} is true:\n        broadcast "y"\n    else:\n        if false is true:\n            broadcast "y"\n        else:\n            broadcast "n"\n',
+    );
+    expect(emit(script(onJoin([ifElse(not(localVar("f")), y)])))).toBe(
+      'on join:\n    if {_f} is not true:\n        broadcast "y"\n',
+    );
+  });
+  it("when is ifElse sugar over a CondLike", () => {
+    expect(emit(script(onJoin([when(localVar("t"), broadcast(str("y")))])))).toBe(
+      'on join:\n    if {_t} is true:\n        broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([when(isOp(player()), broadcast(str("y")))])))).toBe(
+      'on join:\n    if player is op:\n        broadcast "y"\n',
+    );
+  });
+  it("unless lowers through not(), not an empty-then if/else", () => {
+    expect(emit(script(onJoin([unless(localVar("f"), broadcast(str("y")))])))).toBe(
+      'on join:\n    if {_f} is not true:\n        broadcast "y"\n',
+    );
+    expect(emit(script(onJoin([unless(isOp(player()), broadcast(str("y")))])))).toBe(
+      'on join:\n    if player is not op:\n        broadcast "y"\n',
+    );
+  });
+  it("stopIf is an if holding only a stop", () => {
+    expect(emit(script(onJoin([stopIf(localVar("t")), broadcast(str("after"))])))).toBe(
+      'on join:\n    if {_t} is true:\n        stop\n    broadcast "after"\n',
+    );
+    expect(emit(script(onJoin([stopIf(equals(variable("a"), num(1)))])))).toBe(
+      "on join:\n    if {a} is 1:\n        stop\n",
+    );
+  });
+  it("the sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(boolcondScript)).toBe(false);
   });
 });
 

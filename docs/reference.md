@@ -50,7 +50,10 @@ section.
 | `teleport(target, location)`                      | `teleport <target> to <location>`                                                       |
 | `set(variable, value)`                            | `set {var} to <value>`                                                                  |
 | `add(variable, value)`                            | `add <value> to {var}`                                                                  |
-| `ifElse(cond, then, else?)`                       | `if <cond>:` … `else:`                                                                  |
+| `ifElse(cond, then, else?)`                       | `if <cond>:` … `else:` (a boolean expression as `cond` emits as `<expr> is true`)       |
+| `when(cond, ...body)`                             | `if <cond>:` … (sugar for `ifElse(cond, body)`)                                         |
+| `unless(cond, ...body)`                           | sugar for `ifElse(not(cond), body)` — lowered through `not`, never an empty-then `if`   |
+| `stopIf(cond)`                                    | `if <cond>:` / `stop` (sugar for `ifElse(cond, [stopTrigger()])`)                       |
 | `loopPlayers(body)`                               | `loop all players:`                                                                     |
 | `listAdd(list, value)`                            | `add <value> to {list::*}`                                                              |
 | `listRemove(list, value)`                         | `remove <value> from {list::*}`                                                         |
@@ -259,6 +262,7 @@ below, not by load checks.
 | `eventCancelled()`                                | `event is cancelled`                      |
 | `chance(p)`                                       | `chance of <p>`                           |
 | `and(c1, c2, ...)` / `or(c1, c2, ...)` / `not(c)` | lowered to nested `if`/`else` (see below) |
+| a boolean expression (`CondLike`)                 | `<expr> is true` (see below)              |
 
 Comparison semantics (verified against the real Skript 2.17.1,
 not assumed): text equality is **case-insensitive**; a value is
@@ -282,6 +286,48 @@ swaps branches when an else exists, applies De Morgan over
 (`is not ...`, `does not have permission`). Conditions in this
 subset are pure, so the lowering is semantically exact; the
 engine evaluates `and`/`or`/`not` directly.
+
+Boolean expressions as conditions (feedback E3; probed against
+the real Skript 2.17.1): a bare boolean expression is **not** a
+valid Skript condition — `if {_t}:` and `if myBoolFn():` are
+parse errors — but the comparison form parses and behaves
+correctly for function calls, variables and while heads
+(`if pbool(true) is true:`, `if {_t} is true:`,
+`while {_go} is true:`). So wherever a condition is expected —
+`ifElse`, `whileLoop`, `and`, `or`, `not`, and the sugar
+builders below — a boolean expression is accepted too (the
+`CondLike` type, `Cond | Expr`): a boolean variable, a boolean
+literal, or the result of a boolean-returning `defineFunction`,
+for example. The builders lower it at the API level to
+`equals(expr, true)`, emitted as `<expr> is true`; a real
+condition passes through unchanged, so existing programs emit
+byte-identical output. Because the lowered form is a leaf
+(`equals`) condition, a boolean expression also works as a
+`whileLoop` head. The engine evaluates the same `equals`
+against `true` natively, so both runtimes agree — including
+the missing-value rule: an unset boolean variable is not equal
+to anything, so the condition is false (and its negation true).
+
+Condition sugar (feedback E4): three statement builders over
+any `CondLike` —
+
+- `when(cond, ...body)` is `ifElse(cond, body)`: the body runs
+  when the condition holds.
+- `unless(cond, ...body)` is `ifElse(not(cond), body)`: the
+  body runs when the condition does **not** hold. It lowers
+  through `not` (branch swap / native negated leaf forms),
+  never through an `if`/`else` with an empty then branch —
+  empty sections are risky in Skript.
+- `stopIf(cond)` is `ifElse(cond, [stopTrigger()])`: the
+  current trigger ends at once when the condition holds.
+
+`examples/boolcond.ts` exercises all of this — a boolean
+variable and a boolean-returning function call used directly
+as `ifElse` conditions, a boolean variable as a `whileLoop`
+head, `and`/`or`/`not` over boolean expressions, and the
+`when` / `unless` / `stopIf` flows (including a `stopIf` that
+does not fire) — and `examples/behavior/boolcond.behavior.ts`
+asserts the identical expectations under both runtimes.
 
 Chance semantics (verified against the real Skript 2.17.1):
 the argument is a _fraction_ — `chance(0.5)` succeeds half the
@@ -341,6 +387,9 @@ The head accepts a leaf condition or `not(leaf)` only: a `while`
 head cannot be lowered to control flow the way an `if` can, and
 Skript has no textual conjunction (the phase-11 finding), so the
 builder rejects `and`/`or`/`not` of a composite at build time.
+A boolean expression is accepted as the head too: it lowers to
+the leaf `equals(expr, true)` (see _Conditions_ above), emitted
+as `while <expr> is true:`.
 
 `wait` suspends the rest of the trigger: everything after it —
 the remainder of enclosing blocks, the remaining iterations of an
