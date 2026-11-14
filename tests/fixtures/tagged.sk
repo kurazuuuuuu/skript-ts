@@ -1,0 +1,15 @@
+on join:
+    send "&aWelcome, %player%!" to player
+    broadcast "&e%player% &fjoined the server"
+
+command /reward:
+    trigger:
+        send "&aBonus &f+25 XP" to player
+        broadcast "&a%player% &fearned %{xp}% XP (bonus: true)"
+        set {lastReward} to "&a%player% &f+25 XP"
+
+command /nested:
+    trigger:
+        send "&7[&a%player%]" to player
+        broadcast "outer inner %player%"
+        send "wrap inner %player% end" to player

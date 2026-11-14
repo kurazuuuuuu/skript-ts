@@ -215,6 +215,7 @@ import {
   stopTrigger,
   str,
   substring,
+  t,
   teleport,
   textLength,
   times,
@@ -254,6 +255,7 @@ import { listsScript } from "../examples/lists.js";
 import { functionsScript } from "../examples/functions.js";
 import { gameplayScript } from "../examples/gameplay.js";
 import { textScript } from "../examples/text.js";
+import { taggedScript } from "../examples/tagged.js";
 import { events2Script } from "../examples/events2.js";
 import { events3Script } from "../examples/events3.js";
 import { guiScript } from "../examples/gui.js";
@@ -308,6 +310,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("text", () => {
     expect(emit(textScript)).toBe(fixture("text.sk"));
+  });
+  it("tagged", () => {
+    expect(emit(taggedScript)).toBe(fixture("tagged.sk"));
   });
   it("events2", () => {
     expect(emit(events2Script)).toBe(fixture("events2.sk"));
@@ -956,6 +961,41 @@ describe("expressions inside format strings", () => {
     expect(emit(script(onJoin([set(variable("a"), fmt("x ", player()))])))).toBe(
       'on join:\n    set {a} to "x %player%"\n',
     );
+  });
+});
+
+describe("tagged templates (feedback E5)", () => {
+  it("t`` builds exactly the node fmt() builds", () => {
+    expect(t`a${player()}b`).toEqual(fmt("a", player(), "b"));
+    expect(t`&a${player()} &f+${variable("xp")} XP`).toEqual(
+      fmt("&a", player(), " &f+", variable("xp"), " XP"),
+    );
+  });
+  it("string, number and boolean interpolations merge into the adjacent literal text", () => {
+    expect(t`a${"x"}${1}${true}b`).toEqual(fmt("ax1trueb"));
+    expect(t`${"pre "}${player()}`).toEqual(fmt("pre ", player()));
+    expect(emit(script(onJoin([broadcast(t`&a${"Bonus"} &f+${25} XP`)])))).toBe(
+      'on join:\n    broadcast "&aBonus &f+25 XP"\n',
+    );
+  });
+  it("empty literal parts are dropped", () => {
+    expect(t``).toEqual(fmt());
+    expect(t`${player()}`).toEqual(fmt(player()));
+    expect(t`a${player()}`).toEqual(fmt("a", player()));
+    expect(emit(script(onJoin([broadcast(t`a${player()}b`)])))).toBe(
+      emit(script(onJoin([broadcast(fmt("a", player(), "b"))]))),
+    );
+  });
+  it("t`` composes inside fmt() and fmt() inside t``, flattening like nested fmt()", () => {
+    expect(emit(script(onJoin([broadcast(fmt("outer ", t`inner ${player()}`))])))).toBe(
+      'on join:\n    broadcast "outer inner %player%"\n',
+    );
+    expect(emit(script(onJoin([broadcast(t`wrap ${fmt("inner ", player())} end`)])))).toBe(
+      'on join:\n    broadcast "wrap inner %player% end"\n',
+    );
+  });
+  it("the tagged sample is core language, not engine-only", () => {
+    expect(isEngineOnlyScript(taggedScript)).toBe(false);
   });
 });
 
