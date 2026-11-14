@@ -1,11 +1,14 @@
 import {
   add,
   argument,
+  asPlayer,
   bool,
   broadcast,
   command,
   defineFn,
   equals,
+  eventBlock,
+  eventEntity,
   fmt,
   ifElse,
   levelOf,
@@ -26,6 +29,7 @@ import {
   textLength,
   times,
   variable,
+  victim,
 } from "../src/index.js";
 import type { Script } from "../src/index.js";
 
@@ -114,5 +118,20 @@ function fnHandleTypeChecks(): void {
   announceXp(player(), 25, true);
   // @ts-expect-error a plural parameter rejects a bare number
   totalXp(5);
+  // Branded kinds (feedback T1): a player fills an entity
+  // parameter, never the other way round.
+  const brandcheck = defineFn(
+    "brandcheck",
+    [param("who", "player"), param("what", "entity")],
+    "number",
+    [returnValue(num(1))],
+  );
+  brandcheck(player(), victim());
+  brandcheck(player(), player());
+  brandcheck(asPlayer(argument(1)), eventEntity());
+  // @ts-expect-error an entity expression cannot fill a player parameter
+  brandcheck(victim(), victim());
+  // @ts-expect-error a block expression cannot fill a player parameter
+  brandcheck(eventBlock(), victim());
 }
 void fnHandleTypeChecks;
