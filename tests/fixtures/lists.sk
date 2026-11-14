@@ -66,6 +66,30 @@ command /whilesum [<integer>]:
             add {n} to {total}
         send "whilesum=%{total}%" to player
 
+command /bigcount:
+    trigger:
+        set {total} to 0
+        loop 10000 times:
+            add loop-value to {total}
+        send "bigsum=%{total}%" to player
+
+command /bigrange:
+    trigger:
+        set {total} to 0
+        loop numbers from 1 to 10000:
+            add loop-value to {total}
+        send "bigrangesum=%{total}%" to player
+
+command /biglist:
+    trigger:
+        delete {big::*}
+        loop 5000 times:
+            set {big::%loop-value%} to loop-value
+        set {total} to 0
+        loop {big::*}:
+            add loop-value to {total}
+        send "biglist size=%size of {big::*}%; sum=%{total}%" to player
+
 command /delayed:
     trigger:
         send "start" to player

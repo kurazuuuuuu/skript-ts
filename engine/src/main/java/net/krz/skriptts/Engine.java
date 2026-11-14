@@ -1311,6 +1311,18 @@ final class Engine {
      * Skript 2.17.1. Synchronous statements invoke their
      * continuation before returning, so plain programs run exactly
      * as the old sequential executor ran them.
+     *
+     * The chain is trampolined, not recursive (feedback G1): each
+     * statement receives a one-shot continuation that records
+     * whether it fired while execStmt was still on the stack. A
+     * synchronous firing just lets this loop advance to the next
+     * statement — the stack stays flat no matter how many
+     * statements run — while a firing after a wait suspension
+     * re-enters execRange at the resume point on the (shallow)
+     * scheduler stack that resumed the wait. A return/stop never
+     * fires its continuation, so this method then returns at once
+     * and every enclosing continuation unwinds silently, exactly
+     * as the recursive form unwound.
      */
     private void execRange(List<Object> body, int start, Ctx ctx, Runnable done) {
         int i = start;
@@ -1333,8 +1345,26 @@ final class Engine {
                 return;
             }
             final int resume = i;
-            execStmt(stmt, ctx, () -> execRange(body, resume, ctx, done));
-            return;
+            final boolean[] invoked = { false };
+            final boolean[] inCall = { true };
+            execStmt(stmt, ctx, () -> {
+                if (invoked[0]) return;
+                invoked[0] = true;
+                if (inCall[0]) return;
+                // The statement suspended below us (a wait inside
+                // a nested block or loop) and has now completed on
+                // the scheduler stack: continue the rest of this
+                // range from here.
+                execRange(body, resume, ctx, done);
+            });
+            inCall[0] = false;
+            if (!invoked[0]) {
+                // Either the statement suspended and its
+                // continuation above re-enters when it completes,
+                // or a return/stop unwound the trigger and the
+                // continuation never fires at all.
+                return;
+            }
         }
         done.run();
     }
@@ -2932,63 +2962,121 @@ final class Engine {
     }
 
     // ------------------------------------------------------------------
-    // Loop drivers (all continuation-based, like execRange)
+    // Loop drivers (continuation-based, like execRange — and, like
+    // it, trampolined: iterations that complete synchronously are
+    // driven by the while loop in each driver, so the stack depth
+    // depends on loop *nesting*, never on the iteration count;
+    // feedback G1, where loopTimes around 2000 overflowed the
+    // stack. An iteration that suspends at a wait lets the driver
+    // return, and the iteration's completion continuation
+    // re-enters the driver at the next iteration on the shallow
+    // scheduler stack. A return/stop in a body never fires the
+    // completion continuation, so the driver returns without
+    // running cont and the whole trigger unwinds.)
     // ------------------------------------------------------------------
 
     private void loopPlayersStep(Map<String, Object> stmt, List<Player> players, int idx, Ctx ctx, Runnable cont) {
-        if (idx >= players.size()) {
-            cont.run();
-            return;
+        int i = idx;
+        while (i < players.size()) {
+            Player p = players.get(i);
+            Ctx inner = ctx.copy();
+            inner.loopPlayer = p;
+            inner.loopValue = p;
+            final int next = i + 1;
+            final boolean[] invoked = { false };
+            final boolean[] inCall = { true };
+            execRange(list(stmt.get("body")), 0, inner, () -> {
+                if (invoked[0]) return;
+                invoked[0] = true;
+                if (inCall[0]) return;
+                loopPlayersStep(stmt, players, next, ctx, cont);
+            });
+            inCall[0] = false;
+            if (!invoked[0]) return;
+            i = next;
         }
-        Player p = players.get(idx);
-        Ctx inner = ctx.copy();
-        inner.loopPlayer = p;
-        inner.loopValue = p;
-        execRange(list(stmt.get("body")), 0, inner,
-                () -> loopPlayersStep(stmt, players, idx + 1, ctx, cont));
+        cont.run();
     }
 
     private void loopListStep(Map<String, Object> stmt, List<Map.Entry<Object, Object>> entries, int idx, Ctx ctx, Runnable cont) {
-        if (idx >= entries.size()) {
-            cont.run();
-            return;
+        int i = idx;
+        while (i < entries.size()) {
+            Map.Entry<Object, Object> entry = entries.get(i);
+            Ctx inner = ctx.copy();
+            inner.loopValue = entry.getValue();
+            inner.loopIndex = entry.getKey();
+            final int next = i + 1;
+            final boolean[] invoked = { false };
+            final boolean[] inCall = { true };
+            execRange(list(stmt.get("body")), 0, inner, () -> {
+                if (invoked[0]) return;
+                invoked[0] = true;
+                if (inCall[0]) return;
+                loopListStep(stmt, entries, next, ctx, cont);
+            });
+            inCall[0] = false;
+            if (!invoked[0]) return;
+            i = next;
         }
-        Map.Entry<Object, Object> entry = entries.get(idx);
-        Ctx inner = ctx.copy();
-        inner.loopValue = entry.getValue();
-        inner.loopIndex = entry.getKey();
-        execRange(list(stmt.get("body")), 0, inner,
-                () -> loopListStep(stmt, entries, idx + 1, ctx, cont));
+        cont.run();
     }
 
     private void loopTimesStep(Map<String, Object> stmt, double count, long value, Ctx ctx, Runnable cont) {
-        if (value > count) {
-            cont.run();
-            return;
+        long v = value;
+        while (v <= count) {
+            Ctx inner = ctx.copy();
+            inner.loopValue = (double) v;
+            final long next = v + 1;
+            final boolean[] invoked = { false };
+            final boolean[] inCall = { true };
+            execRange(list(stmt.get("body")), 0, inner, () -> {
+                if (invoked[0]) return;
+                invoked[0] = true;
+                if (inCall[0]) return;
+                loopTimesStep(stmt, count, next, ctx, cont);
+            });
+            inCall[0] = false;
+            if (!invoked[0]) return;
+            v = next;
         }
-        Ctx inner = ctx.copy();
-        inner.loopValue = (double) value;
-        execRange(list(stmt.get("body")), 0, inner,
-                () -> loopTimesStep(stmt, count, value + 1, ctx, cont));
+        cont.run();
     }
 
     private void loopRangeStep(Map<String, Object> stmt, double value, double to, double step, Ctx ctx, Runnable cont) {
-        if (step > 0 ? value > to : value < to) {
-            cont.run();
-            return;
+        double v = value;
+        while (step > 0 ? v <= to : v >= to) {
+            Ctx inner = ctx.copy();
+            inner.loopValue = v;
+            final double next = v + step;
+            final boolean[] invoked = { false };
+            final boolean[] inCall = { true };
+            execRange(list(stmt.get("body")), 0, inner, () -> {
+                if (invoked[0]) return;
+                invoked[0] = true;
+                if (inCall[0]) return;
+                loopRangeStep(stmt, next, to, step, ctx, cont);
+            });
+            inCall[0] = false;
+            if (!invoked[0]) return;
+            v = next;
         }
-        Ctx inner = ctx.copy();
-        inner.loopValue = value;
-        execRange(list(stmt.get("body")), 0, inner,
-                () -> loopRangeStep(stmt, value + step, to, step, ctx, cont));
+        cont.run();
     }
 
     private void whileStep(Map<String, Object> stmt, Ctx ctx, Runnable cont) {
-        if (!evalCond(node(stmt.get("cond")), ctx)) {
-            cont.run();
-            return;
+        while (evalCond(node(stmt.get("cond")), ctx)) {
+            final boolean[] invoked = { false };
+            final boolean[] inCall = { true };
+            execRange(list(stmt.get("body")), 0, ctx, () -> {
+                if (invoked[0]) return;
+                invoked[0] = true;
+                if (inCall[0]) return;
+                whileStep(stmt, ctx, cont);
+            });
+            inCall[0] = false;
+            if (!invoked[0]) return;
         }
-        execRange(list(stmt.get("body")), 0, ctx, () -> whileStep(stmt, ctx, cont));
+        cont.run();
     }
 
     // ------------------------------------------------------------------

@@ -8,7 +8,9 @@ import { defineBehavior, type BehaviorBot } from "../../src/behavior.js";
 //   match and leaves a hole (the next show starts at index 2);
 //   delete by index leaves the other entries in place; text
 //   indices iterate before numeric ones;
-//   times / range / while loops all sum 1..n the same way; and
+//   times / range / while loops all sum 1..n the same way;
+//   the big loops (10000 times/range, a 5000-entry list) complete
+//   without overflowing the engine's stack (feedback G1); and
 //   wait suspends the rest of the trigger (the /delayed gap and
 //   the /delayloop tick spacing are measured, not just ordered).
 //
@@ -129,6 +131,21 @@ export default defineBehavior(async (t) => {
     mark = bot.messages.length;
     await cmd("/whilesum 5");
     await waitNew(bot, mark, "whilesum=15");
+
+    // Large loops (feedback G1): a 10000-iteration times loop
+    // and range loop and a 5000-entry list loop must complete
+    // with the plain sums — the engine's continuation executor
+    // used to overflow the stack around 2000 iterations, which
+    // surfaced as the command silently never answering.
+    mark = bot.messages.length;
+    await cmd("/bigcount");
+    await waitNew(bot, mark, "bigsum=50005000", 30_000);
+    mark = bot.messages.length;
+    await cmd("/bigrange");
+    await waitNew(bot, mark, "bigrangesum=50005000", 30_000);
+    mark = bot.messages.length;
+    await cmd("/biglist");
+    await waitNew(bot, mark, "biglist size=5000; sum=12502500", 30_000);
 
     // wait suspends the rest of the trigger: "done" follows
     // "start" only after the 2-second wait. These two sends use
