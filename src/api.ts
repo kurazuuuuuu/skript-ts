@@ -387,6 +387,24 @@ export function eventCancelled(): Cond {
   return { kind: "eventCancelled" };
 }
 
+/**
+ * Construct an is-set condition: true when the target expression
+ * HAS a value. Skript's form is `<expr> is set` (the native
+ * negation `<expr> is not set` is used for not(...) and while
+ * heads). Probed against the real Skript 2.17.1: both forms work
+ * for local variables, global variables, and function-call
+ * results — a function that returns nothing yields "not set",
+ * one that returns a value yields "set". This answers feedback
+ * C4's "is the variable set" need: it tests presence, not
+ * content, so a variable holding an empty text "" is set, while
+ * an unset or deleted variable is not. It is a leaf condition,
+ * so it works in ifElse, in and/or/not logic, and as a
+ * whileLoop head.
+ */
+export function isSet(target: Expr): Cond {
+  return { kind: "isSet", target };
+}
+
 /** Construct a send statement. The message may be any expression; text expressions emit as quoted strings. */
 export function send(target: Expr, message: Expr): Stmt {
   return withLoc({ kind: "send", target, message });
@@ -548,6 +566,7 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "startsWith",
   "endsWith",
   "eventCancelled",
+  "isSet",
   "chance",
   "bossBarDarkensSky",
   "bossBarCreatesFog",

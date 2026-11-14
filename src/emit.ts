@@ -668,6 +668,8 @@ function emitLeafCond(c: Cond, negated: boolean): string {
         : `${emitValue(c.target)} ends with ${emitValue(c.suffix)}`;
     case "eventCancelled":
       return negated ? "event is not cancelled" : "event is cancelled";
+    case "isSet":
+      return negated ? `${emitValue(c.target)} is not set` : `${emitValue(c.target)} is set`;
     case "chance":
       // The original has no negated chance form (probed: a
       // general `not` is rejected, and there is no "does not"
