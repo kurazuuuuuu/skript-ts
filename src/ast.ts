@@ -315,10 +315,14 @@ export type Expr =
   //   player (in a block break the main hand is the digging tool,
   //   where event-item is the broken block in item form instead).
   //   An empty hand reads as the AIR item here, NOT as no value
-  //   (probed on the real Skript: both hands report "0 airs",
-  //   type "air") — the deliberate contrast with event-item,
-  //   whose empty hand is absent. Only a non-player target has
-  //   no value.
+  //   (probed on the real Skript: an empty hand has a value
+  //   whose type is "air") — the deliberate contrast with
+  //   event-item, whose empty hand is absent. Only a non-player
+  //   target has no value. The string form is the plain "air":
+  //   Bukkit/Skript report the empty hand as an amount-0 stack
+  //   ("0 airs"), and feedback G3 (2026-11-14, third batch) had
+  //   that unified to "air" — the engine normalizes the hand
+  //   read to an amount-1 air stack.
   | { kind: "itemWithName"; base: Expr; name: Expr }
   | { kind: "itemWithLore"; base: Expr; lines: readonly Expr[] }
   | { kind: "itemWithAmount"; base: Expr; amount: Expr }
