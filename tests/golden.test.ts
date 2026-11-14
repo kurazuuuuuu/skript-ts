@@ -53,6 +53,7 @@ import {
   damageAmount,
   damageCause,
   dateFromUnix,
+  defineFn,
   defineFunction,
   deleteVar,
   differenceBetween,
@@ -252,6 +253,7 @@ import { logicScript } from "../examples/logic.js";
 import { mathScript } from "../examples/math.js";
 import { listsScript } from "../examples/lists.js";
 import { functionsScript } from "../examples/functions.js";
+import { announceXp, fnHandlesScript, mmoXp, totalXp } from "../examples/fnhandles.js";
 import { gameplayScript } from "../examples/gameplay.js";
 import { textScript } from "../examples/text.js";
 import { events2Script } from "../examples/events2.js";
@@ -689,6 +691,78 @@ describe("custom functions (phase 13)", () => {
     ).toThrow(RangeError);
     expect(() => call("bad name")).toThrow(RangeError);
     expect(() => localVar("")).toThrow(RangeError);
+  });
+});
+
+describe("typed function handles (feedback E2)", () => {
+  it("the fnhandles sample matches the golden fixture", () => {
+    expect(emit(fnHandlesScript)).toBe(fixture("fnhandles.sk"));
+  });
+  it("script() unwraps handles to their definitions", () => {
+    // Handles passed to script() land in the body as the plain
+    // TopLevel definitions defineFunction would have produced.
+    expect(fnHandlesScript.body.slice(0, 3).map((t) => t.kind)).toEqual([
+      "function",
+      "function",
+      "function",
+    ]);
+    expect(emit(script(mmoXp))).toBe(emit(script(mmoXp.definition)));
+    expect(mmoXp.definition.kind).toBe("function");
+  });
+  it("handle calls build the same nodes as call() / callStmt()", () => {
+    expect(mmoXp(player(), str("hi"))).toEqual(call("mmoXp", player(), str("hi")));
+    // (.stmt is compared through emit: both callStmt nodes carry a
+    // source loc, which legitimately differs between call sites.)
+    expect(emit(script(onJoin([announceXp.stmt(player(), num(1), bool(false))])))).toBe(
+      emit(script(onJoin([callStmt("announceXp", player(), num(1), bool(false))]))),
+    );
+  });
+  it("JS primitives are normalized by the declared parameter kind", () => {
+    expect(emit(script(onJoin([set(variable("x"), mmoXp(player(), "hi"))])))).toBe(
+      'on join:\n    set {x} to mmoXp(player, "hi")\n',
+    );
+    expect(emit(script(onJoin([announceXp.stmt(player(), 25, true)])))).toBe(
+      "on join:\n    announceXp(player, 25, true)\n",
+    );
+  });
+  it("a plural parameter flattens an array argument, and passes a single expression through", () => {
+    expect(emit(script(onJoin([set(variable("x"), totalXp([num(1), num(2)]))])))).toBe(
+      "on join:\n    set {x} to totalXp(1, 2)\n",
+    );
+    expect(emit(script(onJoin([set(variable("x"), totalXp(listVar("bonus")))])))).toBe(
+      "on join:\n    set {x} to totalXp({bonus::*})\n",
+    );
+  });
+  it("handle calls validate arity and argument kinds at runtime", () => {
+    // The casts simulate a plain-JS caller bypassing the types.
+    const looseCall = mmoXp as unknown as (...args: unknown[]) => unknown;
+    expect(() => looseCall(player())).toThrow(RangeError);
+    expect(() => looseCall(player(), "x", "extra")).toThrow(RangeError);
+    expect(() => looseCall("Steve", "x")).toThrow(RangeError);
+    const looseStmt = announceXp.stmt.bind(announceXp) as unknown as (
+      ...args: unknown[]
+    ) => unknown;
+    expect(() => looseStmt(player(), "25", true)).toThrow(RangeError);
+    expect(() => looseStmt(player(), 25)).toThrow(RangeError);
+  });
+  it("trailing default parameters may be omitted at runtime", () => {
+    const withDefault = defineFn(
+      "withDefault",
+      [param("a", "number"), param("b", "number", num(7))],
+      "number",
+      [returnValue(localVar("a"))],
+    );
+    const looseCall = withDefault as unknown as (...args: unknown[]) => unknown;
+    expect(emit(script(onJoin([set(variable("x"), looseCall(num(1)) as never)])))).toBe(
+      "on join:\n    set {x} to withDefault(1)\n",
+    );
+    expect(() => looseCall()).toThrow(RangeError);
+  });
+  it("defineFn reuses defineFunction's validation", () => {
+    expect(() => defineFn("bad name", [], null, [])).toThrow(RangeError);
+    expect(() => defineFn("two", [param("a", "numbers"), param("b", "number")], null, [])).toThrow(
+      RangeError,
+    );
   });
 });
 
