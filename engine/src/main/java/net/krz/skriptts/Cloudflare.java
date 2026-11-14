@@ -1067,7 +1067,11 @@ final class Cloudflare {
                 digest.update(buffer, 0, n);
             }
         }
-        return R2Signer.sha256Hex(digest.digest());
+        // Hex-encode the file's digest itself. (Passing the digest
+        // through R2Signer.sha256Hex would hash it a second time,
+        // which real R2 rejects with XAmzContentSHA256Mismatch —
+        // found by the RP-3 real-account verification, 2026-11-14.)
+        return java.util.HexFormat.of().formatHex(digest.digest());
     }
 
     // ------------------------------------------------------------------
