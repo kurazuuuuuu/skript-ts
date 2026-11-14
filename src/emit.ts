@@ -1523,6 +1523,14 @@ function eventHeaderBase(t: Extract<TopLevel, { kind: "event" }>): string {
       return "on inventory close";
     case "inventoryDrag":
       return "on inventory drag";
+    case "consume":
+      return "on consume";
+    case "craft":
+      return "on craft";
+    case "projectileHit":
+      return "on projectile hit";
+    case "toggleSneak":
+      return "on toggle sneak";
     default:
       // Engine-only events (ws / timer / papiRequest) are
       // rejected by emitTop before the header is computed.
@@ -1541,7 +1549,8 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
         t.event === "timerComplete" ||
         t.event === "papiRequest" ||
         t.event === "httpResponse" ||
-        t.event === "cfResponse"
+        t.event === "cfResponse" ||
+        t.event === "swapHand"
       ) {
         throw new Error(
           `Unhandled Event in emitTop: '${t.event}' is an engine-only builtin with no .sk form`,

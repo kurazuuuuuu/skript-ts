@@ -136,6 +136,8 @@ import {
   onBlockBreak,
   onBlockPlace,
   onChat,
+  onConsume,
+  onCraft,
   onDamage,
   onDeath,
   onDrop,
@@ -158,9 +160,12 @@ import {
   onJoin,
   onLeftClick,
   onPickup,
+  onProjectileHit,
   onQuit,
   onRespawn,
   onRightClick,
+  onSwapHand,
+  onToggleSneak,
   offsetLocation,
   openGui,
   openInventory,
@@ -267,6 +272,7 @@ import { textScript } from "../examples/text.js";
 import { taggedScript } from "../examples/tagged.js";
 import { events2Script } from "../examples/events2.js";
 import { events3Script } from "../examples/events3.js";
+import { events4Script } from "../examples/events4.js";
 import { guiScript } from "../examples/gui.js";
 import { gui2Script } from "../examples/gui2.js";
 import { worldScript } from "../examples/world.js";
@@ -334,6 +340,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("events3", () => {
     expect(emit(events3Script)).toBe(fixture("events3.sk"));
+  });
+  it("events4", () => {
+    expect(emit(events4Script)).toBe(fixture("events4.sk"));
   });
   it("timespan", () => {
     expect(emit(timespanScript)).toBe(fixture("timespan.sk"));
@@ -1006,6 +1015,55 @@ describe("event cancellation state and handler priority (B2, 2026-11-13)", () =>
         script(onDamage([ifElse(eventCancelled(), body)], { priority: "monitor" })),
       ),
     ).toBe(false);
+  });
+});
+
+describe("more events (feedback D)", () => {
+  const body = [broadcast(str("x"))];
+  it("the five core headers", () => {
+    expect(emit(script(onConsume(body)))).toBe('on consume:\n    broadcast "x"\n');
+    expect(emit(script(onCraft(body)))).toBe('on craft:\n    broadcast "x"\n');
+    expect(emit(script(onProjectileHit(body)))).toBe('on projectile hit:\n    broadcast "x"\n');
+    expect(emit(script(onToggleSneak(body)))).toBe('on toggle sneak:\n    broadcast "x"\n');
+    // The drag builder predates the batch; it now takes the
+    // standard options object like every other event builder.
+    expect(emit(script(onInventoryDrag(body)))).toBe('on inventory drag:\n    broadcast "x"\n');
+    expect(emit(script(onInventoryDrag(body, { priority: "low" })))).toBe(
+      'on inventory drag with priority low:\n    broadcast "x"\n',
+    );
+  });
+  it("the new builders take priorities and validate them", () => {
+    expect(emit(script(onConsume(body, { priority: "highest" })))).toBe(
+      'on consume with priority highest:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onToggleSneak(body, { priority: "monitor" })))).toBe(
+      'on toggle sneak with priority monitor:\n    broadcast "x"\n',
+    );
+    expect(() => onCraft(body, { priority: "urgent" as never })).toThrow(RangeError);
+    expect(() => onProjectileHit(body, { priority: "super" as never })).toThrow(RangeError);
+  });
+  it("the five core events are core language, not engine-only", () => {
+    expect(isEngineOnlyScript(events4Script)).toBe(false);
+    expect(
+      isEngineOnlyScript(
+        script(
+          onConsume(body),
+          onCraft(body),
+          onProjectileHit(body),
+          onToggleSneak(body),
+          onInventoryDrag(body),
+        ),
+      ),
+    ).toBe(false);
+  });
+  it("swap hand is engine-only: no .sk form, IR carries the event", () => {
+    expect(isEngineOnlyScript(script(onSwapHand(body)))).toBe(true);
+    expect(() => emit(script(onSwapHand(body)))).toThrow(/engine-only/);
+    const ir = toIr(script(onSwapHand(body, { priority: "low" }))) as {
+      body: { event?: string; priority?: string }[];
+    };
+    expect(ir.body[0]?.event).toBe("swapHand");
+    expect(ir.body[0]?.priority).toBe("low");
   });
 });
 

@@ -1,0 +1,19 @@
+on consume:
+    broadcast "consumed %type of event-item%"
+
+on craft:
+    broadcast "crafted %type of event-item%"
+
+on inventory drag:
+    broadcast "inventory dragged"
+
+on projectile hit:
+    broadcast "projectile hit"
+
+on toggle sneak:
+    broadcast "sneak toggled"
+
+command /ev4open:
+    trigger:
+        open chest inventory with 1 rows named "EV4" to player
+        send "opened" to player

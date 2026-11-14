@@ -33,7 +33,12 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.inventory.CraftItemEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -987,6 +992,69 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         ctx.draggedSlots = draggedSlots;
         ctx.cancellable = event;
         engine.fireEvent("inventoryDrag", ctx, false);
+    }
+
+    // ------------------------------------------------------------------
+    // More events (feedback batch D): consume, craft, projectile
+    // hit, toggle sneak — core language, fired from the Bukkit
+    // events the task spec names — plus the swap-hand event,
+    // which is engine-only (Skript has no header for it under
+    // any spelling, so Skript-mode deployment skips scripts
+    // that use it; see ENGINE_ONLY_EVENTS on the TS side).
+    // ------------------------------------------------------------------
+
+    @EventHandler
+    public void onConsume(PlayerItemConsumeEvent event) {
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.eventItem = normalizeItem(event.getItem());
+        ctx.cancellable = event;
+        engine.fireEvent("consume", ctx, false);
+    }
+
+    @EventHandler
+    public void onCraft(CraftItemEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        Engine.Ctx ctx = baseCtx(player);
+        ctx.eventItem = normalizeItem(event.getRecipe().getResult());
+        ctx.eventInventory = event.getInventory();
+        ctx.cancellable = event;
+        engine.fireEvent("craft", ctx, false);
+    }
+
+    @EventHandler
+    public void onProjectileHit(ProjectileHitEvent event) {
+        // Like the damage listener, the bare player values stay
+        // unset: the participants travel as attacker (the
+        // shooter, when it is an entity) and victim (the hit
+        // entity), and the hit block as the event-block. A block
+        // hit has no victim; an entity hit has no block. The
+        // Bukkit event is NOT cancellable, so no cancellable is
+        // packed — a cancel in a handler is the established
+        // no-op, as with respawn.
+        Engine.Ctx ctx = new Engine.Ctx();
+        if (event.getEntity().getShooter() instanceof Entity shooter) {
+            ctx.attacker = shooter;
+        }
+        ctx.victim = event.getHitEntity();
+        ctx.eventBlock = event.getHitBlock();
+        engine.fireEvent("projectileHit", ctx, false);
+    }
+
+    @EventHandler
+    public void onToggleSneak(PlayerToggleSneakEvent event) {
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.cancellable = event;
+        engine.fireEvent("toggleSneak", ctx, false);
+    }
+
+    @EventHandler
+    public void onSwapHand(PlayerSwapHandItemsEvent event) {
+        // The event-item is the item moving INTO the main hand
+        // (the event's main-hand item is the post-swap one).
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.eventItem = normalizeItem(event.getMainHandItem());
+        ctx.cancellable = event;
+        engine.fireEvent("swapHand", ctx, false);
     }
 
     /**

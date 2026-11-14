@@ -155,6 +155,13 @@ export interface BehaviorBot {
   fishOnce(timeoutMs?: number): Promise<void>;
   /** Attack the nearest visible entity with this Minecraft name (e.g. "zombie") once. */
   attackEntityByName(entityName: string, timeoutMs?: number): Promise<void>;
+  // Feedback batch D controls: sneaking and table-free
+  // crafting — enough to exercise the toggle-sneak and craft
+  // events.
+  /** Set the sneak control state (each change fires the toggle-sneak event on the server). */
+  setSneak(on: boolean): void;
+  /** Craft one batch of the named item from inventory materials, without a crafting table (the 2x2 grid). Throws when no usable recipe exists. */
+  craftItem(itemName: string, timeoutMs?: number): Promise<void>;
 }
 
 /**
@@ -860,6 +867,34 @@ class MineflayerBehaviorBot implements BehaviorBot {
       if (Date.now() >= deadline) {
         throw new Error(
           `timed out after ${timeoutMs}ms waiting for a visible "${entityName}" entity`,
+        );
+      }
+      await sleep(250);
+    }
+  }
+
+  setSneak(on: boolean): void {
+    this.bot.setControlState("sneak", on);
+  }
+
+  async craftItem(itemName: string, timeoutMs = 10_000): Promise<void> {
+    const registry = this.bot.registry;
+    const itemType = registry?.itemsByName?.[itemName]?.id;
+    if (itemType === undefined) {
+      throw new Error(`cannot craft "${itemName}": unknown item name`);
+    }
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const recipes = this.bot.recipesFor(itemType, null, 1, null);
+      if (recipes.length > 0) {
+        await this.bot.craft(recipes[0]!, 1, undefined);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        const names =
+          (this.bot.inventory?.items() ?? []).map((it) => it.name).join(", ") || "(empty)";
+        throw new Error(
+          `timed out after ${timeoutMs}ms waiting for a usable "${itemName}" recipe (inventory: ${names})`,
         );
       }
       await sleep(250);

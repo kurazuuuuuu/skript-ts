@@ -106,6 +106,9 @@ const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
   "papiRequest",
   "httpResponse",
   "cfResponse",
+  // Feedback batch D: Skript has no swap-hand event under any
+  // spelling, so the event exists only in the engine.
+  "swapHand",
 ]);
 
 function containsEngineOnly(value: unknown): boolean {
