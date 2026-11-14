@@ -1,5 +1,10 @@
 import type {
   Expr,
+  PlayerExpr,
+  EntityExpr,
+  BlockExpr,
+  ItemExpr,
+  LocationExpr,
   TextExpr,
   Cond,
   VariableExpr,
@@ -44,23 +49,23 @@ function withLoc<T extends Stmt | TopLevel>(node: T): T {
 }
 
 /** Construct a player expression. */
-export function player(): Expr {
-  return { kind: "player" };
+export function player(): PlayerExpr {
+  return { kind: "player" } as PlayerExpr;
 }
 
 /** Construct an event player expression. */
-export function eventPlayer(): Expr {
-  return { kind: "eventPlayer" };
+export function eventPlayer(): PlayerExpr {
+  return { kind: "eventPlayer" } as PlayerExpr;
 }
 
 /** Construct a loop player expression. */
-export function loopPlayer(): Expr {
-  return { kind: "loopPlayer" };
+export function loopPlayer(): PlayerExpr {
+  return { kind: "loopPlayer" } as PlayerExpr;
 }
 
 /** Construct a victim expression (the entity that died / was damaged, in death and damage events). */
-export function victim(): Expr {
-  return { kind: "victim" };
+export function victim(): EntityExpr {
+  return { kind: "victim" } as EntityExpr;
 }
 
 /** Construct an argument expression with a 1-based index. */
@@ -132,13 +137,13 @@ function toExpr(v: Value): Expr {
 }
 
 /** Construct an item expression. */
-export function item(name: string): Expr {
-  return { kind: "item", name };
+export function item(name: string): ItemExpr {
+  return { kind: "item", name } as ItemExpr;
 }
 
 /** Construct a location-of expression. */
-export function locationOf(target: Expr): Expr {
-  return { kind: "locationOf", target };
+export function locationOf(target: Expr): LocationExpr {
+  return { kind: "locationOf", target } as LocationExpr;
 }
 
 /** Construct a format expression from parts. */
@@ -1042,22 +1047,76 @@ export function callStmt(name: string, ...args: Value[]): Stmt {
  * (normalized to num() / str() / bool() at runtime), an Expr for
  * every other singular type, and — for a plural type (its name
  * ends in "s") — one Expr or an array of Exprs, flattened into
- * the call's argument list at runtime.
+ * the call's argument list at runtime. The value-kind types
+ * ("player", "entity", "block", "item", "location" and their
+ * plurals) accept only expressions branded with that kind
+ * (feedback T1): an entity expression cannot fill a player
+ * parameter, while a player expression can fill an entity one.
  */
-export type FnArg<T extends FunctionTypeName> = T extends `${string}s`
-  ? Expr | readonly Expr[]
-  : T extends "number"
-    ? number | Expr
-    : T extends "text"
-      ? string | Expr
-      : T extends "boolean"
-        ? boolean | Expr
-        : Expr;
+export type FnArg<T extends FunctionTypeName> = T extends "players"
+  ? PlayerExpr | readonly PlayerExpr[]
+  : T extends "entities"
+    ? EntityExpr | readonly EntityExpr[]
+    : T extends "blocks"
+      ? BlockExpr | readonly BlockExpr[]
+      : T extends "items"
+        ? ItemExpr | readonly ItemExpr[]
+        : T extends "locations"
+          ? LocationExpr | readonly LocationExpr[]
+          : T extends `${string}s`
+            ? Expr | readonly Expr[]
+            : T extends "number"
+              ? number | Expr
+              : T extends "text"
+                ? string | Expr
+                : T extends "boolean"
+                  ? boolean | Expr
+                  : T extends "player"
+                    ? PlayerExpr
+                    : T extends "entity"
+                      ? EntityExpr
+                      : T extends "block"
+                        ? BlockExpr
+                        : T extends "item"
+                          ? ItemExpr
+                          : T extends "location"
+                            ? LocationExpr
+                            : Expr;
 
 /** The call-argument tuple of a parameter list: one FnArg per declared parameter, in order. */
 export type FnArgs<Ps extends readonly FunctionParam[]> = {
   [K in keyof Ps]: FnArg<Ps[K]["type"]>;
 };
+
+/**
+ * Brand assertions (feedback T1): assert a value kind the
+ * compiler cannot see — a value read back from a variable, a
+ * list element, a function result — so it can fill a branded
+ * parameter. Identity functions; the runtime node is unchanged.
+ */
+export function asPlayer(expr: Expr): PlayerExpr {
+  return expr as PlayerExpr;
+}
+
+/** The entity counterpart of {@link asPlayer}. */
+export function asEntity(expr: Expr): EntityExpr {
+  return expr as EntityExpr;
+}
+
+/** The block counterpart of {@link asPlayer}. */
+export function asBlock(expr: Expr): BlockExpr {
+  return expr as BlockExpr;
+}
+
+/** The item counterpart of {@link asPlayer}. */
+export function asItem(expr: Expr): ItemExpr {
+  return expr as ItemExpr;
+}
+
+/** The location counterpart of {@link asPlayer}. */
+export function asLocation(expr: Expr): LocationExpr {
+  return expr as LocationExpr;
+}
 
 /** The non-callable part of a typed function handle: the definition and the statement call. */
 export interface FnHandleBase<Ps extends readonly FunctionParam[]> {
@@ -1668,8 +1727,8 @@ export function onFishingStateChange(body: readonly Stmt[], options?: EventOptio
 }
 
 /** Construct an event-entity expression: the entity an entity pickup / drop is about; in fishing events, the caught entity (or the caught Item entity for a fish). */
-export function eventEntity(): Expr {
-  return { kind: "eventEntity" };
+export function eventEntity(): EntityExpr {
+  return { kind: "eventEntity" } as EntityExpr;
 }
 
 /** Construct a hooked-entity expression: the entity a fishing hook caught (entity-hooked events). */
@@ -1790,18 +1849,18 @@ export function onSwapHand(body: readonly Stmt[], options?: EventOptions): TopLe
 }
 
 /** Construct an event-block expression: the block of a block break / place / click event (no value for air clicks). */
-export function eventBlock(): Expr {
-  return { kind: "eventBlock" };
+export function eventBlock(): BlockExpr {
+  return { kind: "eventBlock" } as BlockExpr;
 }
 
 /** Construct an event-item expression: the item a click / place event involves (hand / placed item); in break events, the broken block in item form. */
-export function eventItem(): Expr {
-  return { kind: "eventItem" };
+export function eventItem(): ItemExpr {
+  return { kind: "eventItem" } as ItemExpr;
 }
 
 /** Construct an attacker expression: the entity that caused a damage event (no value for environmental damage). */
-export function attacker(): Expr {
-  return { kind: "attacker" };
+export function attacker(): EntityExpr {
+  return { kind: "attacker" } as EntityExpr;
 }
 
 /** Construct a clicked-entity expression: the entity a right click interacted with (no value for block or air clicks). */
@@ -2023,6 +2082,24 @@ export function script(...body: (TopLevel | FnHandle<any, any>)[]): Script {
     kind: "script",
     body: body.map((item) => (isFnHandle(item) ? item.definition : item)),
   };
+}
+
+/**
+ * Declare a script's load order (feedback B4): the engine
+ * loads scripts in ascending declared order (undeclared
+ * scripts count as 0; ties fall back to the relative path),
+ * which fixes same-priority event handler order, duplicate
+ * definition resolution and periodical scheduling order
+ * across files without encoding it in file names. Skript
+ * loads .sk files in filename order and has no equivalent —
+ * the declaration is engine-only metadata in the IR, and
+ * the emitted .sk is unchanged.
+ */
+export function loadOrder(order: number, value: Script): Script {
+  if (!Number.isFinite(order)) {
+    throw new RangeError("load order must be a finite number");
+  }
+  return { ...value, loadOrder: order };
 }
 
 // ---------------------------------------------------------------------------
@@ -3192,8 +3269,8 @@ export function onInventoryDrag(body: readonly Stmt[], options?: EventOptions): 
 // ---------------------------------------------------------------------------
 
 /** Construct a block-at expression: the block at a location (`block at %location%`). */
-export function blockAt(location: Expr): Expr {
-  return { kind: "blockAt", location };
+export function blockAt(location: Expr): BlockExpr {
+  return { kind: "blockAt", location } as BlockExpr;
 }
 
 /**

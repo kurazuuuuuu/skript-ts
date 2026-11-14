@@ -293,6 +293,8 @@ import { giveoverflowScript } from "../examples/giveoverflow.js";
 import { literalsScript } from "../examples/literals.js";
 import { issetScript } from "../examples/isset.js";
 import { sortedScript } from "../examples/sorted.js";
+import { loadorder1Script } from "../examples/loadorder1.js";
+import { loadorder2Script } from "../examples/loadorder2.js";
 import { invspaceScript } from "../examples/invspace.js";
 
 function fixture(name: string): string {
@@ -398,6 +400,12 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("sorted", () => {
     expect(emit(sortedScript)).toBe(fixture("sorted.sk"));
+  });
+  it("loadorder1", () => {
+    expect(emit(loadorder1Script)).toBe(fixture("loadorder1.sk"));
+  });
+  it("loadorder2", () => {
+    expect(emit(loadorder2Script)).toBe(fixture("loadorder2.sk"));
   });
 });
 

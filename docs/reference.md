@@ -34,6 +34,22 @@ Anything not listed here is outside the supported subset.
 | `onToggleSneak`   | `on toggle sneak:`   |
 | `onSwapHand`      | — (engine-only)      |
 
+## Script load order (feedback B4)
+
+`loadOrder(n, script(...))` declares a script's load order.
+The engine loads scripts in ascending declared order —
+undeclared scripts count as 0 and ties fall back to the
+relative path — so same-priority event handler order,
+duplicate definition resolution and periodical scheduling
+order across files are fixed by declaration instead of by
+file name. The declaration travels in the IR root
+(`loadOrder`); the emitted `.sk` is unchanged. Skript has
+no equivalent: it loads `.sk` files in filename order, so
+under Skript the handler order across files follows the
+file names. `examples/loadorder1.ts` /
+`examples/loadorder2.ts` and their behavior suite pin the
+difference in both modes.
+
 ## Commands
 
 `command(name, args, body, options?)` — any number of typed
@@ -538,6 +554,27 @@ carries the compile-time negative checks (wrong arity, a text
 literal in a player slot, a void handle called as an expression)
 as suppressed type errors in a never-called function.
 
+**Branded value kinds (feedback T1).** The common accessors
+return phantom-branded expression types — `player()`,
+`eventPlayer()` and `loopPlayer()` return `PlayerExpr`;
+`victim()`, `attacker()` and `eventEntity()` return
+`EntityExpr`; `eventBlock()` and `blockAt()` return
+`BlockExpr`; `eventItem()` and `item()` return `ItemExpr`;
+`locationOf()` returns `LocationExpr`. The brand is type-only
+(the runtime node is unchanged), and a `PlayerExpr` is accepted
+wherever an `EntityExpr` is (a player is an entity), never the
+other way round. Through a `defineFn` handle, a parameter
+declared `player` / `entity` / `block` / `item` / `location`
+(or a plural of one) accepts only expressions of that brand, so
+passing e.g. `victim()` (an entity) into a player parameter —
+which otherwise fails silently at runtime with an unset
+argument — is a compile error. Values whose kind the compiler
+cannot see (read back from variables, lists, function results)
+are branded explicitly with `asPlayer` / `asEntity` / `asBlock`
+/ `asItem` / `asLocation`, identity functions that assert the
+provenance. Plain (unbranded) positions elsewhere in the API
+are unaffected: the brands only gate handle parameters.
+
 Semantics (verified against the real Skript 2.17.1 with probe
 scripts, in value and string positions alike):
 
@@ -1019,6 +1056,19 @@ script runs under Skript (as emitted `.sk`) and under the
 engine jar. Every semantic below was probed against the
 real Skript 2.17.1 (console probes plus a mineflayer bot
 clicking through a live GUI; see the development log):
+
+- **Type-name validation (feedback A7)**: the CLI checks
+  every `item("...")` string literal at build time against
+  the canonical Bukkit material names (the list in
+  `src/cli/material-names.ts`, generated from the Paper
+  API jar). A near miss (edit distance at most 2 after
+  normalization) fails the build with did-you-mean
+  suggestions — it would otherwise only fail when the
+  server loads the script. A name the material list does
+  not know at all is a printed warning, never an error:
+  it may be a slotted Skript alias (e.g. a potion name),
+  which Skript resolves but the engine (material names
+  only) does not.
 
 - **Item construction** composes suffixes over any
   item-valued expression: `withName(item, nameText)`,

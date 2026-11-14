@@ -589,6 +589,32 @@ export type Expr =
   | { kind: "bossBarStyleOf"; bar: Expr }
   | { kind: "eventBossBar" };
 
+declare const exprKindBrand: unique symbol;
+
+/**
+ * Phantom-branded expression types (feedback T1): the brand is
+ * type-only — the runtime node is a plain Expr — but it lets
+ * typed positions (defineFn handle parameters) reject a
+ * wrong-kind expression at compile time, e.g. an entity
+ * expression passed where a player is required (which otherwise
+ * fails silently at runtime with an unset argument).
+ */
+
+/** An expression known to evaluate to a player. */
+export type PlayerExpr = Expr & { readonly [exprKindBrand]: "player" };
+
+/** An expression known to evaluate to an entity (a player qualifies). */
+export type EntityExpr = Expr & { readonly [exprKindBrand]: "entity" | "player" };
+
+/** An expression known to evaluate to a block. */
+export type BlockExpr = Expr & { readonly [exprKindBrand]: "block" };
+
+/** An expression known to evaluate to an item. */
+export type ItemExpr = Expr & { readonly [exprKindBrand]: "item" };
+
+/** An expression known to evaluate to a location. */
+export type LocationExpr = Expr & { readonly [exprKindBrand]: "location" };
+
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
 
@@ -1516,4 +1542,12 @@ export type TopLevel =
 export interface Script {
   kind: "script";
   body: readonly TopLevel[];
+  /**
+   * Declared load order (feedback B4), set via the loadOrder()
+   * builder. The engine loads scripts in ascending order
+   * (undeclared = 0, ties broken by relative path); Skript
+   * mode cannot express it — Skript loads .sk files in
+   * filename order — so it only exists in the IR.
+   */
+  loadOrder?: number;
 }

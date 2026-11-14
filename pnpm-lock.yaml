@@ -165,10 +165,7 @@ settings:
 importers:
 
   .:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
+    dependencies:
       mineflayer:
         specifier: ^4.39.0
         version: 4.39.0
@@ -178,6 +175,10 @@ importers:
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@^1.5.1
         version: '@voidzero-dev/vite-plus-core@1.5.1(@types/node@24.19.2)(esbuild@0.28.2)(tsx@4.23.15)(typescript@5.9.3)'

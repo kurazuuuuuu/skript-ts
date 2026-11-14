@@ -3,3 +3,4 @@ server/
 *.log
 build/
 engine/libs/*.jar
+dist/

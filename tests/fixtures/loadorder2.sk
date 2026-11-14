@@ -1,0 +1,3 @@
+on chat:
+    if message is "orderprobe":
+        add "first" to {loadorderprobe::*}
