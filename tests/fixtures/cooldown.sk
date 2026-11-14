@@ -1,0 +1,22 @@
+command /ccool:
+    cooldown: 3 seconds
+    cooldown message: ccool is on cooldown, please wait
+    cooldown bypass: skriptts.test.cooldown.bypass
+    executable by: players
+    trigger:
+        broadcast "ccool ran by %player%"
+
+command /cponly:
+    executable by: players
+    trigger:
+        broadcast "cponly ran"
+
+command /cconly:
+    executable by: console
+    trigger:
+        broadcast "cconly ran"
+
+command /cboth:
+    executable by: players and console
+    trigger:
+        broadcast "cboth ran"

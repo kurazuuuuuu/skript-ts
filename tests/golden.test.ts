@@ -273,6 +273,7 @@ import { gui2Script } from "../examples/gui2.js";
 import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
 import { commandsScript } from "../examples/commands.js";
+import { cooldownScript } from "../examples/cooldown.js";
 import { displayScript } from "../examples/display.js";
 import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
@@ -358,6 +359,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("commands", () => {
     expect(emit(commandsScript)).toBe(fixture("commands.sk"));
+  });
+  it("cooldown", () => {
+    expect(emit(cooldownScript)).toBe(fixture("cooldown.sk"));
   });
   it("display", () => {
     expect(emit(displayScript)).toBe(fixture("display.sk"));
@@ -1141,6 +1145,53 @@ describe("commands (phase 20)", () => {
     expect(() => command("x", [cmdArg("text")], [broadcast(str("x"))], true as never)).toThrow(
       RangeError,
     );
+  });
+});
+
+describe("commands (feedback C6: cooldown + executable by)", () => {
+  it("all four options emit after the phase-20 sections, before the trigger", () => {
+    expect(
+      emit(
+        script(
+          command("full", [], [broadcast(str("x"))], {
+            permission: "test.full",
+            cooldown: 5,
+            cooldownMessage: "please wait",
+            cooldownBypass: "test.full.bypass",
+            executableBy: "players",
+          }),
+        ),
+      ),
+    ).toBe(
+      'command /full:\n    permission: test.full\n    cooldown: 5 seconds\n    cooldown message: please wait\n    cooldown bypass: test.full.bypass\n    executable by: players\n    trigger:\n        broadcast "x"\n',
+    );
+  });
+  it("a fractional cooldown prints plainly, like a timespan literal", () => {
+    expect(emit(script(command("frac", [], [broadcast(str("x"))], { cooldown: 2.5 })))).toBe(
+      'command /frac:\n    cooldown: 2.5 seconds\n    trigger:\n        broadcast "x"\n',
+    );
+  });
+  it('executableBy "console" and "both" spellings', () => {
+    expect(
+      emit(script(command("conly", [], [broadcast(str("x"))], { executableBy: "console" }))),
+    ).toBe('command /conly:\n    executable by: console\n    trigger:\n        broadcast "x"\n');
+    expect(emit(script(command("both", [], [broadcast(str("x"))], { executableBy: "both" })))).toBe(
+      'command /both:\n    executable by: players and console\n    trigger:\n        broadcast "x"\n',
+    );
+  });
+  it("bad cooldown / message / bypass / executableBy values are rejected", () => {
+    const body = [broadcast(str("x"))];
+    expect(() => command("x", [], body, { cooldown: 0 })).toThrow(RangeError);
+    expect(() => command("x", [], body, { cooldown: -1 })).toThrow(RangeError);
+    expect(() => command("x", [], body, { cooldown: Number.NaN })).toThrow(RangeError);
+    expect(() => command("x", [], body, { cooldown: Number.POSITIVE_INFINITY })).toThrow(
+      RangeError,
+    );
+    expect(() => command("x", [], body, { cooldownMessage: "" })).toThrow(RangeError);
+    expect(() => command("x", [], body, { cooldownMessage: "two\nlines" })).toThrow(RangeError);
+    expect(() => command("x", [], body, { cooldownBypass: "" })).toThrow(RangeError);
+    expect(() => command("x", [], body, { cooldownBypass: "has space" })).toThrow(RangeError);
+    expect(() => command("x", [], body, { executableBy: "op" as never })).toThrow(RangeError);
   });
 });
 
