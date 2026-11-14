@@ -737,10 +737,16 @@ export type FunctionTypeName =
  * parameter; `default` is an expression evaluated at call time
  * (before any parameter is bound — defaults can see globals, not
  * the arguments) and used only when the argument is omitted.
+ *
+ * The type parameter carries the declared type as a literal (the
+ * `param()` builder in api.ts infers it) so typed function handles
+ * (`defineFn`) can map each parameter to the argument kind it
+ * accepts. It defaults to the full FunctionTypeName union, which
+ * is how all pre-existing code sees this interface.
  */
-export interface FunctionParam {
+export interface FunctionParam<T extends FunctionTypeName = FunctionTypeName> {
   name: string;
-  type: FunctionTypeName;
+  type: T;
   default?: Expr;
 }
 

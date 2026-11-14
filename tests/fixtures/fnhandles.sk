@@ -1,0 +1,31 @@
+function mmoXp(who: player, label: text) :: number:
+    return ((level of {_who} * 2) + length of {_label})
+
+function announceXp(who: player, amount: number, loud: boolean):
+    if {_loud} is true:
+        broadcast "xp +%{_amount}%"
+    else:
+        send "xp +%{_amount}%" to {_who}
+
+function totalXp(amounts: numbers) :: number:
+    set {_total} to 0
+    loop {_amounts::*}:
+        add loop-value to {_total}
+    return {_total}
+
+on join:
+    set {xp} to mmoXp(player, "join bonus")
+    announceXp(player, 25, true)
+    mmoXp(player, "stmt call")
+
+command /xp [<text>]:
+    trigger:
+        set {xp} to mmoXp(player, arg-1)
+        send "xp=%{xp}%" to player
+        announceXp(player, {xp}, false)
+
+command /totalxp:
+    trigger:
+        send "total=%totalXp(1, 2, 3)%" to player
+        set {t} to totalXp({bonus::*})
+        send "bonus=%{t}%" to player
