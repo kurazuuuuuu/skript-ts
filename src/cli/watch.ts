@@ -2,9 +2,9 @@
 // typecheck -> transpile to IR -> deploy into a running server -> ask the plugin to reload.
 
 import { createHash } from "node:crypto";
-import { watch, type FSWatcher } from "node:fs";
+import { readFileSync, watch, type FSWatcher } from "node:fs";
 import * as fs from "node:fs/promises";
-import { register } from "node:module";
+import { registerHooks } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -438,14 +438,47 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
       humanStream.write(`${installed.note}\n`);
     }
 
-    // ESM cache busting: the loader hook appends the current token to every
+    // ESM cache busting: the resolve hook appends the current token to every
     // file URL under the watched src root, so each round re-imports modules.
+    // buildProject loads user script modules with dynamic import(), and Node's
+    // ESM loader caches modules by URL, so a second in-process build round
+    // would silently reuse the first round's modules. Appending a per-round
+    // query token (`stsr=<n>`) to every resolved file: URL under the watched
+    // scripts root gives each round a fresh module graph, while modules
+    // shared by several scripts in the same round keep one identity (same
+    // token, same URL). Appending the token only to the entry module does
+    // NOT work: its relative imports resolve to the un-tokenized URL and
+    // stay cached (verified experimentally, phase 25).
+    //
+    // These hooks run synchronously on the main thread via registerHooks
+    // (feedback A6; the legacy register() loader-thread file is gone). The
+    // current token is read synchronously from a token file at each
+    // resolve: deterministic, and the watch loop bumps the file before
+    // every build round.
     await fs.writeFile(tokenFile, "0", "utf8");
     const rootPrefix = pathToFileURL(
       srcDir.endsWith(path.sep) ? srcDir : `${srcDir}${path.sep}`,
     ).href;
-    register(new URL("./watch-hooks.mjs", import.meta.url), {
-      data: { tokenFile, rootPrefix },
+    registerHooks({
+      resolve(specifier, context, nextResolve) {
+        const res = nextResolve(specifier, context);
+        if (!res.url.startsWith("file:") || !res.url.startsWith(rootPrefix)) {
+          return res;
+        }
+        const url = new URL(res.url);
+        if (url.searchParams.has("stsr")) return res;
+        let token = "0";
+        try {
+          token = readFileSync(tokenFile, "utf8").trim();
+        } catch {
+          // Token file unreadable: fall back to a constant token (the
+          // first round still loads; later rounds may go stale, which
+          // the watch loop surfaces as unchanged output rather than a
+          // crash).
+        }
+        url.searchParams.set("stsr", token);
+        return { ...res, url: url.href };
+      },
     });
 
     process.on("SIGINT", onSignal);
