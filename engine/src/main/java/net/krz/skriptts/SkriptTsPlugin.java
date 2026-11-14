@@ -451,6 +451,15 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
                         .sorted(Comparator.comparing(p -> relativeScriptId(dir, p)))
                         .toList();
             }
+            // Parse every file first, then flatten in declared
+            // load order (feedback B4): a script's IR root may
+            // carry "loadOrder" (ascending; undeclared = 0),
+            // with the relative path as the tie-breaker — the
+            // pre-B4 deterministic order. Handler order for
+            // same-priority events, duplicate definitions and
+            // periodical scheduling all follow this sequence.
+            record ParsedScript(String name, double loadOrder, List<?> body) {}
+            List<ParsedScript> parsedScripts = new ArrayList<>();
             for (Path file : files) {
                 String name = relativeScriptId(dir, file);
                 try {
@@ -462,18 +471,25 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
                     if (!(body instanceof List<?> bodyList)) {
                         throw new IllegalArgumentException("script body is not a list");
                     }
-                    for (Object top : bodyList) {
-                        if (top instanceof Map<?, ?>) {
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> topNode = (Map<String, Object>) top;
-                            tops.add(topNode);
-                            structures++;
-                        }
-                    }
+                    Object order = root.get("loadOrder");
+                    double loadOrder = order instanceof Number num ? num.doubleValue() : 0;
+                    parsedScripts.add(new ParsedScript(name, loadOrder, bodyList));
                     scripts++;
                 } catch (Exception e) {
                     getLogger().severe("Failed to load " + name + ": " + e.getMessage());
                     failedFiles.add(name);
+                }
+            }
+            parsedScripts.sort(
+                    Comparator.comparingDouble(ParsedScript::loadOrder).thenComparing(ParsedScript::name));
+            for (ParsedScript parsedScript : parsedScripts) {
+                for (Object top : parsedScript.body()) {
+                    if (top instanceof Map<?, ?>) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> topNode = (Map<String, Object>) top;
+                        tops.add(topNode);
+                        structures++;
+                    }
                 }
             }
         } catch (IOException e) {

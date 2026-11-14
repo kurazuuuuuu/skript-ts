@@ -1,0 +1,13 @@
+on chat:
+    if message is "orderprobe":
+        add "second" to {loadorderprobe::*}
+
+command /orderreset:
+    trigger:
+        delete {loadorderprobe::*}
+        send "orderreset: done" to player
+
+command /orderread:
+    trigger:
+        loop {loadorderprobe::*}:
+            send "order: %loop-value%" to player
