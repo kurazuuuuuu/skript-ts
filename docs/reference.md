@@ -2085,13 +2085,13 @@ Build-time only: a project exports one pack definition and
 built scripts. Nothing is deployed or sent to players yet — the zip
 is placed into a client's `resourcepacks` folder by hand.
 
-| TS builder                                                                         | Result in the pack                                                                                          |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `defineTexture({ id, palette, map, size?, transparentChar? })`                     | a PNG rendered from the pixel map at `assets/<ns>/textures/<path>.png`                                      |
-| `defineTexture({ id, source: { kind: "png", path } })`                             | the PNG file copied to the same place (path resolves against the defining file's directory)                 |
-| `defineItem({ id, baseItem, texture?, model?, modelParent?, displayName? })`       | a data-driven item definition at `assets/<ns>/items/<path>.json`, plus a model JSON when a texture is given |
-| `defineFontChar({ id, texture, char, height?, ascent })`                           | one bitmap provider in the pack's own font, `assets/<packNs>/font/default.json`                             |
-| `definePack({ namespace, description, required?, textures?, items?, fontChars? })` | the pack itself: `<namespace>.zip` + `<namespace>.resourcepack.json` in the build output                    |
+| TS builder                                                                                      | Result in the pack                                                                                                               |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `defineTexture({ id, palette, map, size?, transparentChar? })`                                  | a PNG rendered from the pixel map at `assets/<ns>/textures/<path>.png`                                                           |
+| `defineTexture({ id, source: { kind: "png", path } })`                                          | the PNG file copied to the same place (path resolves against the defining file's directory)                                      |
+| `defineItem({ id, baseItem, texture?, model?, modelParent?, displayName? })`                    | a data-driven item definition at `assets/<ns>/items/<path>.json`, plus a model JSON when a texture is given                      |
+| `defineFontChar({ id, texture, char, height?, ascent })`                                        | one bitmap provider in the pack's own font, `assets/<packNs>/font/default.json` (mirrored into `minecraft:default` since fb3 H1) |
+| `definePack({ namespace, description, required?, packFormat?, textures?, items?, fontChars? })` | the pack itself: `<namespace>.zip` + `<namespace>.resourcepack.json` in the build output (`packFormat` is fb3 H2)                |
 
 Semantics, pinned against the real 1.21.11 client jar (the formats
 are Mojang's, so the jar files themselves are the probe):
@@ -2099,7 +2099,9 @@ are Mojang's, so the jar files themselves are the probe):
 - **pack.mcmeta** uses the 1.21.9+ form: `min_format` / `max_format`
   are `[75, 0]`, the resource pack format of 1.21.11 (read from the
   version metadata of the 1.21.11 jar). The legacy lone
-  `pack_format` number is not emitted.
+  `pack_format` number is not emitted by default; `definePack`'s
+  `packFormat` option (fb3 H2, see the fb3 section) can target
+  other versions and ranges, including that lone-number form.
 - **Item definitions** are the data-driven form:
   `{ "model": { "type": "minecraft:model", "model": "<id>" } }`.
   The model id defaults to `<itemNs>:item/<itemPath>`; the model
@@ -2256,7 +2258,11 @@ Semantics:
   is ordinary text, so it renders wherever text already goes —
   compose it with `fmt()` into `send` messages, chest GUI
   titles (`openGui` / `chestInventory` titles), item names and
-  lore, and the client draws the pack font's glyph for it.
+  lore, and the client draws the glyph for it. Ordinary text is
+  drawn with the `minecraft:default` font, so the glyph must
+  be registered there, not only in the pack font — since fb3
+  H1 the generated pack registers its providers in both (see
+  the fb3 section).
 
 `examples/resourcepack.ts` exercises all three definition
 forms — the coin glyph and the gem icon auto-allocate (U+E000
@@ -2555,3 +2561,59 @@ font character and IHDR mismatch), the PNG decoder round-trips
 (RGBA / RGB / palette, Sub and Up filters, unsupported formats),
 and quantization (palette budget, map dimensions, the alpha
 threshold rule).
+
+## Resource packs: default-font glyphs and pack format ranges (fb3 H1/H2)
+
+Two fixes from the third feedback round, both in pack
+generation; neither changes any script-facing builder except
+`definePack`.
+
+- **H1 — font glyphs also live in `minecraft:default`.** A font
+  file at `assets/<ns>/font/default.json` defines the font
+  `<ns>:default`, which the client uses only for text whose
+  component explicitly names that font. skript-ts font chars
+  are plain text (`fontCharOf` resolves to a string literal,
+  RP-4), and untagged text is drawn with `minecraft:default` —
+  so a glyph registered only in the pack font rendered as tofu
+  (a box) in messages, GUI titles, item names and lore. The
+  alternative — making the emitters/engine attach a font name
+  to every text carrying a glyph — has no channel in Skript's
+  plain-string text and would break the RP-4 "ordinary text"
+  design, so generation now mirrors the pack's bitmap
+  providers into `assets/minecraft/font/default.json` as well.
+  Font definitions for the same font id combine across the
+  pack stack (a pack's providers are added to the font, they
+  do not replace lower packs' providers), so the vanilla
+  glyphs stay intact and the pack glyphs render in ordinary
+  text. The pack font file itself is unchanged, so text that
+  explicitly selects `<ns>:default` keeps working.
+  `examples/behavior/fontui.behavior.ts` now opens the built
+  pack zip and asserts both glyphs the script sends (U+E000,
+  U+E001) are registered in the `minecraft:default` file, in
+  addition to the message/title content checks. What remains
+  unverified is the real client's pixels (this environment
+  has no rendering client — the same honest remainder as
+  RP-5): the registration the client needs is now checked
+  automatically, the on-screen result is a manual check.
+- **H2 — `definePack` takes a `packFormat` option.** One
+  version is a bare major number (`75`) or a `[major, minor]`
+  pair (`[75, 0]`); the option is either one version or an
+  inclusive range `{ min, max }` whose sides are each one
+  version. Generation mapping: a single bare number emits the
+  legacy lone `pack_format` field; a single pair emits
+  `min_format` / `max_format` equal to it; a range emits
+  `min_format` / `max_format` with each side kept in the
+  shape it was written in (number stays a number, pair stays
+  a pair) — both field shapes are legal on 1.21.9+. Omitted,
+  the output is exactly the pre-H2 default (`min_format` /
+  `max_format` both `[75, 0]`). Validation is at define time:
+  non-negative integers only, and a range whose min compares
+  greater than its max (a bare number compares as `[n, 0]`)
+  is a build error. The manifest's `packFormat` records the
+  spec's minimum as a `[major, minor]` pair, so its shape is
+  unchanged for existing consumers.
+
+`tests/resourcepack.test.ts` pins the mirrored font file (and
+its absence for font-less packs) and the whole H2 matrix:
+default, lone number, single pair, mixed-shape range, pair
+range, and the validation errors.

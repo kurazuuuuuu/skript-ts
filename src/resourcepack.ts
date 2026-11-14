@@ -646,9 +646,7 @@ function normalizePackFormatVersion(value: unknown, where: string): PackFormatSi
   }
   if (Array.isArray(value)) {
     if (value.length !== 2) {
-      fail(
-        `${where}: pack format pair must be a [major, minor] pair, got ${describe(value)}`,
-      );
+      fail(`${where}: pack format pair must be a [major, minor] pair, got ${describe(value)}`);
     }
     const [major, minor] = value as [unknown, unknown];
     for (const [name, part] of [
@@ -656,9 +654,7 @@ function normalizePackFormatVersion(value: unknown, where: string): PackFormatSi
       ["minor", minor],
     ] as const) {
       if (typeof part !== "number" || !Number.isInteger(part) || part < 0) {
-        fail(
-          `${where}: pack format ${name} must be a non-negative integer, got ${describe(part)}`,
-        );
+        fail(`${where}: pack format ${name} must be a non-negative integer, got ${describe(part)}`);
       }
     }
     return { kind: "pair", value: [major as number, minor as number] };
