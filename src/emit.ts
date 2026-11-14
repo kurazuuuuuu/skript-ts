@@ -1413,6 +1413,8 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     case "httpDownload":
     case "cfD1Query":
     case "paint":
+    case "spawnParticle":
+    case "launchFirework":
       throw new Error(
         `Unhandled Stmt in emitStmt: '${s.kind}' is an engine-only builtin with no .sk form`,
       );

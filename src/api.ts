@@ -30,6 +30,7 @@ import type {
   BossBarStyleName,
   BossBarFlagName,
   FishingStateName,
+  FireworkType,
 } from "./ast.js";
 import { captureLoc } from "./loc.js";
 import type { ItemDef } from "./resourcepack.js";
@@ -3119,6 +3120,138 @@ export function paint(shape: Expr, fill: Expr, options: { replace?: Expr } = {})
       ? { kind: "paint", shape, fill }
       : { kind: "paint", shape, fill, replace: options.replace },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Engine builtins (particles & fireworks, feedback D): fire-and-
+// forget visual effects, executed natively on the Bukkit API.
+//
+// The coordinator probed the real Skript 2.17.1 in the sandbox:
+// it has NO native particle or firework effect — `show 10 of
+// flame at ...`, `draw ...` and `launch firework at ...` are all
+// parse errors there. These two statements are therefore engine
+// builtins like the addon slices: a script using either deploys
+// as IR only, and the .sk emitter refuses them.
+//
+// - spawnParticle takes the Bukkit Particle enum name as a plain
+//   string ("FLAME", "HEART", "CRIT_PORTAL", ...). The builder
+//   validates only the SHAPE — uppercase snake case — because the
+//   enum's membership is a server-version fact, not a builder
+//   fact: the engine resolves the name with Particle.valueOf
+//   inside a guard, and an unknown (but well-shaped) name logs a
+//   warning and does nothing — it never crashes the script. The
+//   count is a builder-level number, default 1; the engine treats
+//   a count of 0 or less as a no-op. The location is any location-
+//   valued expression (a location, a block, an entity — the
+//   engine's usual at-position coercion).
+// - launchFirework spawns a Firework entity at the location and
+//   applies one FireworkEffect built from the options: the colors
+//   are "#RRGGBB" hex strings (an unparseable color is skipped
+//   engine side; no colors at all yields a default white), the
+//   type is one of the FireworkEffect.Type names (default
+//   "BALL"), flicker / trail are the effect flags, and power is
+//   the flight power (default 1, clamped by the engine to >= 0).
+//   All options are builder-level literals, validated here:
+//   a bad hex string, an unknown type or a non-finite power is a
+//   RangeError at build time.
+// ---------------------------------------------------------------------------
+
+const PARTICLE_NAME_PATTERN: RegExp = /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$/;
+
+function requireParticleName(particle: string): string {
+  if (typeof particle !== "string" || !PARTICLE_NAME_PATTERN.test(particle)) {
+    throw new RangeError(
+      `particle name must be an uppercase snake-case Bukkit Particle enum name, got ${String(particle)}`,
+    );
+  }
+  return particle;
+}
+
+/**
+ * Construct a spawn-particle statement (engine builtin): spawn
+ * `count` particles of the named Bukkit Particle at a location.
+ * The name is a Particle enum name in uppercase snake case
+ * ("FLAME", "HEART"); a well-shaped name the server does not
+ * know is a warned no-op in the engine, never an error. The
+ * count defaults to 1; a count of 0 or less spawns nothing.
+ */
+export function spawnParticle(particle: string, location: Expr, count?: number): Stmt {
+  const name = requireParticleName(particle);
+  if (count !== undefined && (typeof count !== "number" || !Number.isFinite(count))) {
+    throw new RangeError(`particle count must be a finite number, got ${String(count)}`);
+  }
+  return withLoc(
+    count === undefined
+      ? { kind: "spawnParticle", particle: name, location }
+      : { kind: "spawnParticle", particle: name, location, count },
+  );
+}
+
+/** The options of launchFirework: builder-level literals for the firework's single effect and its flight power. */
+export interface FireworkOptions {
+  /** Flight power (default 1); the engine clamps it to >= 0. */
+  power?: number;
+  /** Effect colors as "#RRGGBB" hex strings; an empty/absent list yields a default white effect. */
+  colors?: readonly string[];
+  /** Effect shape (default "BALL"). */
+  type?: FireworkType;
+  /** Whether the effect flickers (default false). */
+  flicker?: boolean;
+  /** Whether the effect leaves a trail (default false). */
+  trail?: boolean;
+}
+
+const FIREWORK_TYPES: ReadonlySet<string> = new Set([
+  "BALL",
+  "BALL_LARGE",
+  "BURST",
+  "CREEPER",
+  "STAR",
+]);
+
+const FIREWORK_COLOR_PATTERN: RegExp = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Construct a launch-firework statement (engine builtin): spawn
+ * a firework at a location with one effect built from the
+ * options (colors as "#RRGGBB" hex strings, type, flicker,
+ * trail) and the given flight power. Bad option shapes — an
+ * unparseable hex color, an unknown type, a non-finite power —
+ * are RangeErrors at build time.
+ */
+export function launchFirework(location: Expr, options: FireworkOptions = {}): Stmt {
+  const { power, colors, type, flicker, trail } = options;
+  if (power !== undefined && (typeof power !== "number" || !Number.isFinite(power))) {
+    throw new RangeError(`firework power must be a finite number, got ${String(power)}`);
+  }
+  if (colors !== undefined) {
+    if (!Array.isArray(colors)) {
+      throw new RangeError('firework colors must be an array of "#RRGGBB" hex strings');
+    }
+    for (const color of colors) {
+      if (typeof color !== "string" || !FIREWORK_COLOR_PATTERN.test(color)) {
+        throw new RangeError(`firework color must be a "#RRGGBB" hex string, got ${String(color)}`);
+      }
+    }
+  }
+  if (type !== undefined && !FIREWORK_TYPES.has(type)) {
+    throw new RangeError(`invalid firework type: ${String(type)}`);
+  }
+  if (flicker !== undefined && typeof flicker !== "boolean") {
+    throw new RangeError("firework flicker must be a boolean");
+  }
+  if (trail !== undefined && typeof trail !== "boolean") {
+    throw new RangeError("firework trail must be a boolean");
+  }
+  return withLoc({
+    kind: "launchFirework",
+    location,
+    ...(power !== undefined ? { power } : {}),
+    ...(colors !== undefined ? { colors: [...colors] } : {}),
+    ...(type !== undefined ? { type } : {}),
+    ...(flicker !== undefined ? { flicker } : {}),
+    ...(trail !== undefined ? { trail } : {}),
+  });
 }
 
 /** Construct a set-world-time statement: set a world's clock (`set time in <world> to <time>`). The value is a clockTime literal or an expression carrying a clock text. */

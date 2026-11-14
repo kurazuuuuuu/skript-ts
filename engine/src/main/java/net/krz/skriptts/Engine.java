@@ -5,11 +5,14 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.title.Title;
 import net.kyori.adventure.title.TitlePart;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
+import org.bukkit.FireworkEffect;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Particle;
 import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.World;
@@ -24,6 +27,7 @@ import org.bukkit.boss.KeyedBossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Firework;
 import org.bukkit.entity.FishHook;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
@@ -36,6 +40,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.components.CustomModelDataComponent;
 import org.bukkit.potion.PotionEffect;
@@ -2035,6 +2040,77 @@ final class Engine {
                         && fill instanceof Paint.Fill f
                         && (!hasReplace || replaceOnly != null)) {
                     Paint.apply(s, f, replaceOnly);
+                }
+                cont.run();
+            }
+            case "spawnParticle" -> {
+                // Engine builtin (particles & fireworks,
+                // feedback D): world.spawnParticle with the
+                // Bukkit Particle named by the builder-validated
+                // string. The name resolves through
+                // Particle.valueOf inside a guard: an unknown
+                // name (or a particle this call form cannot
+                // spawn) logs a warning and does nothing — a
+                // visual effect must never crash the script.
+                // The count defaults to 1; a count of 0 or less
+                // is a no-op.
+                Location loc = asLocation(evalExpr(node(stmt.get("location")), ctx));
+                int count = stmt.get("count") == null ? 1 : (int) num(stmt.get("count"));
+                if (loc != null && loc.getWorld() != null && count > 0) {
+                    String name = str(stmt.get("particle"));
+                    try {
+                        Particle particle = Particle.valueOf(name);
+                        loc.getWorld().spawnParticle(particle, loc, count);
+                    } catch (RuntimeException e) {
+                        logger.warning("skript-ts: cannot spawn particle '" + name + "': " + e.getMessage());
+                    }
+                }
+                cont.run();
+            }
+            case "launchFirework" -> {
+                // Engine builtin (particles & fireworks,
+                // feedback D): spawn a Firework at the location
+                // and apply one FireworkEffect built from the
+                // builder-level options. Colors are "#RRGGBB"
+                // hex strings; an unparseable color is skipped
+                // and no colors at all falls back to a default
+                // white. The type defaults to BALL, the flight
+                // power defaults to 1 and is clamped to >= 0
+                // (and to Bukkit's 255 maximum, which setPower
+                // enforces with an exception).
+                Location loc = asLocation(evalExpr(node(stmt.get("location")), ctx));
+                if (loc != null && loc.getWorld() != null) {
+                    List<Color> colors = new ArrayList<>();
+                    for (Object entry : list(stmt.get("colors"))) {
+                        if (entry instanceof String s) {
+                            Color color = parseHexColor(s);
+                            if (color != null) colors.add(color);
+                        }
+                    }
+                    if (colors.isEmpty()) colors.add(Color.WHITE);
+                    FireworkEffect.Type type = FireworkEffect.Type.BALL;
+                    String typeName = str(stmt.get("type"));
+                    if (typeName != null) {
+                        try {
+                            type = FireworkEffect.Type.valueOf(typeName);
+                        } catch (IllegalArgumentException e) {
+                            logger.warning("skript-ts: unknown firework type '" + typeName + "', using BALL");
+                        }
+                    }
+                    FireworkEffect effect = FireworkEffect.builder()
+                            .withColor(colors)
+                            .with(type)
+                            .flicker(Boolean.TRUE.equals(stmt.get("flicker")))
+                            .trail(Boolean.TRUE.equals(stmt.get("trail")))
+                            .build();
+                    int power = stmt.get("power") == null
+                            ? 1
+                            : Math.max(0, Math.min(255, (int) num(stmt.get("power"))));
+                    Firework firework = loc.getWorld().spawn(loc, Firework.class);
+                    FireworkMeta meta = firework.getFireworkMeta();
+                    meta.addEffect(effect);
+                    meta.setPower(power);
+                    firework.setFireworkMeta(meta);
                 }
                 cont.run();
             }
@@ -4926,6 +5002,21 @@ final class Engine {
         if (value instanceof Block b) return b.getLocation().add(0.5, 0.5, 0.5);
         if (value instanceof Entity e) return e.getLocation();
         return null;
+    }
+
+    /**
+     * A "#RRGGBB" hex string as a Bukkit Color (firework
+     * effects, feedback D), or null when the string does not
+     * parse — the caller skips unparseable colors rather than
+     * failing the whole effect.
+     */
+    private static Color parseHexColor(String s) {
+        if (s.length() != 7 || s.charAt(0) != '#') return null;
+        try {
+            return Color.fromRGB(Integer.parseInt(s.substring(1), 16));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

@@ -1343,6 +1343,62 @@ and `examples/behavior/paint.behavior.ts` verifies
 the geometry and the seed reproducibility against a
 live server under the engine.
 
+## Particles and fireworks (engine-only)
+
+Fire-and-forget visual effects, executed natively on
+the Bukkit API. The real Skript 2.17.1 has **no**
+native particle or firework effect (probed: `show 10
+of flame at ...`, `draw ...` and `launch firework at
+...` are all parse errors), so both statements are
+**engine-only** builtins, like the addon slices: the
+emitter throws on these kinds, scripts using them
+deploy as IR only, and Skript-mode deployment skips
+them. Neither statement has a result, and neither can
+fail a script — every failure mode below is a warned
+no-op or a skipped option in the engine.
+
+| TS builder                                  | Effect                                                                       |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| `spawnParticle(particle, location, count?)` | `world.spawnParticle(...)` at the location (default count 1)                 |
+| `launchFirework(location, options?)`        | spawn a Firework at the location and apply one effect built from the options |
+
+- **Particle name contract**: `particle` is a Bukkit
+  `Particle` enum name as a plain string — `"FLAME"`,
+  `"HEART"`, `"CRIT_PORTAL"`, and so on. The builder
+  validates only the **shape**: uppercase snake case
+  (`RangeError` otherwise). Enum membership is a
+  server-version fact, so the engine resolves the name
+  with `Particle.valueOf` inside a guard: an unknown
+  (but well-shaped) name logs a warning and spawns
+  nothing — it never crashes the script. A `count` of
+  0 or less is likewise a no-op. The location is any
+  location-valued expression (a location, a block, or
+  an entity — the engine's usual at-position coercion).
+- **Firework options** (all builder-level literals,
+  validated at build time — `RangeError` on a bad
+  shape):
+  - `power?: number` — flight power, default 1; the
+    engine clamps it to >= 0 (and to Bukkit's maximum
+    of 255).
+  - `colors?: readonly string[]` — the effect's colors
+    as `"#RRGGBB"` hex strings. Engine side, an
+    unparseable color is skipped; when no color
+    remains (or none was given) the effect defaults to
+    white.
+  - `type?: "BALL" | "BALL_LARGE" | "BURST" |
+    "CREEPER" | "STAR"` — the `FireworkEffect.Type`
+    name, default `"BALL"`.
+  - `flicker?: boolean`, `trail?: boolean` — the
+    effect's flags, default false.
+
+`examples/particles.ts` drives both from commands at
+the player's location, and
+`examples/behavior/particles.behavior.ts` pins the
+execution contract under the engine: the effects are
+visual, so the test asserts that each statement runs
+without errors (proven by the follow-up broadcast in
+the same trigger), not the visuals themselves.
+
 ## Player state and effects
 
 Player / entity state reads and writes, potion

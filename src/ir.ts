@@ -95,6 +95,8 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "eventCursor",
   "setCursorItem",
   "freeSpaceFor",
+  "spawnParticle",
+  "launchFirework",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
