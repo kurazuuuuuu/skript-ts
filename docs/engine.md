@@ -78,8 +78,11 @@ key segment back in-game and asserts it is the bot's UUID.
 
 ### Building the jar
 
-The build needs a JDK 21: `engine/build.sh` uses `$SKRIPT_TS_JDK`
-when set and otherwise falls back to a conventional tools path
+The build needs a JDK 21 or newer: `engine/build.sh` resolves
+the JDK in order — `$SKRIPT_TS_JDK` when set, then `$JAVA_HOME`,
+then `javac` on `PATH` — and compiles with `--release 21`, so
+the jar's class files are always version 21 even when built
+with a newer JDK such as JDK 25
 (see [agent-setup.md](agent-setup.md) step 5). Compile-time
 libraries live in `engine/libs/` (the jars are gitignored) and
 are fetched once with SHA-512 checksum verification; the fetch

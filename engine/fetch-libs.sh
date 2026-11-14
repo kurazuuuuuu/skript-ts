@@ -70,6 +70,25 @@ done
 BUNGEE_VERSION="1.21-R0.2-deprecated+build.21"
 fetch "bungeecord-chat-${BUNGEE_VERSION}.jar" \
     "https://repo.papermc.io/repository/maven-public/net/md-5/bungeecord-chat/${BUNGEE_VERSION}/bungeecord-chat-1.21-R0.2-deprecated%2Bbuild.21.jar"
+# JetBrains annotations + Guava (feedback F1): Paper/Adventure API
+# classes carry @NotNull/@Nullable type annotations. JDK 21's javac
+# tolerates the annotation classes being absent from the classpath,
+# but JDK 25's javac aborts with a Symbol$CompletionFailure
+# (org.jetbrains.annotations.NotNull not found). With the annotations
+# jar present, JDK 25 then attaches those type annotations and needs
+# the Guava types that appear in the annotated signatures (for
+# example com.google.common.collect.Multimap), so Guava is required
+# as well. Versions per the POMs: annotations 26.0.2-1 is the
+# adventure-api compile dependency, guava 33.3.1-jre is the
+# paper-api compile dependency. Both hashes below were cross-checked
+# against the checksums Maven Central publishes for the same jars
+# (annotations .sha512 / guava .sha1) before being pinned.
+ANNOTATIONS_VERSION="26.0.2-1"
+fetch "annotations-${ANNOTATIONS_VERSION}.jar" \
+    "https://repo1.maven.org/maven2/org/jetbrains/annotations/${ANNOTATIONS_VERSION}/annotations-${ANNOTATIONS_VERSION}.jar"
+GUAVA_VERSION="33.3.1-jre"
+fetch "guava-${GUAVA_VERSION}.jar" \
+    "https://repo1.maven.org/maven2/com/google/guava/guava/${GUAVA_VERSION}/guava-${GUAVA_VERSION}.jar"
 # PlaceholderAPI (phase 10, Ersatz slice): compile-time dependency of
 # the engine's placeholder bridge, and the jar the CLI deploys next
 # to the engine in the sandbox so the bridge has its runtime plugin.

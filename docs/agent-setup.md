@@ -108,9 +108,11 @@ engine/build.sh        # -> engine/build/skript-ts.jar
 bin/skript-ts.mjs verify --engine --json
 ```
 
-`engine/build.sh` looks for a JDK 21 under `$SKRIPT_TS_JDK` first
-and falls back to a conventional tools path; set
-`SKRIPT_TS_JDK=/path/to/jdk21` if it is not found. `verify --engine`
+`engine/build.sh` resolves its JDK in order — `$SKRIPT_TS_JDK`,
+then `$JAVA_HOME`, then `javac` on `PATH` — and compiles with
+`--release 21`, so any JDK 21 or newer (for example JDK 25)
+produces a jar with class-file version 21; set
+`SKRIPT_TS_JDK=/path/to/jdk` if none of those finds a JDK. `verify --engine`
 deploys the IR files plus the jar and renames `Skript.jar` aside,
 so the sandbox runs with **no** Skript plugin; a plain `verify`
 afterwards restores Skript mode. Never leave both runtimes
