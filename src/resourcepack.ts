@@ -249,10 +249,46 @@ export interface FontCharDef {
   ascent: number;
 }
 
+/**
+ * One pack-format version (fb3 H2): either a bare major number
+ * (`75`) or a `[major, minor]` pair (`[75, 0]`). Both shapes are
+ * legal for `pack_format` / `min_format` / `max_format` in
+ * pack.mcmeta on 1.21.9+.
+ */
+export type PackFormatVersion = number | readonly [number, number];
+
+/**
+ * The `packFormat` option of `definePack` (fb3 H2): a single
+ * target version, or an inclusive `{ min, max }` range whose sides
+ * are each a {@link PackFormatVersion}. A single bare number
+ * generates the lone-`pack_format` form of pack.mcmeta; every
+ * other shape generates `min_format` / `max_format` fields with
+ * each side kept in the shape it was written in.
+ */
+export type PackFormatInput =
+  | PackFormatVersion
+  | { min: PackFormatVersion; max: PackFormatVersion };
+
+/** A validated single-version pack format (fb3 H2). */
+export type PackFormatSingle =
+  | { kind: "number"; value: number }
+  | { kind: "pair"; value: readonly [number, number] };
+
+/** A validated pack format: one version, or an inclusive range. */
+export type PackFormatSpec =
+  | { kind: "single"; single: PackFormatSingle }
+  | { kind: "range"; min: PackFormatSingle; max: PackFormatSingle };
+
 export interface PackInput {
   namespace: string;
   description: string;
   required?: boolean;
+  /**
+   * Pack format targeting (fb3 H2). Omit for the default: the
+   * 1.21.11 format as an equal-ended range (`min_format` /
+   * `max_format` both `[75, 0]`), exactly as before.
+   */
+  packFormat?: PackFormatInput;
   textures?: readonly TextureDef[];
   items?: readonly ItemDef[];
   fontChars?: readonly FontCharDef[];
@@ -263,6 +299,8 @@ export interface PackDef {
   namespace: string;
   description: string;
   required: boolean;
+  /** Validated pack format (fb3 H2); undefined means the default. */
+  packFormat?: PackFormatSpec;
   textures: readonly TextureDef[];
   items: readonly ItemDef[];
   fontChars: readonly FontCharDef[];
@@ -596,6 +634,67 @@ export function defineFontChar(input: FontCharInput): FontCharDef {
 }
 
 /* ------------------------------------------------------------------ */
+/* pack format (fb3 H2)                                                */
+/* ------------------------------------------------------------------ */
+
+function normalizePackFormatVersion(value: unknown, where: string): PackFormatSingle {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0) {
+      fail(`${where}: pack format must be a non-negative integer, got ${describe(value)}`);
+    }
+    return { kind: "number", value };
+  }
+  if (Array.isArray(value)) {
+    if (value.length !== 2) {
+      fail(`${where}: pack format pair must be a [major, minor] pair, got ${describe(value)}`);
+    }
+    const [major, minor] = value as [unknown, unknown];
+    for (const [name, part] of [
+      ["major", major],
+      ["minor", minor],
+    ] as const) {
+      if (typeof part !== "number" || !Number.isInteger(part) || part < 0) {
+        fail(`${where}: pack format ${name} must be a non-negative integer, got ${describe(part)}`);
+      }
+    }
+    return { kind: "pair", value: [major as number, minor as number] };
+  }
+  return fail(
+    `${where}: pack format must be a non-negative integer or a [major, minor] pair, got ${describe(value)}`,
+  );
+}
+
+/** A format side as a comparable [major, minor] pair (a bare number is [n, 0]). */
+export function packFormatPair(single: PackFormatSingle): readonly [number, number] {
+  return single.kind === "number" ? [single.value, 0] : single.value;
+}
+
+/** The JSON value of one format side, in the shape it was written in. */
+export function packFormatJson(single: PackFormatSingle): number | [number, number] {
+  return single.kind === "number" ? single.value : [single.value[0], single.value[1]];
+}
+
+function normalizePackFormat(input: unknown, where: string): PackFormatSpec {
+  if (input !== null && typeof input === "object" && !Array.isArray(input)) {
+    const range = input as { min?: unknown; max?: unknown };
+    if (range.min === undefined || range.max === undefined) {
+      fail(`${where}: pack format range must have both "min" and "max"`);
+    }
+    const min = normalizePackFormatVersion(range.min, `${where}: min`);
+    const max = normalizePackFormatVersion(range.max, `${where}: max`);
+    const [minMajor, minMinor] = packFormatPair(min);
+    const [maxMajor, maxMinor] = packFormatPair(max);
+    if (minMajor > maxMajor || (minMajor === maxMajor && minMinor > maxMinor)) {
+      fail(
+        `${where}: pack format range min [${minMajor}, ${minMinor}] is greater than max [${maxMajor}, ${maxMinor}]`,
+      );
+    }
+    return { kind: "range", min, max };
+  }
+  return { kind: "single", single: normalizePackFormatVersion(input, where) };
+}
+
+/* ------------------------------------------------------------------ */
 /* definePack                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -617,6 +716,11 @@ export function definePack(input: PackInput): PackDef {
     fail(`${base}: required must be a boolean, got ${describe(requiredRaw)}`);
   }
   const required = requiredRaw;
+
+  const packFormat =
+    input.packFormat === undefined
+      ? undefined
+      : normalizePackFormat(input.packFormat, `${base}: packFormat`);
 
   const textureList = toArray(input.textures, `${base}: textures`);
   const itemList = toArray(input.items, `${base}: items`);
@@ -727,6 +831,7 @@ export function definePack(input: PackInput): PackDef {
     namespace,
     description,
     required,
+    ...(packFormat !== undefined ? { packFormat } : {}),
     textures: textureList,
     items: itemList,
     fontChars: fontCharList,
