@@ -203,6 +203,7 @@ describe("deployPacks (RP-3)", () => {
         packFormat: [0, 0],
         contents: [],
         items: [],
+        textures: [],
       },
     };
   }

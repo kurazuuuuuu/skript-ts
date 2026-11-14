@@ -14,6 +14,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { emitIr, emitWithMap, isEngineOnlyScript, type Script } from "../index.js";
 import { generatePack, type PackManifest } from "../packgen.js";
+import { checkPack } from "../packcheck.js";
 import {
   allocateCustomModelData,
   allocateFontChars,
@@ -425,6 +426,15 @@ function buildPacks(
     },
     { customModelData: allocations },
   );
+  // RP-5: self-verify the generated pack before it lands anywhere;
+  // a pack that fails its own check is a build error.
+  const packProblems = checkPack(generated.zip, generated.manifest);
+  if (packProblems.length > 0) {
+    throw new Error(
+      `${relSource}: generated pack "${pack.namespace}" failed self-verification (checkPack):\n` +
+        packProblems.map((p) => `  - ${p}`).join("\n"),
+    );
+  }
   mkdirSync(outDir, { recursive: true });
   const zipPath = join(outDir, generated.manifest.zipFile);
   writeFileSync(zipPath, generated.zip);

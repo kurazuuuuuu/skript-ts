@@ -2403,3 +2403,72 @@ accepted → downloaded → successfully_loaded transitions are
 observed through the script; a quota section (gated on a tiny
 configured Class A limit) pins the breakwater's `quota`
 completion.
+
+## Resource packs: PNG ingestion hardening, self-check and quantize CLI (RP-5)
+
+RP-5 hardens the path from a generated texture file to a pack a
+client can be trusted to load, and automates every check that can
+be done without a rendering client.
+
+- **PNG validation (IHDR).** A PNG-source texture is no longer
+  checked by signature alone: `generatePack` parses the IHDR
+  chunk and reads its width and height. A missing or malformed
+  IHDR, a truncated file, and any side outside the sanity range
+  **1..4096** are clear build errors (the range exists to catch
+  corrupt files, not to limit legitimate textures).
+- **Manifest `textures` array (additive).** The manifest gains a
+  `textures` array in pack declaration order; each entry is
+  `{ id, source: "pixelmap" | "png", width, height }` — the size
+  comes from the pixel map's `size` for pixel-map textures and
+  from IHDR for PNG-source textures. All existing manifest fields
+  are unchanged.
+- **Build-time self-verification (`checkPack`).** `src/packcheck.ts`
+  exports `checkPack(zipBytes, manifest): string[]` (empty =
+  sound). It re-computes the zip's SHA-1 against `manifest.sha1`,
+  checks that every manifest-declared file is in the zip and that
+  the zip holds no undeclared file, that every texture a model
+  JSON references exists, that font providers have no duplicate
+  characters and reference existing textures, and that PNG-source
+  textures' IHDR dimensions match the manifest `textures` record.
+  `buildPacks` runs it on every generated pack; any problem is a
+  build error, so a broken pack never reaches deployment.
+- **Quantize CLI.** `skript-ts quantize <png-file> [--colors N]
+  [--size WxH] [--id <resource-id>]` decodes a PNG, optionally
+  resizes it with nearest-neighbor sampling to `WxH` (each side
+  1..256, the texture size limit), quantizes it to at most `N`
+  colors (default 16) with median-cut, and prints a
+  `defineTexture` pixel-map source (palette + character map) to
+  stdout. `--json` prints a JSON object carrying the same source
+  plus the palette and dimensions. The default id is
+  `item/<file base name>` when that is a valid resource path.
+  - **Decoder coverage** (`src/pngdecode.ts`): non-interlaced,
+    bit depth 8, color types 2 (RGB), 6 (RGBA) and 3 (palette,
+    PLTE + optional tRNS); IDAT inflation is `node:zlib`, and all
+    five PNG scanline filters are undone. Anything else — 16-bit,
+    interlaced, grayscale (0), grayscale+alpha (4), other bit
+    depths — fails with an explicit `unsupported` error, never a
+    silent mis-decode.
+  - **Transparency rule**: a pixel whose alpha is **below 128**
+    is transparent and maps to `"."`; a pixel whose alpha is
+    **128 or above** is opaque — its alpha is discarded and its
+    RGB is quantized as a fully opaque color. `--colors N` bounds
+    the total palette size, counting the `"."` transparent entry
+    when the image has transparent pixels.
+- **Honest remainder — no visual client check.** Verifying that
+  a real client _renders_ the pack correctly (screenshots /
+  pixel comparison on screen) has **not** been done: this
+  environment has no rendering-capable client. Protocol-level
+  application is covered instead by the RP-3 verification, where
+  a bot downloads the offered pack, its SHA-1 matches the
+  manifest, and the accepted → downloaded → successfully_loaded
+  status transitions are observed. Visual confirmation remains
+  an open item for an environment with a real client.
+
+`tests/rp5.test.ts` pins the IHDR validation (valid, truncated,
+bad signature, 0 / out-of-range dimensions), the manifest
+`textures` records, `checkPack` (sound pack plus missing file,
+extra file, hash mismatch, broken model reference, duplicate
+font character and IHDR mismatch), the PNG decoder round-trips
+(RGBA / RGB / palette, Sub and Up filters, unsupported formats),
+and quantization (palette budget, map dimensions, the alpha
+threshold rule).

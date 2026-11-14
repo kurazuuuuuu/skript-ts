@@ -14,6 +14,7 @@
  *   skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>]
  *                    [--engine-jar <path>] [--no-engine-jar] [--json]
  *   skript-ts skills install [--dir <dir>] [--json]
+ *   skript-ts quantize <png-file> [--colors N] [--size WxH] [--id <resource-id>]
  *
  * build:  typecheck -> transpile -> deploy (with --deploy)
  * verify: typecheck -> transpile -> deploy -> server start -> script load
@@ -69,11 +70,12 @@ import {
   runTypecheck,
   type BuildResult,
 } from "./cli/project.js";
+import { formatQuantizedTexture, quantizePng } from "./quantize.js";
 import { SandboxServer } from "./cli/server.js";
 import { SkriptLogParser, mapError, type MappedError } from "./cli/skript-log.js";
 
 interface CliOptions {
-  command: "build" | "verify" | "probe" | "watch" | "skills";
+  command: "build" | "verify" | "probe" | "watch" | "skills" | "quantize";
   srcDir: string;
   outDir: string;
   serverDir: string;
@@ -103,6 +105,11 @@ interface CliOptions {
   // skills only
   skillsAction: "install";
   skillsDir: string;
+  // quantize only
+  quantizeFile: string | null;
+  quantizeColors: number;
+  quantizeSize: readonly [number, number] | null;
+  quantizeId: string | null;
 }
 
 interface StageResult {
@@ -142,7 +149,8 @@ const USAGE = `usage:
   skript-ts probe status [--server-dir <dir>] [--json]
   skript-ts watch --server-dir <dir> [--src <dir>] [--out <dir>] [--yes] [--debounce-ms <n>]
                    [--engine-jar <path>] [--no-engine-jar] [--json]
-  skript-ts skills install [--dir <dir>] [--json]`;
+  skript-ts skills install [--dir <dir>] [--json]
+  skript-ts quantize <png-file> [--colors N] [--size WxH] [--id <resource-id>]`;
 
 function parseNonNegativeNumber(flag: string, raw: string): number {
   const n = Number(raw);
@@ -279,6 +287,63 @@ function parseSkillsArgs(rest: string[], opts: CliOptions): void {
   }
 }
 
+function parseQuantizeSize(raw: string): readonly [number, number] {
+  const m = /^(\d+)x(\d+)$/.exec(raw);
+  if (m === null)
+    throw new Error(`invalid --size value: ${raw} (expected WxH, e.g. 16x16)\n${USAGE}`);
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (w < 1 || w > 256 || h < 1 || h > 256) {
+    throw new Error(
+      `invalid --size value: ${raw} (each side must be 1..256, the texture size limit)`,
+    );
+  }
+  return [w, h];
+}
+
+function parseQuantizeArgs(rest: string[], opts: CliOptions): void {
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i] as string;
+    const value = (): string => {
+      const v = rest[++i];
+      if (v === undefined) throw new Error(`missing value for ${arg}\n${USAGE}`);
+      return v;
+    };
+    switch (arg) {
+      case "--colors": {
+        const raw = value();
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n < 1) throw new Error(`invalid number for --colors: ${raw}`);
+        opts.quantizeColors = n;
+        break;
+      }
+      case "--size":
+        opts.quantizeSize = parseQuantizeSize(value());
+        break;
+      case "--id":
+        opts.quantizeId = value();
+        break;
+      case "--json":
+        opts.json = true;
+        break;
+      case "--help":
+      case "-h":
+        console.log(USAGE);
+        process.exit(0);
+        break;
+      default:
+        if (!arg.startsWith("--") && opts.quantizeFile === null) {
+          opts.quantizeFile = arg;
+          break;
+        }
+        throw new Error(`unknown option: ${arg}\n${USAGE}`);
+    }
+  }
+  if (opts.quantizeFile === null) {
+    throw new Error(`quantize requires a PNG file\n${USAGE}`);
+  }
+}
+
 function parseArgs(argv: string[]): CliOptions {
   const [command, ...rest] = argv;
   if (
@@ -286,7 +351,8 @@ function parseArgs(argv: string[]): CliOptions {
     command !== "verify" &&
     command !== "probe" &&
     command !== "watch" &&
-    command !== "skills"
+    command !== "skills" &&
+    command !== "quantize"
   ) {
     throw new Error(`unknown command: ${command ?? "(none)"}\n${USAGE}`);
   }
@@ -315,7 +381,15 @@ function parseArgs(argv: string[]): CliOptions {
     settleMs: 3000,
     skillsAction: "install",
     skillsDir: join(homedir(), ".claude", "skills"),
+    quantizeFile: null,
+    quantizeColors: 16,
+    quantizeSize: null,
+    quantizeId: null,
   };
+  if (command === "quantize") {
+    parseQuantizeArgs(rest, opts);
+    return opts;
+  }
   if (command === "probe") {
     parseProbeArgs(rest, opts);
     return opts;
@@ -599,6 +673,56 @@ async function runProbeCommand(
   }
 }
 
+function runQuantizeCommand(opts: CliOptions, ctx: { rootDir: string }): number {
+  try {
+    const file = resolve(ctx.rootDir, opts.quantizeFile as string);
+    const png = readFileSync(file);
+    const quantized = quantizePng(png, {
+      maxColors: opts.quantizeColors,
+      ...(opts.quantizeSize !== null ? { size: opts.quantizeSize } : {}),
+    });
+    // Default id: the file's base name as a bare item path, when it
+    // is a valid resource path; otherwise a fixed fallback.
+    const base = basename(file)
+      .replace(/\.png$/i, "")
+      .toLowerCase();
+    const id =
+      opts.quantizeId ??
+      (/^[a-z0-9_./-]+$/.test(base) && base.length > 0 ? `item/${base}` : "item/quantized");
+    const source = formatQuantizedTexture(quantized, id);
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          {
+            command: "quantize",
+            ok: true,
+            file: opts.quantizeFile,
+            id,
+            width: quantized.width,
+            height: quantized.height,
+            colors: Object.keys(quantized.palette).length,
+            palette: quantized.palette,
+            source,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      process.stdout.write(source);
+    }
+    return 0;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (opts.json) {
+      console.log(JSON.stringify({ command: "quantize", ok: false, error: message }, null, 2));
+    } else {
+      console.error(`quantize: ${message}`);
+    }
+    return 1;
+  }
+}
+
 async function runSkillsCommand(
   opts: CliOptions,
   ctx: { rootDir: string; progress: ProgressReporter; startedAt: number },
@@ -680,6 +804,10 @@ async function main(): Promise<number> {
 
   const progressStream = opts.json ? process.stderr : process.stdout;
   const progress = createProgress({ stream: progressStream, tty: progressStream.isTTY === true });
+
+  if (opts.command === "quantize") {
+    return runQuantizeCommand(opts, { rootDir });
+  }
 
   if (opts.command === "skills") {
     return runSkillsCommand(opts, { rootDir, progress, startedAt });

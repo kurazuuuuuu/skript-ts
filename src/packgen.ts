@@ -56,6 +56,16 @@ export interface PackManifestItem {
   customModelData?: number;
 }
 
+/** One texture, as recorded in the manifest (RP-5). */
+export interface PackManifestTexture {
+  /** Resolved texture id (`ns:path`). */
+  id: string;
+  /** Where the texture came from: a pixel map or a PNG file. */
+  source: "pixelmap" | "png";
+  width: number;
+  height: number;
+}
+
 export interface PackManifest {
   namespace: string;
   description: string;
@@ -71,6 +81,47 @@ export interface PackManifest {
   contents: string[];
   /** Generated item manifest entries, in pack declaration order. */
   items: PackManifestItem[];
+  /** Texture dimensions, in pack declaration order (RP-5, additive). */
+  textures: PackManifestTexture[];
+}
+
+/** Sanity range for PNG-source texture dimensions (RP-5). */
+export const MAX_PNG_DIMENSION = 4096;
+
+/**
+ * Parse a PNG's IHDR chunk and return its dimensions (RP-5).
+ * Validates the signature, the presence and shape of IHDR, and
+ * that both sides lie in 1..4096 — a sanity range that catches
+ * corrupt files early, with a clear build error. Throws on any
+ * problem; the message names the context via `where`.
+ */
+export function pngDimensions(png: Buffer, where = "PNG"): { width: number; height: number } {
+  if (
+    png.length < PNG_SIGNATURE.length ||
+    !png.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+  ) {
+    fail(`${where}: not a PNG (missing PNG signature)`);
+  }
+  // Signature (8) + chunk header (8) + IHDR data (13) is the minimum.
+  if (png.length < 8 + 8 + 13) {
+    fail(`${where}: truncated PNG: file ends before the IHDR chunk is complete`);
+  }
+  const ihdrLength = png.readUInt32BE(8);
+  const ihdrType = png.toString("ascii", 12, 16);
+  if (ihdrType !== "IHDR" || ihdrLength !== 13) {
+    fail(
+      `${where}: invalid PNG: first chunk must be a 13-byte IHDR, got type "${ihdrType}" length ${ihdrLength}`,
+    );
+  }
+  const width = png.readUInt32BE(16);
+  const height = png.readUInt32BE(20);
+  if (width < 1 || width > MAX_PNG_DIMENSION) {
+    fail(`${where}: PNG width ${width} is outside the sanity range 1..${MAX_PNG_DIMENSION}`);
+  }
+  if (height < 1 || height > MAX_PNG_DIMENSION) {
+    fail(`${where}: PNG height ${height} is outside the sanity range 1..${MAX_PNG_DIMENSION}`);
+  }
+  return { width, height };
 }
 
 export interface GeneratedPack {
@@ -198,10 +249,18 @@ export function generatePack(
     );
   }
 
+  const manifestTextures: PackManifestTexture[] = [];
   for (const tex of textures.values()) {
     const id = parseResourceId(tex.id, namespace);
     const assetPath = `assets/${id.namespace}/textures/${id.path}.png`;
-    addFile(files, assetPath, textureBytes(tex, readPngFile), `texture "${tex.id}"`);
+    const info = textureBytes(tex, readPngFile);
+    addFile(files, assetPath, info.bytes, `texture "${tex.id}"`);
+    manifestTextures.push({
+      id: `${id.namespace}:${id.path}`,
+      source: info.source,
+      width: info.width,
+      height: info.height,
+    });
   }
 
   const zip = buildZip(files);
@@ -232,6 +291,7 @@ export function generatePack(
     packFormat: PACK_FORMAT,
     contents: [...files.keys()].sort(),
     items: manifestItems,
+    textures: manifestTextures,
   };
   return { files, zip, sha1, manifest };
 }
@@ -309,23 +369,24 @@ function fontProviders(
   return providers;
 }
 
-function textureBytes(tex: TextureDef, readPngFile: (path: string) => Buffer): Buffer {
+function textureBytes(
+  tex: TextureDef,
+  readPngFile: (path: string) => Buffer,
+): { bytes: Buffer; source: "pixelmap" | "png"; width: number; height: number } {
   if (tex.pixelMap !== undefined) {
     const { width, height, rgba } = pixelMapToRgba(tex);
-    return encodePng(width, height, rgba);
+    return { bytes: encodePng(width, height, rgba), source: "pixelmap", width, height };
   }
   if (tex.pngPath !== undefined) {
     const png = readPngFile(tex.pngPath);
     if (!Buffer.isBuffer(png)) {
       fail(`texture "${tex.id}": readPngFile("${tex.pngPath}") did not return a Buffer`);
     }
-    if (
-      png.length < PNG_SIGNATURE.length ||
-      !png.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
-    ) {
-      fail(`texture "${tex.id}": file "${tex.pngPath}" is not a PNG (missing PNG signature)`);
-    }
-    return png;
+    // RP-5: signature + IHDR validation, with dimensions recorded
+    // in the manifest. pngDimensions raises the clear errors for
+    // signature, truncation, missing IHDR and out-of-range sizes.
+    const { width, height } = pngDimensions(png, `texture "${tex.id}": file "${tex.pngPath}"`);
+    return { bytes: png, source: "png", width, height };
   }
   return fail(`texture "${tex.id}": has neither a pixel map nor a PNG source`);
 }
