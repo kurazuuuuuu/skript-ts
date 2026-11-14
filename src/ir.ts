@@ -95,6 +95,9 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "eventCursor",
   "setCursorItem",
   "freeSpaceFor",
+  "itemTag",
+  "hasItemTag",
+  "setItemTag",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([

@@ -1,0 +1,224 @@
+{
+  "kind": "script",
+  "body": [
+    {
+      "kind": "command",
+      "name": "tagitem",
+      "args": [],
+      "body": [
+        {
+          "kind": "setVar",
+          "variable": {
+            "kind": "localVariable",
+            "name": "i"
+          },
+          "value": {
+            "kind": "item",
+            "name": "diamond sword"
+          }
+        },
+        {
+          "kind": "setItemTag",
+          "target": {
+            "kind": "localVariable",
+            "name": "i"
+          },
+          "key": "serial",
+          "value": {
+            "kind": "string",
+            "value": "gem-001"
+          }
+        },
+        {
+          "kind": "setItemTag",
+          "target": {
+            "kind": "localVariable",
+            "name": "i"
+          },
+          "key": "tier",
+          "value": {
+            "kind": "number",
+            "value": 3
+          }
+        },
+        {
+          "kind": "setItemTag",
+          "target": {
+            "kind": "localVariable",
+            "name": "i"
+          },
+          "key": "genuine",
+          "value": {
+            "kind": "boolean",
+            "value": true
+          }
+        },
+        {
+          "kind": "setVar",
+          "variable": {
+            "kind": "variable",
+            "name": "taggeditem"
+          },
+          "value": {
+            "kind": "localVariable",
+            "name": "i"
+          }
+        },
+        {
+          "kind": "giveItem",
+          "target": {
+            "kind": "player"
+          },
+          "item": {
+            "kind": "localVariable",
+            "name": "i"
+          }
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "string",
+            "value": "tagitem: given"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "command",
+      "name": "tagcheck",
+      "args": [],
+      "body": [
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "format",
+            "parts": [
+              "tagcheck: serial=",
+              {
+                "kind": "itemTag",
+                "item": {
+                  "kind": "variable",
+                  "name": "taggeditem"
+                },
+                "key": "serial"
+              },
+              " tier=",
+              {
+                "kind": "itemTag",
+                "item": {
+                  "kind": "variable",
+                  "name": "taggeditem"
+                },
+                "key": "tier"
+              },
+              " genuine=",
+              {
+                "kind": "itemTag",
+                "item": {
+                  "kind": "variable",
+                  "name": "taggeditem"
+                },
+                "key": "genuine"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "hasItemTag",
+            "item": {
+              "kind": "variable",
+              "name": "taggeditem"
+            },
+            "key": "serial"
+          },
+          "then": [
+            {
+              "kind": "send",
+              "target": {
+                "kind": "player"
+              },
+              "message": {
+                "kind": "string",
+                "value": "tagcheck: tagged=yes"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "setVar",
+          "variable": {
+            "kind": "localVariable",
+            "name": "plain"
+          },
+          "value": {
+            "kind": "item",
+            "name": "diamond sword"
+          }
+        },
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "hasItemTag",
+            "item": {
+              "kind": "localVariable",
+              "name": "plain"
+            },
+            "key": "serial"
+          },
+          "then": [
+            {
+              "kind": "send",
+              "target": {
+                "kind": "player"
+              },
+              "message": {
+                "kind": "string",
+                "value": "tagcheck: plain=tagged"
+              }
+            }
+          ],
+          "else": [
+            {
+              "kind": "send",
+              "target": {
+                "kind": "player"
+              },
+              "message": {
+                "kind": "string",
+                "value": "tagcheck: plain=untagged"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "format",
+            "parts": [
+              "tagcheck: missing=",
+              {
+                "kind": "itemTag",
+                "item": {
+                  "kind": "localVariable",
+                  "name": "plain"
+                },
+                "key": "serial"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

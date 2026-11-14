@@ -324,6 +324,15 @@ export type Expr =
   | { kind: "itemModelOf"; target: Expr }
   | { kind: "customModelDataOf"; target: Expr }
   | { kind: "nameOf"; target: Expr }
+  // Hidden item tags (feedback D): ENGINE-ONLY. Skript has no
+  // PersistentDataContainer access, so there is no .sk form.
+  // itemTag reads the tag stored under `key` in the item's
+  // PersistentDataContainer (namespaced by the engine with the
+  // plugin's own NamespacedKey): a text, number or boolean value,
+  // or no value when the item carries no such tag (or is not an
+  // item at all). Keys are validated at build time by the API:
+  // lowercase [a-z0-9._-] only.
+  | { kind: "itemTag"; item: Expr; key: string }
   | { kind: "loreOf"; target: Expr }
   | { kind: "amountOf"; target: Expr }
   // Inventory operations (feedback lane D, 2026-11-13), semantics
@@ -652,6 +661,11 @@ export type Cond =
   //   conditions usable in while heads.
   | { kind: "hasItem"; target: Expr; item: Expr }
   | { kind: "canHoldItem"; target: Expr; item: Expr }
+  // Hidden item tags (feedback D): ENGINE-ONLY leaf condition —
+  // the item carries a tag under `key` in its
+  // PersistentDataContainer. False for a missing tag, an item
+  // without meta, and a non-item value.
+  | { kind: "hasItemTag"; item: Expr; key: string }
   // Core-language randomness (phase 28): the draw succeeds with
   // the given probability. The value is a FRACTION — chance(0.5)
   // is a 50% chance — which is the original's own percent model
@@ -928,6 +942,13 @@ export type Stmt =
   //   <player>'s inventory`).
   | { kind: "giveItem"; target: Expr; item: Expr; loc?: SourceLoc }
   | { kind: "setItemName"; target: ScalarVarExpr; name: Expr; loc?: SourceLoc }
+  // Hidden item tags (feedback D): ENGINE-ONLY statement — write
+  // a tag into the PersistentDataContainer of the item a scalar
+  // variable holds, mirroring setItemName (a variable with no
+  // item value is left untouched). The value's runtime type
+  // decides the stored PDC type: text -> STRING, number ->
+  // DOUBLE, boolean -> BYTE (1/0); any other value is a no-op.
+  | { kind: "setItemTag"; target: ScalarVarExpr; key: string; value: Expr; loc?: SourceLoc }
   | { kind: "setItemLore"; target: ScalarVarExpr; lines: readonly Expr[]; loc?: SourceLoc }
   | { kind: "setItemAmount"; target: ScalarVarExpr; amount: Expr; loc?: SourceLoc }
   | { kind: "setSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }

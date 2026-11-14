@@ -1799,6 +1799,26 @@ final class Engine {
                 }
                 cont.run();
             }
+            case "setItemTag" -> {
+                // Write a hidden tag into the PersistentData-
+                // Container of the item a scalar variable holds
+                // (feedback D, engine-only). Mirrors the
+                // setItemName family above: the current value is
+                // materialized (a bare type name becomes a stack)
+                // and the rewritten stack is stored back; a
+                // variable with no item value, an invalid key, or
+                // a value that is not text / number / boolean
+                // leaves the variable untouched.
+                Map<String, Object> target = node(stmt.get("target"));
+                ItemStack stack = toItemStack(evalExpr(target, ctx));
+                if (stack != null) {
+                    Object value = evalExpr(node(stmt.get("value")), ctx);
+                    if (ItemTags.set(stack, str(stmt.get("key")), value)) {
+                        storeFor(target, ctx).set(varKey(target, ctx), stack);
+                    }
+                }
+                cont.run();
+            }
             case "setSlot" -> {
                 // Write an item into one slot of an inventory
                 // (phase 17). A valueless item (or an air item)
@@ -2905,6 +2925,13 @@ final class Engine {
                         && pattern != null
                         && storageCapacity(inv, pattern) >= Math.max(0, pattern.getAmount());
             }
+            case "hasItemTag" -> {
+                // Hidden item tags (feedback D, engine-only):
+                // false for a missing tag, an item without meta,
+                // and a non-item value.
+                ItemStack stack = toItemStack(evalExpr(node(cond.get("item")), ctx));
+                yield stack != null && ItemTags.has(stack, str(cond.get("key")));
+            }
             case "isOp" -> {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && p.isOp();
@@ -3610,6 +3637,18 @@ final class Engine {
                 if (target instanceof Inventory inv) yield inventoryTitle(inv);
                 if (target instanceof Player p) yield p.getName();
                 yield null;
+            }
+            case "itemTag" -> {
+                // Hidden item tags (feedback D, engine-only): the
+                // tag value from the item's PersistentData-
+                // Container — text / number / boolean by the
+                // stored PDC type — or no value when the tag is
+                // missing, the item has no meta, or the value is
+                // not an item. toItemStack materializes a bare
+                // type name (a fresh, untagged stack) and clones
+                // a real stack, PDC included.
+                ItemStack stack = toItemStack(evalExpr(node(expr.get("item")), ctx));
+                yield stack == null ? null : ItemTags.get(stack, str(expr.get("key")));
             }
             case "loreOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);

@@ -1003,6 +1003,39 @@ clicking through a live GUI; see the development log):
   inventory add; `examples/giveoverflow.ts` and
   `examples/behavior/giveoverflow.behavior.ts` pin
   the flow).
+- **Hidden item tags (engine-only)**: names and lore
+  can be faked by a modified client, so authenticity
+  markers live in the item's PersistentDataContainer,
+  which Skript cannot access at all — the three tag
+  builders are engine builtins, and a script using any
+  of them deploys IR-only. `setItemTag(var, key, value)`
+  writes a tag into the item a scalar variable holds
+  (mirroring `setItemName`: a bare type name is
+  materialized first, a variable with no item value is
+  a no-op, and a value that is not text / number /
+  boolean is a no-op). `itemTag(item, key)` reads the
+  tag value back — no value when the tag is missing,
+  the item has no meta, or the value is not an item.
+  `hasItemTag(item, key)` is the leaf-condition form —
+  false in exactly those cases. Keys are validated at
+  build time: lowercase `[a-z0-9._-]` only; the engine
+  namespaces every key with the plugin's own
+  NamespacedKey (`skript-ts`), so script tags can
+  neither collide with nor read another plugin's tags.
+  Type mapping: text -> PDC `STRING`, number -> PDC
+  `DOUBLE`, boolean -> PDC `BYTE` (1/0, read back as a
+  boolean). Tags persist through the engine's variable
+  store: the `__item` encoding carries them alongside
+  material / amount / name / lore, so a tagged stack in
+  a global variable keeps its tags across restarts;
+  saves written before tags existed have no tag field
+  and still decode (as untagged stacks).
+  `examples/itemtags.ts` exercises all of it — a
+  `/tagitem` command that stamps a sword with a text,
+  a number and a boolean tag, and a `/tagcheck` command
+  that reads them back and branches on `hasItemTag` —
+  and `examples/behavior/itemtags.behavior.ts` drives a
+  bot through the flow under the engine.
 - **Held items**: `toolOf(player)` is the item in the
   player's main hand (`tool of %player%`, Skript's
   player-tool expression) and `offHandToolOf(player)` the
