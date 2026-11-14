@@ -1,0 +1,58 @@
+function echoBool(b: boolean) :: boolean:
+    return {_b}
+
+command /boolcond:
+    trigger:
+        set {_t} to true
+        set {_f} to false
+        if {_t} is true:
+            send "boolcond: var-true" to player
+        else:
+            send "boolcond: var-false" to player
+        if echoBool(true) is true:
+            send "boolcond: fn-true" to player
+        else:
+            send "boolcond: fn-false" to player
+        if echoBool(false) is true:
+            send "boolcond: fn-false-should-not-appear" to player
+        set {_go} to true
+        set {_n} to 0
+        while {_go} is true:
+            add 1 to {_n}
+            if {_n} is greater than or equal to 3:
+                set {_go} to false
+        send "boolcond: looped=%{_n}%" to player
+        if {_t} is true:
+            if echoBool(true) is true:
+                send "boolcond: and-true" to player
+        if {_f} is true:
+            send "boolcond: or-true" to player
+        else:
+            if {_t} is true:
+                send "boolcond: or-true" to player
+        if {_f} is not true:
+            send "boolcond: not-false" to player
+        if {_t} is true:
+            send "boolcond: when-true" to player
+        if {_f} is true:
+            send "boolcond: when-false-should-not-appear" to player
+        if {_f} is not true:
+            send "boolcond: unless-false" to player
+        if {_t} is not true:
+            send "boolcond: unless-true-should-not-appear" to player
+        send "boolcond: done" to player
+
+command /boolstop:
+    trigger:
+        set {_t} to true
+        send "boolcond: before-stop" to player
+        if {_t} is true:
+            stop
+        send "boolcond: after-stop-should-not-appear" to player
+
+command /boolnostop:
+    trigger:
+        set {_f} to false
+        if {_f} is true:
+            stop
+        send "boolcond: survived-stop" to player

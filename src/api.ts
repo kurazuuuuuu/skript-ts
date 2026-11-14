@@ -153,6 +153,65 @@ export function fmt(...parts: (string | Expr)[]): TextExpr {
 // is 9) and is NaN for a zero divisor.
 // ---------------------------------------------------------------------------
 
+/**
+ * Anything accepted where a condition is expected (feedback E3):
+ * either a real condition, or a boolean expression — a boolean
+ * variable, a boolean literal, or the result of a boolean-returning
+ * function call, for example. A bare boolean expression is NOT a
+ * valid Skript condition (probed against the real Skript 2.17.1:
+ * `if {_t}:` and `if myBoolFn():` are parse errors), but the
+ * comparison form parses and behaves correctly for function calls,
+ * variables and while heads (`if pbool(true) is true:`,
+ * `if {_t} is true:`, `while {_go} is true:`), so a boolean
+ * expression is lowered at the API level by toCond() below to
+ * `equals(expr, true)` — emitted as `<expr> is true`.
+ */
+export type CondLike = Cond | Expr;
+
+/**
+ * The kind names of every Cond variant. The Cond and Expr kind
+ * unions are disjoint string sets (no kind name appears in both),
+ * so membership in this set is a reliable discriminator between
+ * a condition and an expression.
+ */
+const COND_KINDS: ReadonlySet<string> = new Set([
+  "hasPermission",
+  "isOp",
+  "equals",
+  "notEquals",
+  "greaterThan",
+  "greaterOrEqual",
+  "lessThan",
+  "lessOrEqual",
+  "and",
+  "or",
+  "not",
+  "contains",
+  "startsWith",
+  "endsWith",
+  "eventCancelled",
+  "hasItem",
+  "canHoldItem",
+  "chance",
+  "timerActive",
+  "fileExists",
+  "httpOk",
+  "cfOk",
+  "bossBarDarkensSky",
+  "bossBarCreatesFog",
+  "bossBarPlaysBossMusic",
+]);
+
+/**
+ * Normalize a CondLike to a Cond: a Cond passes through unchanged
+ * (so existing programs emit byte-identical output), and an Expr
+ * lowers to `equals(expr, true)`.
+ */
+function toCond(c: CondLike): Cond {
+  if (COND_KINDS.has(c.kind)) return c as Cond;
+  return equals(c as Expr, { kind: "boolean", value: true });
+}
+
 /** Construct an equality condition: the two values are equal (texts compare case-insensitively). */
 export function equals(left: Expr, right: Expr): Cond {
   return { kind: "equals", left, right };
@@ -183,33 +242,33 @@ export function lessOrEqual(left: Expr, right: Expr): Cond {
   return { kind: "lessOrEqual", left, right };
 }
 
-function combine(kind: "and" | "or", conds: readonly Cond[]): Cond {
+function combine(kind: "and" | "or", conds: readonly CondLike[]): Cond {
   if (conds.length < 2) {
     throw new RangeError(`${kind}() needs at least two conditions`);
   }
-  let acc: Cond = conds[0]!;
+  let acc: Cond = toCond(conds[0]!);
   for (let i = 1; i < conds.length; i++) {
     acc =
       kind === "and"
-        ? { kind: "and", left: acc, right: conds[i]! }
-        : { kind: "or", left: acc, right: conds[i]! };
+        ? { kind: "and", left: acc, right: toCond(conds[i]!) }
+        : { kind: "or", left: acc, right: toCond(conds[i]!) };
   }
   return acc;
 }
 
-/** Construct an and condition: every given condition holds. */
-export function and(...conds: Cond[]): Cond {
+/** Construct an and condition: every given condition holds. Boolean expressions are accepted and lower to `is true`. */
+export function and(...conds: CondLike[]): Cond {
   return combine("and", conds);
 }
 
-/** Construct an or condition: at least one of the given conditions holds. */
-export function or(...conds: Cond[]): Cond {
+/** Construct an or condition: at least one of the given conditions holds. Boolean expressions are accepted and lower to `is true`. */
+export function or(...conds: CondLike[]): Cond {
   return combine("or", conds);
 }
 
-/** Construct a not condition: the given condition does not hold. */
-export function not(cond: Cond): Cond {
-  return { kind: "not", cond };
+/** Construct a not condition: the given condition does not hold. A boolean expression is accepted and lowers to `is true` first. */
+export function not(cond: CondLike): Cond {
+  return { kind: "not", cond: toCond(cond) };
 }
 
 /** Construct an arithmetic expression from an operator and two operands. */
@@ -422,10 +481,37 @@ export function remove(variable: ScalarVarExpr, value: Expr): Stmt {
   return withLoc({ kind: "removeVar", variable, value });
 }
 
-/** Construct an if statement with optional else branch. */
-export function ifElse(cond: Cond, then: readonly Stmt[], elseBody?: readonly Stmt[]): Stmt {
-  if (elseBody === undefined) return withLoc({ kind: "if", cond, then });
-  return withLoc({ kind: "if", cond, then, else: elseBody });
+/** Construct an if statement with optional else branch. A boolean expression is accepted as the condition and lowers to `is true`. */
+export function ifElse(cond: CondLike, then: readonly Stmt[], elseBody?: readonly Stmt[]): Stmt {
+  const normalized = toCond(cond);
+  if (elseBody === undefined) return withLoc({ kind: "if", cond: normalized, then });
+  return withLoc({ kind: "if", cond: normalized, then, else: elseBody });
+}
+
+/** Construct a when statement (feedback E4): sugar for ifElse(cond, body) — the body runs when the condition holds. A boolean expression is accepted and lowers to `is true`. */
+export function when(cond: CondLike, ...body: Stmt[]): Stmt {
+  return ifElse(cond, body);
+}
+
+/**
+ * Construct an unless statement (feedback E4): sugar for
+ * ifElse(not(cond), body) — the body runs when the condition does
+ * NOT hold. Lowered through not() rather than an if/else with an
+ * empty then branch, because empty sections are risky in Skript.
+ * A boolean expression is accepted and lowers to `is true` first.
+ */
+export function unless(cond: CondLike, ...body: Stmt[]): Stmt {
+  return ifElse(not(toCond(cond)), body);
+}
+
+/**
+ * Construct a stopIf statement (feedback E4): sugar for
+ * ifElse(cond, [stopTrigger()]) — ends the current trigger at
+ * once when the condition holds. A boolean expression is
+ * accepted and lowers to `is true`.
+ */
+export function stopIf(cond: CondLike): Stmt {
+  return ifElse(cond, [stopTrigger()]);
 }
 
 /** Construct a loop-players statement. */
@@ -561,17 +647,21 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
  * or the negation of one: an if head can lower and/or/not to
  * control flow, but a loop head cannot, and Skript has no textual
  * conjunction form — so composite conditions are rejected here
- * instead of diverging between the two runtimes.
+ * instead of diverging between the two runtimes. A boolean
+ * expression is accepted as the condition: it lowers to
+ * `equals(expr, true)`, which is a leaf, so it heads a while loop
+ * as `<expr> is true` (probed against the real Skript 2.17.1).
  */
-export function whileLoop(cond: Cond, body: readonly Stmt[]): Stmt {
-  const inner = cond.kind === "not" ? cond.cond : cond;
+export function whileLoop(cond: CondLike, body: readonly Stmt[]): Stmt {
+  const normalized = toCond(cond);
+  const inner = normalized.kind === "not" ? normalized.cond : normalized;
   if (!WHILE_LEAF_KINDS.has(inner.kind)) {
     throw new RangeError(
       "whileLoop condition must be a leaf condition or not(leaf): " +
         "and/or conditions cannot head a while loop in this subset",
     );
   }
-  if (cond.kind === "not" && inner.kind === "chance") {
+  if (normalized.kind === "not" && inner.kind === "chance") {
     // A loop head cannot swap branches the way an if can, and
     // the original has no negated chance form, so there is no
     // .sk text for this head. Loop on the positive chance and
@@ -581,7 +671,7 @@ export function whileLoop(cond: Cond, body: readonly Stmt[]): Stmt {
         "chance has no negated .sk form — loop on chance(...) itself instead",
     );
   }
-  return withLoc({ kind: "while", cond, body });
+  return withLoc({ kind: "while", cond: normalized, body });
 }
 
 /** Construct a wait statement: suspend the rest of the trigger for the given duration. */
