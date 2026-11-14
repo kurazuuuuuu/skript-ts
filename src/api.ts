@@ -126,6 +126,47 @@ export function fmt(...parts: (string | Expr)[]): TextExpr {
   return { kind: "format", parts };
 }
 
+/**
+ * Construct a format expression with a tagged template: sugar
+ * over fmt(). The cooked literal parts and the interpolated
+ * values are interleaved into the same { kind: "format" } node
+ * fmt() builds — Expr values become expression parts, while
+ * string values and number / boolean values (via String(value))
+ * merge into the adjacent literal text, and empty literal parts
+ * are dropped. So t`a${x}b` builds (and emits) exactly
+ * fmt("a", x, "b"), and `&` color codes in the literal parts
+ * behave exactly as they do in fmt()'s string parts.
+ */
+export function t(
+  strings: TemplateStringsArray,
+  ...values: readonly (Expr | string | number | boolean)[]
+): TextExpr {
+  const parts: (string | Expr)[] = [];
+  const pushLiteral = (text: string): void => {
+    if (text === "") return;
+    const last = parts[parts.length - 1];
+    if (typeof last === "string") {
+      parts[parts.length - 1] = last + text;
+    } else {
+      parts.push(text);
+    }
+  };
+  for (let i = 0; i < strings.length; i++) {
+    pushLiteral(strings[i]!);
+    if (i < values.length) {
+      const value = values[i]!;
+      if (typeof value === "string") {
+        pushLiteral(value);
+      } else if (typeof value === "number" || typeof value === "boolean") {
+        pushLiteral(String(value));
+      } else {
+        parts.push(value);
+      }
+    }
+  }
+  return { kind: "format", parts };
+}
+
 // ---------------------------------------------------------------------------
 // Core language (phase 11): comparisons, logic, arithmetic
 //
