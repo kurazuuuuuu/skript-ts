@@ -271,6 +271,7 @@ import { uuidvarsScript } from "../examples/uuidvars.js";
 import { priorityScript } from "../examples/priority.js";
 import { randomScript } from "../examples/random.js";
 import { inventoryScript } from "../examples/inventory.js";
+import { literalsScript } from "../examples/literals.js";
 import { invspaceScript } from "../examples/invspace.js";
 
 function fixture(name: string): string {
@@ -352,6 +353,50 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("inventory", () => {
     expect(emit(inventoryScript)).toBe(fixture("inventory.sk"));
+  });
+  it("literals", () => {
+    expect(emit(literalsScript)).toBe(fixture("literals.sk"));
+  });
+});
+
+describe("literal auto-conversion (feedback E1)", () => {
+  it("literals emit byte-identically to the explicitly wrapped forms", () => {
+    const literalForm = emit(
+      script(
+        onJoin([
+          set(variable("a"), plus(variable("x"), 1)),
+          set(variable("b"), "hello"),
+          set(variable("c"), true),
+          ifElse(equals(variable("c"), true), [broadcast("yes")]),
+          ifElse(contains(variable("b"), "ell"), [send(player(), "hi")]),
+          set(variable("d"), call("f", 1, "x", false)),
+        ]),
+      ),
+    );
+    const wrappedForm = emit(
+      script(
+        onJoin([
+          set(variable("a"), plus(variable("x"), num(1))),
+          set(variable("b"), str("hello")),
+          set(variable("c"), bool(true)),
+          ifElse(equals(variable("c"), bool(true)), [broadcast(str("yes"))]),
+          ifElse(contains(variable("b"), str("ell")), [send(player(), str("hi"))]),
+          set(variable("d"), call("f", num(1), str("x"), bool(false))),
+        ]),
+      ),
+    );
+    expect(literalForm).toBe(wrappedForm);
+  });
+  it("a literal param default emits like the wrapped default", () => {
+    expect(
+      emit(
+        script(
+          defineFunction("g", [param("a", "number", 7), param("b", "text", "x")], "number", [
+            returnValue(1),
+          ]),
+        ),
+      ),
+    ).toBe('function g(a: number = 7, b: text = "x") :: number:\n    return 1\n');
   });
 });
 

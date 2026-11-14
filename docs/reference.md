@@ -71,6 +71,22 @@ section.
 
 ## Expressions
 
+Plain JavaScript literals are accepted in value positions
+(feedback E1): anywhere a builder takes a value — comparison
+and arithmetic operands, math-function and random-draw
+arguments, `set` / `add` / `remove` values, list add / remove
+values, `contains` / `startsWith` / `endsWith` parts, function
+call arguments, `param` defaults, `returnValue`, `setDamage`,
+and `send` / `broadcast` messages — a `string`, `number` or
+`boolean` may be written directly instead of wrapping it in
+`str()` / `num()` / `bool()`. The builder converts the literal
+automatically (`plus(x, 1)`, `equals(state, true)`,
+`set(v, "hello")`), so the AST, the emitted `.sk` and the IR
+are identical to the explicitly wrapped form. Structural and
+target parameters (variable targets, locations, inventories,
+players, …) are not value positions and still take built
+expressions. See `examples/literals.ts`.
+
 | TypeScript                                                       | value position                                               | inside a string                        |
 | ---------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- |
 | `player()`                                                       | `player`                                                     | `%player%`                             |

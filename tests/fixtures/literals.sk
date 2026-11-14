@@ -1,0 +1,58 @@
+function litGreet(name: text = "world", times: number = 1) :: text:
+    return "hello %{_name}%"
+
+function litAnswer() :: number:
+    return 42
+
+function litFlag(flag: boolean = true) :: boolean:
+    return {_flag}
+
+command /litcalc [<number>]:
+    trigger:
+        set {_x} to ({n} + 1)
+        set {_y} to ({_x} - 2)
+        set {_z} to ({_y} * 3)
+        set {_w} to ({_z} / 4)
+        set {_r} to mod({_w}, 5)
+        set {_a} to ({_r} + 10)
+        send "calc: floor=%floor(9.7)%, ceil=%ceil({_a})%, round=%round({_a}, 2)%, abs=%abs(-3)%, sqrt=%sqrt(2)%, min=%min({_a}, 3, 10)%, max=%max({_a}, 3, 10)%, die=%random integer between 1 and 6%, span=%random number between 1 and 2%" to player
+
+command /litstate:
+    trigger:
+        set {greeting} to "hello"
+        set {count} to 42
+        set {enabled} to true
+        add 5 to {count}
+        remove 2 from {count}
+        add "milk" to {groceries::*}
+        add 7 to {groceries::*}
+        remove "milk" from {groceries::*}
+        if {enabled} is true:
+            broadcast "enabled"
+        if {greeting} is not "bye":
+            broadcast "not bye"
+        if {count} is greater than 10:
+            broadcast "big"
+        if {count} is greater than or equal to 45:
+            broadcast "at least 45"
+        if {count} is less than 100:
+            broadcast "small"
+        if {count} is less than or equal to 45:
+            broadcast "at most 45"
+        if {greeting} contains "ell":
+            broadcast "has ell"
+        if {greeting} starts with "he":
+            broadcast "starts he"
+        if {greeting} ends with "lo":
+            broadcast "ends lo"
+        send "done" to player
+
+command /litcall:
+    trigger:
+        send "greet=%litGreet("skript", 2)%" to player
+        send "answer=%litAnswer()%" to player
+        litGreet("again", 1)
+        set {flag} to litFlag(false)
+
+on damage:
+    set damage to 2.5

@@ -111,6 +111,24 @@ export function bool(value: boolean): Expr {
   return { kind: "boolean", value };
 }
 
+/**
+ * A value in a value position: either a built expression or a
+ * plain JavaScript literal. Builders that take a `Value`
+ * normalize literals automatically — a string becomes str(),
+ * a number num(), a boolean bool() — so `plus(x, 1)` and
+ * `equals(state, true)` emit exactly the same AST (and .sk)
+ * as their explicitly wrapped forms.
+ */
+export type Value = Expr | string | number | boolean;
+
+/** Normalize a Value to an Expr: literals become their literal expression nodes. */
+function toExpr(v: Value): Expr {
+  if (typeof v === "string") return { kind: "string", value: v };
+  if (typeof v === "number") return { kind: "number", value: v };
+  if (typeof v === "boolean") return { kind: "boolean", value: v };
+  return v;
+}
+
 /** Construct an item expression. */
 export function item(name: string): Expr {
   return { kind: "item", name };
@@ -195,33 +213,33 @@ export function t(
 // ---------------------------------------------------------------------------
 
 /** Construct an equality condition: the two values are equal (texts compare case-insensitively). */
-export function equals(left: Expr, right: Expr): Cond {
-  return { kind: "equals", left, right };
+export function equals(left: Value, right: Value): Cond {
+  return { kind: "equals", left: toExpr(left), right: toExpr(right) };
 }
 
 /** Construct an inequality condition: the negation of equals(). */
-export function notEquals(left: Expr, right: Expr): Cond {
-  return { kind: "notEquals", left, right };
+export function notEquals(left: Value, right: Value): Cond {
+  return { kind: "notEquals", left: toExpr(left), right: toExpr(right) };
 }
 
 /** Construct a greater-than condition (numbers only; false for anything else). */
-export function greaterThan(left: Expr, right: Expr): Cond {
-  return { kind: "greaterThan", left, right };
+export function greaterThan(left: Value, right: Value): Cond {
+  return { kind: "greaterThan", left: toExpr(left), right: toExpr(right) };
 }
 
 /** Construct a greater-than-or-equal condition (numbers only; false for anything else). */
-export function greaterOrEqual(left: Expr, right: Expr): Cond {
-  return { kind: "greaterOrEqual", left, right };
+export function greaterOrEqual(left: Value, right: Value): Cond {
+  return { kind: "greaterOrEqual", left: toExpr(left), right: toExpr(right) };
 }
 
 /** Construct a less-than condition (numbers only; false for anything else). */
-export function lessThan(left: Expr, right: Expr): Cond {
-  return { kind: "lessThan", left, right };
+export function lessThan(left: Value, right: Value): Cond {
+  return { kind: "lessThan", left: toExpr(left), right: toExpr(right) };
 }
 
 /** Construct a less-than-or-equal condition (numbers only; false for anything else). */
-export function lessOrEqual(left: Expr, right: Expr): Cond {
-  return { kind: "lessOrEqual", left, right };
+export function lessOrEqual(left: Value, right: Value): Cond {
+  return { kind: "lessOrEqual", left: toExpr(left), right: toExpr(right) };
 }
 
 function combine(kind: "and" | "or", conds: readonly Cond[]): Cond {
@@ -254,32 +272,32 @@ export function not(cond: Cond): Cond {
 }
 
 /** Construct an arithmetic expression from an operator and two operands. */
-export function arith(op: ArithOp, left: Expr, right: Expr): Expr {
-  return { kind: "arith", op, left, right };
+export function arith(op: ArithOp, left: Value, right: Value): Expr {
+  return { kind: "arith", op, left: toExpr(left), right: toExpr(right) };
 }
 
 /** Construct an addition expression (or text concatenation, when both operands are texts). */
-export function plus(left: Expr, right: Expr): Expr {
+export function plus(left: Value, right: Value): Expr {
   return arith("+", left, right);
 }
 
 /** Construct a subtraction expression. */
-export function minus(left: Expr, right: Expr): Expr {
+export function minus(left: Value, right: Value): Expr {
   return arith("-", left, right);
 }
 
 /** Construct a multiplication expression. */
-export function times(left: Expr, right: Expr): Expr {
+export function times(left: Value, right: Value): Expr {
   return arith("*", left, right);
 }
 
 /** Construct a division expression (real division; dividing by zero yields Infinity or NaN). */
-export function dividedBy(left: Expr, right: Expr): Expr {
+export function dividedBy(left: Value, right: Value): Expr {
   return arith("/", left, right);
 }
 
 /** Construct a remainder expression: the mathematical modulo (sign of the divisor; NaN for a zero divisor). */
-export function remainder(left: Expr, right: Expr): Expr {
+export function remainder(left: Value, right: Value): Expr {
   return arith("mod", left, right);
 }
 
@@ -289,8 +307,8 @@ export function remainder(left: Expr, right: Expr): Expr {
  * the draw is never reproducible). Reversed bounds are swapped;
  * a missing or non-number bound yields no value.
  */
-export function randomNumber(min: Expr, max: Expr): Expr {
-  return { kind: "randomNumber", min, max };
+export function randomNumber(min: Value, max: Value): Expr {
+  return { kind: "randomNumber", min: toExpr(min), max: toExpr(max) };
 }
 
 /**
@@ -302,8 +320,8 @@ export function randomNumber(min: Expr, max: Expr): Expr {
  * (1.2, 1.8) yields no value. Reversed bounds are swapped.
  * A missing or non-number bound yields no value.
  */
-export function randomInteger(min: Expr, max: Expr): Expr {
-  return { kind: "randomInteger", min, max };
+export function randomInteger(min: Value, max: Value): Expr {
+  return { kind: "randomInteger", min: toExpr(min), max: toExpr(max) };
 }
 
 /**
@@ -323,8 +341,8 @@ export function chance(value: Expr): Cond {
  * greater than the value (floor(-2.5) is -3). The result is a
  * whole number; a missing or non-number operand yields no value.
  */
-export function floor(value: Expr): Expr {
-  return { kind: "math", fn: "floor", args: [value] };
+export function floor(value: Value): Expr {
+  return { kind: "math", fn: "floor", args: [toExpr(value)] };
 }
 
 /**
@@ -332,8 +350,8 @@ export function floor(value: Expr): Expr {
  * less than the value (ceil(-2.5) is -2). The result is a whole
  * number; a missing or non-number operand yields no value.
  */
-export function ceil(value: Expr): Expr {
-  return { kind: "math", fn: "ceil", args: [value] };
+export function ceil(value: Value): Expr {
+  return { kind: "math", fn: "ceil", args: [toExpr(value)] };
 }
 
 /**
@@ -346,18 +364,18 @@ export function ceil(value: Expr): Expr {
  * whole-number pass-through. A missing or non-number value
  * yields no value.
  */
-export function round(value: Expr, places?: Expr): Expr {
+export function round(value: Value, places?: Value): Expr {
   return places === undefined
-    ? { kind: "math", fn: "round", args: [value] }
-    : { kind: "math", fn: "round", args: [value, places] };
+    ? { kind: "math", fn: "round", args: [toExpr(value)] }
+    : { kind: "math", fn: "round", args: [toExpr(value), toExpr(places)] };
 }
 
 /**
  * Construct an absolute-value expression (abs(-0.5) is 0.5).
  * A missing or non-number operand yields no value.
  */
-export function abs(value: Expr): Expr {
-  return { kind: "math", fn: "abs", args: [value] };
+export function abs(value: Value): Expr {
+  return { kind: "math", fn: "abs", args: [toExpr(value)] };
 }
 
 /**
@@ -365,8 +383,8 @@ export function abs(value: Expr): Expr {
  * the root of a negative value is NaN). A missing or
  * non-number operand yields no value.
  */
-export function sqrt(value: Expr): Expr {
-  return { kind: "math", fn: "sqrt", args: [value] };
+export function sqrt(value: Value): Expr {
+  return { kind: "math", fn: "sqrt", args: [toExpr(value)] };
 }
 
 /**
@@ -378,11 +396,11 @@ export function sqrt(value: Expr): Expr {
  * Skript rejects a zero-argument min() at parse time, so this
  * builder throws instead.
  */
-export function min(...values: Expr[]): Expr {
+export function min(...values: Value[]): Expr {
   if (values.length === 0) {
     throw new RangeError("min() needs at least one argument");
   }
-  return { kind: "math", fn: "min", args: values };
+  return { kind: "math", fn: "min", args: values.map(toExpr) };
 }
 
 /**
@@ -393,11 +411,11 @@ export function min(...values: Expr[]): Expr {
  * a zero-argument max() at parse time, so this builder throws
  * instead.
  */
-export function max(...values: Expr[]): Expr {
+export function max(...values: Value[]): Expr {
   if (values.length === 0) {
     throw new RangeError("max() needs at least one argument");
   }
-  return { kind: "math", fn: "max", args: values };
+  return { kind: "math", fn: "max", args: values.map(toExpr) };
 }
 
 /** Construct a has-permission condition. */
@@ -429,13 +447,13 @@ export function eventCancelled(): Cond {
 }
 
 /** Construct a send statement. The message may be any expression; text expressions emit as quoted strings. */
-export function send(target: Expr, message: Expr): Stmt {
-  return withLoc({ kind: "send", target, message });
+export function send(target: Expr, message: Value): Stmt {
+  return withLoc({ kind: "send", target, message: toExpr(message) });
 }
 
 /** Construct a broadcast statement. The message may be any expression; text expressions emit as quoted strings. */
-export function broadcast(message: Expr): Stmt {
-  return withLoc({ kind: "broadcast", message });
+export function broadcast(message: Value): Stmt {
+  return withLoc({ kind: "broadcast", message: toExpr(message) });
 }
 
 /** Construct a give statement. */
@@ -449,18 +467,18 @@ export function teleport(target: Expr, location: Expr): Stmt {
 }
 
 /** Construct a set-variable statement. The target may be a scalar or a whole list, global or local. */
-export function set(variable: VarTarget, value: Expr): Stmt {
-  return withLoc({ kind: "setVar", variable, value });
+export function set(variable: VarTarget, value: Value): Stmt {
+  return withLoc({ kind: "setVar", variable, value: toExpr(value) });
 }
 
 /** Construct an add-variable statement. The target may be a global or a local scalar variable. */
-export function add(variable: ScalarVarExpr, value: Expr): Stmt {
-  return withLoc({ kind: "addVar", variable, value });
+export function add(variable: ScalarVarExpr, value: Value): Stmt {
+  return withLoc({ kind: "addVar", variable, value: toExpr(value) });
 }
 
 /** Construct a remove-variable statement. The target may be a global or a local scalar variable. */
-export function remove(variable: ScalarVarExpr, value: Expr): Stmt {
-  return withLoc({ kind: "removeVar", variable, value });
+export function remove(variable: ScalarVarExpr, value: Value): Stmt {
+  return withLoc({ kind: "removeVar", variable, value: toExpr(value) });
 }
 
 /** Construct an if statement with optional else branch. */
@@ -535,13 +553,13 @@ export function loopIndex(): Expr {
 }
 
 /** Construct a list-add statement: append the value at the smallest unused positive integer index. */
-export function listAdd(list: AnyListExpr, value: Expr): Stmt {
-  return withLoc({ kind: "listAdd", list, value });
+export function listAdd(list: AnyListExpr, value: Value): Stmt {
+  return withLoc({ kind: "listAdd", list, value: toExpr(value) });
 }
 
 /** Construct a list-remove statement: delete the first entry (in iteration order) equal to the value. */
-export function listRemove(list: AnyListExpr, value: Expr): Stmt {
-  return withLoc({ kind: "listRemove", list, value });
+export function listRemove(list: AnyListExpr, value: Value): Stmt {
+  return withLoc({ kind: "listRemove", list, value: toExpr(value) });
 }
 
 /**
@@ -719,13 +737,13 @@ export function isPluralType(type: FunctionTypeName): boolean {
  * "objects", ...) makes the parameter collect the remaining
  * arguments as a list; it must be the last parameter.
  */
-export function param(name: string, type: FunctionTypeName, defaultValue?: Expr): FunctionParam {
+export function param(name: string, type: FunctionTypeName, defaultValue?: Value): FunctionParam {
   if (typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new RangeError(`invalid parameter name: ${String(name)}`);
   }
   requireFunctionType(type, "parameter");
   if (defaultValue === undefined) return { name, type };
-  return { name, type, default: defaultValue };
+  return { name, type, default: toExpr(defaultValue) };
 }
 
 /**
@@ -753,13 +771,13 @@ export function defineFunction(
 }
 
 /** Construct a function-call expression: invoke a custom function and use its return value. */
-export function call(name: string, ...args: Expr[]): Expr {
-  return { kind: "functionCall", name: requireFunctionName(name), args };
+export function call(name: string, ...args: Value[]): Expr {
+  return { kind: "functionCall", name: requireFunctionName(name), args: args.map(toExpr) };
 }
 
 /** Construct a function-call statement: invoke a custom function for its effects, discarding any return value. */
-export function callStmt(name: string, ...args: Expr[]): Stmt {
-  return withLoc({ kind: "callStmt", name: requireFunctionName(name), args });
+export function callStmt(name: string, ...args: Value[]): Stmt {
+  return withLoc({ kind: "callStmt", name: requireFunctionName(name), args: args.map(toExpr) });
 }
 
 /**
@@ -768,8 +786,8 @@ export function callStmt(name: string, ...args: Expr[]): Stmt {
  * defineFunction body whose return type is not null (Skript
  * rejects it elsewhere, and rejects it in void functions too).
  */
-export function returnValue(value: Expr): Stmt {
-  return withLoc({ kind: "return", value });
+export function returnValue(value: Value): Stmt {
+  return withLoc({ kind: "return", value: toExpr(value) });
 }
 
 /**
@@ -1359,8 +1377,8 @@ export function uncancelEvent(): Stmt {
 }
 
 /** Construct a set-damage statement: rewrite the amount of the damage event being handled. */
-export function setDamage(value: Expr): Stmt {
-  return withLoc({ kind: "setDamage", value });
+export function setDamage(value: Value): Stmt {
+  return withLoc({ kind: "setDamage", value: toExpr(value) });
 }
 
 /** The section entries a command declaration can carry (phase 20). */
@@ -1920,18 +1938,18 @@ export function unformatted(target: Expr): Expr {
  * case-insensitive substring test; for a list container, element
  * membership under the equality rules.
  */
-export function contains(container: Expr, item: Expr): Cond {
-  return { kind: "contains", container, item };
+export function contains(container: Expr, item: Value): Cond {
+  return { kind: "contains", container, item: toExpr(item) };
 }
 
 /** Construct a starts-with condition: a case-sensitive prefix test on a text. */
-export function startsWith(target: Expr, prefix: Expr): Cond {
-  return { kind: "startsWith", target, prefix };
+export function startsWith(target: Expr, prefix: Value): Cond {
+  return { kind: "startsWith", target, prefix: toExpr(prefix) };
 }
 
 /** Construct an ends-with condition: a case-sensitive suffix test on a text. */
-export function endsWith(target: Expr, suffix: Expr): Cond {
-  return { kind: "endsWith", target, suffix };
+export function endsWith(target: Expr, suffix: Value): Cond {
+  return { kind: "endsWith", target, suffix: toExpr(suffix) };
 }
 
 /**
