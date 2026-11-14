@@ -106,9 +106,11 @@ engine/build.sh        # -> engine/build/skript-ts.jar
 bin/skript-ts.mjs verify --engine --json
 ```
 
-`engine/build.sh` は JDK 21 をまず `$SKRIPT_TS_JDK` から探します。
-見つからない場合は `SKRIPT_TS_JDK=/path/to/jdk21` を設定して
-ください。`verify --engine` は IR ファイルと jar を配置し、
+`engine/build.sh` は JDK を `$SKRIPT_TS_JDK` → `$JAVA_HOME` →
+`PATH` 上の `javac` の順に解決し、`--release 21` でコンパイル
+します。JDK 21 以降（例: JDK 25）なら jar のクラスファイル
+バージョンは 21 になります。どれでも見つからない場合は
+`SKRIPT_TS_JDK=/path/to/jdk` を設定してください。`verify --engine` は IR ファイルと jar を配置し、
 `Skript.jar` を退避させるので、サンドボックスは Skript プラグイン
 **なし**で起動します。その後で通常の `verify` を実行すれば
 Skript モードに戻ります。両方のランタイムを同居させないで
