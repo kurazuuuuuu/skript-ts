@@ -340,6 +340,49 @@ Skript `function` sections; the engine registers them from the
 IR. Functions are core language — the same script runs under
 both runtimes.
 
+**Typed handles: `defineFn`.** `defineFn(name, params,
+returnType, body)` runs the same validation as `defineFunction`
+and returns a _typed handle_ instead of the bare definition, so
+calls through it are checked by the type checker (the string
+forms above are unchecked: a misspelled name is just a string,
+and `call` / `callStmt` accept any expressions in any count).
+`param()` carries its type as a literal, and a handle call's
+arguments are a mapped tuple over the parameters' type literals:
+
+- `handle.definition` is the `TopLevel` definition
+  `defineFunction` produced. `script()` accepts handles directly
+  wherever a definition belongs — it unwraps `.definition` — so
+  a handle can be passed to `script()` as-is.
+- For a non-void return type the handle itself is callable:
+  `handle(...args)` builds the same call expression as
+  `call(name, ...args)`. For a void function the handle is **not**
+  callable as an expression at the type level; only `.stmt` and
+  `.definition` exist on it.
+- `handle.stmt(...args)` builds the `callStmt(name, ...args)`
+  statement, for void and value functions alike.
+- Argument kinds follow the declared type: a `number` parameter
+  takes a JS number or an expression, `text` a string or an
+  expression, `boolean` a boolean or an expression (the JS
+  primitives are normalized to number / text / boolean literals),
+  every other singular type an expression only, and a plural
+  parameter one expression or an array of expressions (flattened
+  into the call's arguments, so a plural call through a handle
+  reads `f([a, b])` where `call("f", a, b)` spreads them).
+- One argument per declared parameter is the type-level shape.
+  At runtime the handle validates the count again (a `RangeError`
+  on the wrong arity, for callers that bypass the types), lets
+  trailing parameters with defaults be omitted just like a
+  `defineFunction` call, and rejects an argument whose JS kind
+  does not match its parameter.
+
+`examples/fnhandles.ts` exercises all of this — an
+`mmoXp(player, text) :: number` function called through its
+handle in expression and statement positions, a void handle used
+only via `.stmt`, and a plural parameter passed an array — and
+carries the compile-time negative checks (wrong arity, a text
+literal in a player slot, a void handle called as an expression)
+as suppressed type errors in a never-called function.
+
 Semantics (verified against the real Skript 2.17.1 with probe
 scripts, in value and string positions alike):
 
