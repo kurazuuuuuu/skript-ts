@@ -2404,6 +2404,89 @@ observed through the script; a quota section (gated on a tiny
 configured Class A limit) pins the breakwater's `quota`
 completion.
 
+## Cloudflare: integration sample and free-tier audit (CF-4)
+
+CF-1/CF-2 (D1) and CF-3 (R2) are separate clients over one
+common base. `examples/cfjournal.ts` is the sample that joins
+them into one practical flow — a join journal with
+resource-pack distribution:
+
+- On join it creates its D1 table if needed
+  (`pack_events (id, player, kind)`), journals the join as a
+  bound-parameter insert, and uploads the deployed
+  `packs/example.zip` to R2 under a second handle
+  (`journal`), exactly like the RP-3 reference flow.
+- The put's completion presigns the pack; the presign's
+  completion offers it with `sendResourcePack`. Each client
+  answer comes back through `onResourcePackStatus`, and a
+  `successfully_loaded` answer is journaled as a second event
+  kind.
+- `/cfjstats` reads both counts back out of D1 and broadcasts
+  them (`cfjournal joins N`, `cfjournal pack loads N`).
+- Error completions are deliberately silent (a journal must
+  not spam chat when the infrastructure is down);
+  `examples/cloudflare.ts` remains the diagnostic counterpart
+  that reports every error kind.
+
+`examples/behavior/cfjournal.behavior.ts` verifies the whole
+flow with both stubs up at once (the cloudflare suite's D1
+stub design plus the packdist suite's S3 stub): the join is
+journaled with the player name proven bound, the offered
+pack's SHA-1 matches the manifest, the three status
+transitions are observed, and the stats command reads back
+exactly the two journaled events. Like the other CF suites it
+is environment-gated and never touches a real account.
+
+**Operation ids are a server-wide namespace.** A `cfResponse`
+completion is delivered to _every_ loaded script's handler;
+handlers tell completions apart by `cfId()` alone. Two
+scripts that reuse one id therefore react to each other's
+operations — found in this phase's verification, where the
+sample's original `packup` id collided with the packdist
+sample's: in the packdist suite (R2 stub up, journal stub
+down) cfjournal's handler treated the packdist put's success
+as its own and presigned a URL on the dead endpoint, and the
+hijacked offer won the race to the test bot. The sample now
+prefixes every id with `cfj-`; scripts that use Cloudflare
+operations should namespace their ids the same way.
+
+**Free-tier audit of the 2026-11-14 real-account
+verification.** The RP-3/CF-3 verification ran against the
+project's real Cloudflare account (Free plan, no payment
+method). Every operation it performed, and its size against
+the free tier:
+
+| Operation                                        | Count                                                                                                       | Notes                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R2 bucket create (REST)                          | 1                                                                                                           | dedicated bucket `skript-ts-packs`; the tsumu-press thumbnail bucket was not touched                                                                                                                                                                                        |
+| R2 API token issue                               | 1                                                                                                           | Bucket Item Read/Write; the value is stored only in a mode-600 file beside the connector and is never logged or recorded                                                                                                                                                    |
+| Credential probe (coordinator)                   | PUT 1 / GET 1 / DELETE 1                                                                                    | PUT 200, unauthenticated presigned GET 200 with a byte-identical body, DELETE 204; proved the S3 derivation (Access Key ID = token id, Secret = SHA-256 hex of the token value) before the engine run                                                                       |
+| Engine real flow (`realpack`)                    | Put 1 (Class A), presign 1 (Class B), plus the earlier failed Put attempts that exposed the double-hash bug | join → upload → presigned URL → pack offer → SHA-1 matched both the build manifest and the offered hash → accepted / downloaded / successfully_loaded observed through the script; the engine's monthly counter afterwards read `{"month":"2026-11","classA":2,"classB":2}` |
+| Cleanup of the test object                       | HEAD 1, DELETE 1                                                                                            | `example.zip` (1,529 bytes) confirmed present, then deleted; the bucket was left empty                                                                                                                                                                                      |
+| D1 real flow (`reald1`, on a throwaway database) | create / insert (bound) / read back, plus three error probes                                                | malformed SQL → `api`, unconfigured handle → `policy`, wrong token → `auth`, all against the live endpoint; the verification table was dropped afterwards and its absence confirmed via REST; the tsumu-press database was not touched                                      |
+
+Totals: a few dozen API calls overall and at most 1,529
+bytes stored at any moment. Against the R2 free tier
+(1,000,000 Class A and 10,000,000 Class B operations per
+month, 10 GB of storage) and the D1 free plan, the whole
+verification sits within rounding error of zero, and no
+billable usage was incurred. Two standing rules fall out of
+the audit and stay in force: scripts use the dedicated
+`skript-ts-packs` bucket (never the tsumu-press resources),
+and the monthly-counter breakwater described in the CF-3
+section remains mandatory for script-side R2 use, because
+R2 alone can overage-bill. Placing the R2 key pair into a
+resident server's environment is the operator's job; scripts
+and IR never carry credentials.
+
+The audit also records why the real-account run matters: the
+engine's first R2 Put implementation double-hashed the
+payload digest and failed with `XAmzContentSHA256Mismatch`
+(HTTP 400) on every Put. The S3 stub does not verify
+signatures, so stub verification could not see it; only the
+real endpoint surfaced it. Fixed in 6ba056b and re-verified
+end to end.
+
 ## Resource packs: PNG ingestion hardening, self-check and quantize CLI (RP-5)
 
 RP-5 hardens the path from a generated texture file to a pack a

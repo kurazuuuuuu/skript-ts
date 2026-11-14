@@ -67,17 +67,25 @@ import type { Script } from "../src/index.js";
 // only observable outputs are the per-player status messages
 // and the stats broadcasts. (cloudflare.ts is the diagnostic
 // counterpart that reports every error kind.)
+//
+// Operation ids are a server-wide namespace: a cfResponse
+// completion is delivered to every loaded script's handler,
+// which tells completions apart by cfId() alone. Two scripts
+// using the same id react to each other's operations (the
+// packdist sample's chain was hijacked by this sample's
+// original "packup" id during verification), so every id
+// here carries the "cfj-" prefix.
 export const cfjournalScript: Script = script(
   onJoin([
     cfD1Query(
-      "jcreate",
+      "cfj-create",
       "default",
       str(
         "create table if not exists pack_events (id integer primary key, player text, kind text)",
       ),
     ),
     cfR2Put(
-      "packup",
+      "cfj-packup",
       "journal",
       str("skript-ts-packs"),
       str("example.zip"),
@@ -86,7 +94,7 @@ export const cfjournalScript: Script = script(
   ]),
   command("cfjstats", null, [
     cfD1Query(
-      "joins",
+      "cfj-joins",
       "default",
       str("select count(*) as total from pack_events where kind = 'join'"),
       variable("jcount"),
@@ -94,13 +102,13 @@ export const cfjournalScript: Script = script(
   ]),
   onCfResponse([
     ifElse(
-      equals(cfId(), str("jcreate")),
+      equals(cfId(), str("cfj-create")),
       [
         ifElse(
           cfOk(),
           [
             cfD1Query(
-              "jlog",
+              "cfj-join",
               "default",
               fmt("insert into pack_events (player, kind) values (", nameOf(player()), ", 'join')"),
             ),
@@ -110,17 +118,25 @@ export const cfjournalScript: Script = script(
       ],
       [
         ifElse(
-          equals(cfId(), str("packup")),
+          equals(cfId(), str("cfj-packup")),
           [
             ifElse(
               cfOk(),
-              [cfR2Presign("packurl", "journal", str("skript-ts-packs"), str("example.zip"), 3600)],
+              [
+                cfR2Presign(
+                  "cfj-packurl",
+                  "journal",
+                  str("skript-ts-packs"),
+                  str("example.zip"),
+                  3600,
+                ),
+              ],
               [],
             ),
           ],
           [
             ifElse(
-              equals(cfId(), str("packurl")),
+              equals(cfId(), str("cfj-packurl")),
               [
                 ifElse(
                   cfOk(),
@@ -135,7 +151,7 @@ export const cfjournalScript: Script = script(
               ],
               [
                 ifElse(
-                  equals(cfId(), str("joins")),
+                  equals(cfId(), str("cfj-joins")),
                   [
                     ifElse(
                       cfOk(),
@@ -144,7 +160,7 @@ export const cfjournalScript: Script = script(
                           fmt("cfjournal joins ", variable("jcount", fmt("total::", num(1)))),
                         ),
                         cfD1Query(
-                          "loads",
+                          "cfj-loads",
                           "default",
                           str(
                             "select count(*) as total from pack_events where kind = 'pack_loaded'",
@@ -157,7 +173,7 @@ export const cfjournalScript: Script = script(
                   ],
                   [
                     ifElse(
-                      equals(cfId(), str("loads")),
+                      equals(cfId(), str("cfj-loads")),
                       [
                         ifElse(
                           cfOk(),
@@ -189,7 +205,7 @@ export const cfjournalScript: Script = script(
       equals(resourcePackStatus(), str("successfully_loaded")),
       [
         cfD1Query(
-          "plog",
+          "cfj-plog",
           "default",
           fmt(
             "insert into pack_events (player, kind) values (",
