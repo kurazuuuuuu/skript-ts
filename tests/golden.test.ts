@@ -105,6 +105,7 @@ import {
   listRemove,
   listSize,
   listVar,
+  localHandle,
   localList,
   location,
   localVar,
@@ -164,6 +165,7 @@ import {
   or,
   param,
   player,
+  playerVar,
   playSound,
   plus,
   randomInteger,
@@ -268,6 +270,7 @@ import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
 import { timeScript } from "../examples/time.js";
 import { uuidvarsScript } from "../examples/uuidvars.js";
+import { varhandlesScript } from "../examples/varhandles.js";
 import { priorityScript } from "../examples/priority.js";
 import { randomScript } from "../examples/random.js";
 import { inventoryScript } from "../examples/inventory.js";
@@ -348,6 +351,9 @@ describe("whole sample programs (golden fixtures)", () => {
   it("uuidvars", () => {
     expect(emit(uuidvarsScript)).toBe(fixture("uuidvars.sk"));
   });
+  it("varhandles", () => {
+    expect(emit(varhandlesScript)).toBe(fixture("varhandles.sk"));
+  });
   it("random", () => {
     expect(emit(randomScript)).toBe(fixture("random.sk"));
   });
@@ -397,6 +403,80 @@ describe("literal auto-conversion (feedback E1)", () => {
         ),
       ),
     ).toBe('function g(a: number = 7, b: text = "x") :: number:\n    return 1\n');
+  });
+});
+
+describe("typed variable handles (feedback E6 / E7)", () => {
+  it("playerVar builds the same nodes as variable(name, player)", () => {
+    const balance = playerVar("balance");
+    expect(balance.of(player())).toEqual(variable("balance", player()));
+    expect(
+      emit(
+        script(
+          onJoin([
+            balance.set(player(), 100),
+            balance.add(player(), num(5)),
+            balance.remove(player(), "3"),
+            balance.delete(player()),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {balance::%player%} to 100\n" +
+        "    add 5 to {balance::%player%}\n" +
+        '    remove "3" from {balance::%player%}\n' +
+        "    delete {balance::%player%}\n",
+    );
+  });
+  it("playerVar normalizes string / number / boolean literals and passes Expr through", () => {
+    const flag = playerVar("flag");
+    expect(
+      emit(
+        script(
+          onJoin([
+            flag.set(player(), true),
+            flag.set(player(), "on"),
+            flag.set(player(), variable("other", player())),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {flag::%player%} to true\n" +
+        '    set {flag::%player%} to "on"\n' +
+        "    set {flag::%player%} to {other::%player%}\n",
+    );
+  });
+  it("localHandle builds the same nodes as localVar(name)", () => {
+    const total = localHandle("total");
+    expect(total.get()).toEqual(localVar("total"));
+    expect(
+      emit(
+        script(
+          onJoin([
+            total.set(1),
+            total.add(2),
+            total.remove(num(1)),
+            total.delete(),
+            send(player(), fmt("total=", total.get())),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        "    set {_total} to 1\n" +
+        "    add 2 to {_total}\n" +
+        "    remove 1 from {_total}\n" +
+        "    delete {_total}\n" +
+        '    send "total=%{_total}%" to player\n',
+    );
+  });
+  it("handles reject empty names at construction", () => {
+    expect(() => playerVar("")).toThrow(RangeError);
+    expect(() => playerVar("  ")).toThrow(RangeError);
+    expect(() => localHandle("")).toThrow(RangeError);
+    expect(() => localHandle("  ")).toThrow(RangeError);
   });
 });
 

@@ -572,6 +572,122 @@ export function deleteVar(target: VarTarget): Stmt {
   return withLoc({ kind: "deleteVar", target });
 }
 
+// ---------------------------------------------------------------------------
+// Typed variable handles (feedback E6 / E7): pure API sugar over
+// the builders above. A handle centralizes the key construction
+// for one variable name, so call sites stop repeating
+// variable(name, player) / localVar(name) and the index slot can
+// never drift between a write and a read-back. Handles build the
+// exact same AST nodes as the underlying builders — there is no
+// new AST, emitter or engine behavior.
+//
+// Values accepted by the writing methods are normalized locally:
+// a string becomes str(), a number num(), a boolean bool(), and
+// an Expr passes through unchanged.
+// ---------------------------------------------------------------------------
+
+/** A value a variable handle's writing methods accept: an expression, or a string / number / boolean literal. */
+export type VarHandleValue = Expr | string | number | boolean;
+
+function normalizeVarHandleValue(value: VarHandleValue): Expr {
+  if (typeof value === "string") return str(value);
+  if (typeof value === "number") return num(value);
+  if (typeof value === "boolean") return bool(value);
+  return value;
+}
+
+function requirePlayerVarName(name: string): string {
+  // variable() itself performs no name validation; the handle
+  // validates eagerly at construction so a typo fails at the
+  // definition site, not at the first method call. The check is
+  // the same non-empty-string rule localVar() / listVar() use.
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new RangeError("variable name must be a non-empty string");
+  }
+  return name;
+}
+
+function requireLocalHandleName(name: string): string {
+  // Same message localVar() throws, checked eagerly here.
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new RangeError("local variable name must be a non-empty string");
+  }
+  return name;
+}
+
+/**
+ * A typed handle for one player-indexed global variable
+ * ({name::%player%}): every method takes the player expression
+ * that selects the slot. See playerVar().
+ */
+export interface PlayerVarHandle {
+  /** Read one player's slot as an expression: variable(name, player). */
+  of(player: Expr): VariableExpr;
+  /** Set one player's slot: set(variable(name, player), value). */
+  set(player: Expr, value: VarHandleValue): Stmt;
+  /** Add to one player's slot: add(variable(name, player), value). */
+  add(player: Expr, value: VarHandleValue): Stmt;
+  /** Remove from one player's slot: remove(variable(name, player), value). */
+  remove(player: Expr, value: VarHandleValue): Stmt;
+  /** Delete one player's slot: deleteVar(variable(name, player)). */
+  delete(player: Expr): Stmt;
+}
+
+/**
+ * Construct a player-variable handle (feedback E6):
+ * playerVar("balance") centralizes the {balance::%player%} key
+ * construction for a per-player value. The player index is the
+ * per-player slot — in the engine the key is the player's UUID
+ * (feedback B6), while under Skript the index expands per the
+ * server's Skript configuration.
+ */
+export function playerVar(name: string): PlayerVarHandle {
+  const validName = requirePlayerVarName(name);
+  const target = (playerExpr: Expr): VariableExpr => variable(validName, playerExpr);
+  return {
+    of: (playerExpr) => target(playerExpr),
+    set: (playerExpr, value) => set(target(playerExpr), normalizeVarHandleValue(value)),
+    add: (playerExpr, value) => add(target(playerExpr), normalizeVarHandleValue(value)),
+    remove: (playerExpr, value) => remove(target(playerExpr), normalizeVarHandleValue(value)),
+    delete: (playerExpr) => deleteVar(target(playerExpr)),
+  };
+}
+
+/**
+ * A typed handle for one local variable ({_name}) inside a
+ * trigger or function frame. See localHandle().
+ */
+export interface LocalVarHandle {
+  /** Read the local as an expression: localVar(name). */
+  get(): LocalVariableExpr;
+  /** Set the local: set(localVar(name), value). */
+  set(value: VarHandleValue): Stmt;
+  /** Add to the local: add(localVar(name), value). */
+  add(value: VarHandleValue): Stmt;
+  /** Remove from the local: remove(localVar(name), value). */
+  remove(value: VarHandleValue): Stmt;
+  /** Delete the local: deleteVar(localVar(name)). */
+  delete(): Stmt;
+}
+
+/**
+ * Construct a local-variable handle (feedback E7):
+ * localHandle("total") centralizes the {_total} construction
+ * inside a trigger or a defineFunction body, where locals are
+ * the per-call frame's variables.
+ */
+export function localHandle(name: string): LocalVarHandle {
+  const validName = requireLocalHandleName(name);
+  const target = (): LocalVariableExpr => localVar(validName);
+  return {
+    get: () => target(),
+    set: (value) => set(target(), normalizeVarHandleValue(value)),
+    add: (value) => add(target(), normalizeVarHandleValue(value)),
+    remove: (value) => remove(target(), normalizeVarHandleValue(value)),
+    delete: () => deleteVar(target()),
+  };
+}
+
 /**
  * Construct a loop over a list's entries, exposing loopValue()
  * and loopIndex(). The list may be a list variable (entries are

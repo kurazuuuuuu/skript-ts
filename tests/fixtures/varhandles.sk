@@ -1,0 +1,31 @@
+on join:
+    set {balance::%player%} to 100
+    send "balance=%{balance::%player%}%" to player
+
+function applyBonus(base: number) :: number:
+    set {_bonus} to 10
+    add 5 to {_bonus}
+    return ({_base} + {_bonus})
+
+command /balance:
+    trigger:
+        send "balance=%{balance::%player%}%" to player
+
+command /earn [<integer>]:
+    trigger:
+        add arg-1 to {balance::%player%}
+        send "balance=%{balance::%player%}%" to player
+
+command /spend [<integer>]:
+    trigger:
+        remove arg-1 from {balance::%player%}
+        send "balance=%{balance::%player%}%" to player
+
+command /clearbalance:
+    trigger:
+        delete {balance::%player%}
+        send "balance=%{balance::%player%}%" to player
+
+command /bonus:
+    trigger:
+        send "bonus=%applyBonus(100)%" to player
