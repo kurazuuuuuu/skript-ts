@@ -98,15 +98,36 @@ export default defineBehavior(async (t) => {
     }
 
     // Free space from the console: the dropped sword is now
-    // collectable. Teleport the bot onto the nearest item
-    // entity (out here that is the sword) so the pickup does
-    // not depend on where the natural drop happened to roll;
-    // the filtered pickup handler's marker must then arrive
-    // (mark first — the wait only counts messages from here).
+    // collectable. Teleport the bot onto the sword entity
+    // itself — selected by item id, not "nearest item": in
+    // a shared full-run world the nearest dropped item is
+    // often another suite's debris, and the pickup must not
+    // depend on where the natural drop happened to roll.
+    // The filtered pickup handler's marker must then arrive
+    // (mark first — the wait only counts messages from
+    // here); re-teleport a few times in case the first
+    // landing misses the pickup radius.
     const clearMark = bot.messages.length;
     await t.console("clear PrizeBot");
-    await t.console("tp PrizeBot @e[type=minecraft:item,limit=1,sort=nearest]");
-    await waitNew(bot, clearMark, "picked prize");
+    const swordSelector =
+      '@e[type=minecraft:item,limit=1,sort=nearest,nbt={Item:{id:"minecraft:diamond_sword"}}]';
+    let picked = false;
+    for (let attempt = 0; attempt < 4 && !picked; attempt++) {
+      await t.console(`tp PrizeBot ${swordSelector}`);
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        if (bot.messages.slice(clearMark).includes("picked prize")) {
+          picked = true;
+          break;
+        }
+        await t.sleep(100);
+      }
+    }
+    if (!picked) {
+      throw new Error(
+        `prize sword was not picked up after the clear; fresh messages: ${bot.messages.slice(clearMark).join(" | ") || "(none)"}`,
+      );
+    }
     await bot.expectInventoryItem("diamond_sword");
   } finally {
     bot.disconnect();
