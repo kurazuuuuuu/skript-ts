@@ -63,3 +63,28 @@ command /fmteq [<text>]:
             broadcast "fmt-eq=T"
         else:
             broadcast "fmt-eq=F"
+
+command /hueq [<text>]:
+    trigger:
+        if colored "&7%arg-1%: &ago" is "§7%arg-1%: §ago":
+            broadcast "hue-eq=T"
+        else:
+            broadcast "hue-eq=F"
+
+command /huepart [<text>]:
+    trigger:
+        if colored "&a%arg-1%" is "§a%arg-1%":
+            broadcast "huepart-eq=T"
+        else:
+            broadcast "huepart-eq=F"
+
+command /huetail [<text>]:
+    trigger:
+        if colored "%arg-1%&a" is arg-1:
+            broadcast "huetail-eq=T"
+        else:
+            broadcast "huetail-eq=F"
+
+command /hands:
+    trigger:
+        broadcast "hands: %tool of player% / %offhand tool of player%"
