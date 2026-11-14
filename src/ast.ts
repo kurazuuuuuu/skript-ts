@@ -1249,7 +1249,39 @@ export type Stmt =
       store?: VariableExpr;
       timeoutSeconds?: number;
       loc?: SourceLoc;
+    }
+  // Engine-builtin statements (particles & fireworks, feedback D):
+  // fire-and-forget visual effects executed natively on the Bukkit
+  // API. spawnParticle carries the Bukkit Particle enum name as a
+  // builder-validated uppercase snake-case string (the engine
+  // resolves it with Particle.valueOf and treats an unknown name as
+  // a warned no-op) and an optional builder-level particle count
+  // (default 1; a count of 0 or less is an engine no-op).
+  // launchFirework carries its options as builder-level literals:
+  // flight power (default 1, clamped to >= 0 by the engine), the
+  // "#RRGGBB" colors of its single effect (default white when the
+  // list is empty or absent), the effect type (default "BALL") and
+  // the flicker / trail flags.
+  | {
+      kind: "spawnParticle";
+      particle: string;
+      location: Expr;
+      count?: number;
+      loc?: SourceLoc;
+    }
+  | {
+      kind: "launchFirework";
+      location: Expr;
+      power?: number;
+      colors?: readonly string[];
+      type?: FireworkType;
+      flicker?: boolean;
+      trail?: boolean;
+      loc?: SourceLoc;
     };
+
+/** A firework effect shape: the Bukkit FireworkEffect.Type names offered by launchFirework. */
+export type FireworkType = "BALL" | "BALL_LARGE" | "BURST" | "CREEPER" | "STAR";
 
 /** Represents a Skript event kind. The ws kinds are engine-builtin events (phase 6), the timer kinds are phase 7, papiRequest is phase 10. The block, click and damage kinds are core-language gameplay events (phase 14); pickup, drop, respawn and the bed kinds are phase 16; the inventory kinds are phase 17. Phase 22 generalized death (any entity, victim filter), added the entity pickup / drop forms, and split fishing into its state sub-events. */
 export type EventKind =

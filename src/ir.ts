@@ -98,6 +98,8 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "itemTag",
   "hasItemTag",
   "setItemTag",
+  "spawnParticle",
+  "launchFirework",
 ]);
 
 const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
