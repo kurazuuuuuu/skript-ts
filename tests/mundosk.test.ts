@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emit, emitIr, isEngineOnlyScript, wsConnect } from "../src/index.js";
+import { emit, emitIr, isEngineOnlyScript, str, wsConnect } from "../src/index.js";
 import { mundoskScript } from "../examples/mundosk.js";
 import { welcomeScript } from "../examples/welcome.js";
 
@@ -34,9 +34,7 @@ describe("MundoSK builtin slice (phase 6, engine-only)", () => {
   });
 
   it("websocket ids must be non-empty", () => {
-    expect(() => wsConnect("", { kind: "string", value: "ws://127.0.0.1:1" })).toThrow(RangeError);
-    expect(() => wsConnect("   ", { kind: "string", value: "ws://127.0.0.1:1" })).toThrow(
-      RangeError,
-    );
+    expect(() => wsConnect("", str("ws://127.0.0.1:1"))).toThrow(RangeError);
+    expect(() => wsConnect("   ", str("ws://127.0.0.1:1"))).toThrow(RangeError);
   });
 });
