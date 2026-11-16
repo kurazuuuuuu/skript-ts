@@ -1,0 +1,44 @@
+command /entmake:
+    trigger:
+        spawn zombie at location of player
+        set artificial intelligence of last spawned entity to false
+        set helmet of last spawned entity to iron helmet
+        set chestplate of last spawned entity to iron chestplate
+        set tool of last spawned entity to iron sword
+        set custom name of last spawned entity to "Boss Zombie"
+        set custom name visibility of last spawned entity to true
+        add "boss" to scoreboard tags of last spawned entity
+        set attack damage attribute of last spawned entity to 5
+        set armor attribute of last spawned entity to 2
+        broadcast "entmade"
+
+command /entcheck:
+    trigger:
+        broadcast "entcheck: helmet=%helmet of last spawned entity% chest=%chestplate of last spawned entity% hand=%tool of last spawned entity% off=%offhand tool of last spawned entity% boots=%boots of last spawned entity% name=%custom name of last spawned entity% dmg=%attack damage attribute of last spawned entity% armor=%armor attribute of last spawned entity% maxhp=%max health attribute of last spawned entity%"
+        if scoreboard tags of last spawned entity contains "boss":
+            broadcast "entcheck: tag=boss"
+        else:
+            broadcast "entcheck: tag=none"
+        if artificial intelligence of last spawned entity is true:
+            broadcast "entcheck: ai=on"
+        else:
+            broadcast "entcheck: ai=off"
+
+command /entvel:
+    trigger:
+        set velocity of last spawned entity to vector(0, 0.5, 0)
+        broadcast "entvel: vx=%x component of velocity of last spawned entity% vy=%y component of velocity of last spawned entity% vz=%z component of velocity of last spawned entity%"
+
+command /entstrip:
+    trigger:
+        set custom name of last spawned entity to "Renamed"
+        remove "boss" from scoreboard tags of last spawned entity
+        broadcast "entstrip: name=%custom name of last spawned entity%"
+        if scoreboard tags of last spawned entity contains "boss":
+            broadcast "entstrip: tag=boss"
+        else:
+            broadcast "entstrip: tag=none"
+
+command /enthand:
+    trigger:
+        send "enthand: tool=%tool of player% equip=%tool of player%" to player

@@ -278,6 +278,7 @@ import { guiScript } from "../examples/gui.js";
 import { gui2Script } from "../examples/gui2.js";
 import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
+import { entityScript } from "../examples/entity.js";
 import { commandsScript } from "../examples/commands.js";
 import { cooldownScript } from "../examples/cooldown.js";
 import { displayScript } from "../examples/display.js";
@@ -368,6 +369,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("state", () => {
     expect(emit(stateScript)).toBe(fixture("state.sk"));
+  });
+  it("entity", () => {
+    expect(emit(entityScript)).toBe(fixture("entity.sk"));
   });
   it("commands", () => {
     expect(emit(commandsScript)).toBe(fixture("commands.sk"));
