@@ -393,6 +393,7 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
             reloadPollTask = null;
         }
         cancelPeriodicals();
+        Sidebars.clearAll();
         unregisterScriptCommands();
         if (engine != null) engine.clearGuiRegistries();
         if (placeholders != null) placeholders.shutdown();
@@ -495,6 +496,10 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         // program would fire into handlers that may no longer exist,
         // so they are dropped (documented phase 7 semantics).
         if (timers != null) timers.clearAll();
+        // Sidebars are runtime display state owned by the old
+        // program's scripts; a reload drops them all (restoring
+        // the main scoreboard), like the timers above.
+        Sidebars.clearAll();
         Path dir = getDataFolder().toPath().resolve("scripts");
         List<Map<String, Object>> tops = new ArrayList<>();
         List<String> failedFiles = new ArrayList<>();
@@ -777,6 +782,10 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        // The sidebar is per-player runtime state; forget it
+        // before the quit handlers run so a read-back inside an
+        // on-quit handler already sees no sidebar.
+        Sidebars.forget(event.getPlayer());
         engine.fireEvent("quit", baseCtx(event.getPlayer()), false);
     }
 

@@ -2064,6 +2064,28 @@ final class Engine {
                 // setChunkTag; a missing tag is a no-op.
                 org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(stmt.get("target")), ctx));
                 if (chunk != null) ChunkTags.remove(chunk, str(stmt.get("key")));
+            case "setSidebar" -> {
+                // Replace the target player's whole sidebar
+                // (feedback D, engine-only; see Sidebars). Title
+                // and lines go through renderText, so formatting
+                // behaves exactly like send; a line with no value
+                // renders as an empty line. A non-player target
+                // is a no-op.
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    String title = renderText(node(stmt.get("title")), ctx);
+                    List<String> lines = new ArrayList<>();
+                    for (Object lineNode : list(stmt.get("lines"))) {
+                        String line = renderText(node(lineNode), ctx);
+                        lines.add(line == null ? "" : line);
+                    }
+                    Sidebars.set(target, title == null ? "" : title, lines);
+                }
+                cont.run();
+            }
+            case "clearSidebar" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Player target) {
+                    Sidebars.clear(target);
+                }
                 cont.run();
             }
             case "setSlot" -> {
@@ -3436,6 +3458,11 @@ final class Engine {
                 // target, and an unloaded chunk.
                 org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(cond.get("target")), ctx));
                 yield chunk != null && ChunkTags.has(chunk, str(cond.get("key")));
+            case "hasSidebar" -> {
+                // Per-player sidebars (feedback D, engine-only):
+                // false for a non-player target.
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                yield target instanceof Player p && Sidebars.has(p);
             }
             case "isOp" -> {
                 Object target = evalExpr(node(cond.get("target")), ctx);
@@ -4184,6 +4211,28 @@ final class Engine {
                 // the chunk is not loaded (chunkOf never loads).
                 org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(expr.get("target")), ctx));
                 yield chunk == null ? null : ChunkTags.get(chunk, str(expr.get("key")));
+            case "sidebarTitle" -> {
+                // Per-player sidebars (feedback D, engine-only):
+                // the stored (already colorized) title text, or
+                // no value when the target has no sidebar.
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                yield target instanceof Player p ? Sidebars.title(p) : null;
+            }
+            case "sidebarLine" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                Object index = evalExpr(node(expr.get("index")), ctx);
+                if (target instanceof Player p && index instanceof Number n) {
+                    yield Sidebars.line(p, (int) Math.round(n.doubleValue()));
+                }
+                yield null;
+            }
+            case "sidebarLineCount" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (target instanceof Player p) {
+                    Integer count = Sidebars.lineCount(p);
+                    yield count == null ? null : (double) count.intValue();
+                }
+                yield null;
             }
             case "loreOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);

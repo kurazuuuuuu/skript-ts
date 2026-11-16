@@ -1412,6 +1412,47 @@ clicking through a live GUI; see the development log):
   the text tag — and
   `examples/behavior/chunktags.behavior.ts` drives a
   bot through the flow under the engine.
+- **Per-player sidebars (engine-only)**: Skript core has
+  no sidebar / scoreboard-objective syntax at all (the
+  sidebar forms in the wild belong to addons), so — like
+  the phase 26 HTTP client — the sidebar builders are a
+  skript-ts engine extension and a script using any of
+  them deploys IR-only. `setSidebar(player, title,
+  ...lines)` replaces the player's WHOLE sidebar in one
+  statement: HUDs are redrawn wholesale, so there is
+  deliberately no line-at-a-time setter, and lines are
+  addressed by 1-based position for reading back. At
+  most 15 lines are shown (the vanilla sidebar limit);
+  extra lines are dropped from the end. A line with no
+  value renders as an empty line, keeping positions
+  stable; other values render through the usual text
+  path, so `&` / § formatting behaves exactly like
+  `send`. Duplicate and empty lines are fine — the
+  engine's scoreboard entry names are internal keys and
+  the visible text rides on each score's custom name,
+  with the score numbers hidden. `clearSidebar(player)`
+  removes the sidebar and restores the server's main
+  scoreboard. Setting a sidebar replaces the player's
+  scoreboard, so it competes with any other plugin that
+  assigns one (PlaceholderAPI displays and the like);
+  clearing cannot restore another plugin's board.
+  Nothing is persisted: quitting forgets the sidebar
+  and a script reload clears every player's sidebar.
+  The read-back forms are `sidebarTitleOf(player)` (the
+  current title text, no value when there is none),
+  `sidebarLine(player, n)` (the 1-based line's text, no
+  value out of range), `sidebarLineCount(player)` (no
+  value when there is no sidebar) and the leaf
+  condition `hasSidebar(player)`.
+  `examples/sidebar.ts` exercises all of it — `/sbset`
+  sets a colored title and four lines (a duplicate and
+  an empty line among them), `/sbread` reads everything
+  back, `/sbclear` removes it — and
+  `examples/behavior/sidebar.behavior.ts` drives a bot
+  through the flow under the engine, observing the
+  state through the read-back expressions (mineflayer
+  cannot fully parse the 1.21 score packets' custom
+  display names).
 - **Held items**: `toolOf(player)` is the item in the
   player's main hand (`tool of %player%`, Skript's
   player-tool expression) and `offHandToolOf(player)` the

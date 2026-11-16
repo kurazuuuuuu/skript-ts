@@ -404,6 +404,9 @@ function emitValue(e: Expr): string {
     case "freeSpaceFor":
     case "itemTag":
     case "chunkTag":
+    case "sidebarTitle":
+    case "sidebarLine":
+    case "sidebarLineCount":
     case "guiEventId":
       // Engine-builtin expressions (phases 6-10, 26, the
       // world paint family, phase 28's cursor, the
@@ -597,6 +600,9 @@ function emitString(e: Expr): string {
     case "freeSpaceFor":
     case "itemTag":
     case "chunkTag":
+    case "sidebarTitle":
+    case "sidebarLine":
+    case "sidebarLineCount":
     case "guiEventId":
       throw new Error(
         `Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`,
@@ -741,6 +747,7 @@ function emitLeafCond(c: Cond, negated: boolean): string {
     case "cfOk":
     case "hasItemTag":
     case "hasChunkTag":
+    case "hasSidebar":
       throw new Error(
         `Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -1465,6 +1472,8 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     case "setItemTag":
     case "setChunkTag":
     case "deleteChunkTag":
+    case "setSidebar":
+    case "clearSidebar":
     case "spawnParticle":
     case "launchFirework":
     case "openGuiTagged":
