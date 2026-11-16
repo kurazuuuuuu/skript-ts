@@ -3961,7 +3961,7 @@ function requireAttributeName(attribute: string): string {
   return attribute;
 }
 
-/** Construct an attribute expression: the TOTAL (modifier-applied) value of one attribute of a living entity, in raw Bukkit units (`attack damage attribute of <target>`). "max health" reads hit points here — use maxHealthOf for hearts. No value when the entity lacks the attribute. */
+/** Construct an attribute expression: the BASE value of one attribute of a living entity, in raw Bukkit units (`attack damage attribute of <target>`). "max health" reads hit points here — use maxHealthOf for hearts. No value when the entity lacks the attribute. */
 export function attributeOf(target: Expr, attribute: AttributeName): Expr {
   return { kind: "attributeOf", target, attribute: requireAttributeName(attribute) };
 }

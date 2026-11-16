@@ -1780,9 +1780,12 @@ rounds in the lane findings):
   and test the entity's Bukkit scoreboard tag set (the
   original's `scoreboard tags of %entity%` list).
 - **General attributes**: `attributeOf(entity, name)` reads
-  the **total** (modifier-applied) value and
-  `setAttribute(entity, name, value)` writes the **base**
-  value of one validated attribute literal: `"attack
+  the **base** value and `setAttribute(entity, name,
+  value)` writes the **base** value of one validated
+  attribute literal (probed: the original's read ignores
+  equipment and other modifiers — a zombie holding a
+  sword still reads its base attack damage, and worn
+  armor does not move its armor read): `"attack
   damage"`, `"movement speed"`, `"armor"`, `"armor
   toughness"`, `"knockback resistance"`, `"max health"`,
   `"attack speed"`, `"follow range"`, `"scale"`, `"step

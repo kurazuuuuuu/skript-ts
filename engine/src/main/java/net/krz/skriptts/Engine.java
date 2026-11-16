@@ -4099,18 +4099,23 @@ final class Engine {
                 Component name = e.customName();
                 yield name == null ? null : LEGACY.serialize(name);
             }
-            // General attributes (ext-entity wave): the TOTAL
-            // value (base + modifiers) of the named attribute,
-            // in raw Bukkit units — "max health" is hit points
-            // here, not maxHealthOf's hearts. No value when the
-            // entity has no such attribute instance.
+            // General attributes (ext-entity wave): the BASE
+            // value of the named attribute, in raw Bukkit
+            // units — "max health" is hit points here, not
+            // maxHealthOf's hearts. No value when the entity
+            // has no such attribute instance.
             case "attributeOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 if (!(target instanceof LivingEntity le)) yield null;
                 Attribute attr = attributeByName(str(expr.get("attribute")));
                 if (attr == null) yield null;
                 AttributeInstance inst = le.getAttribute(attr);
-                yield inst == null ? null : inst.getValue();
+                // The original's attribute expression reads
+                // the BASE value (probed: a sword in hand and
+                // armor worn do NOT move the read — equipment
+                // modifiers are not included), symmetric with
+                // the base write of setAttribute.
+                yield inst == null ? null : inst.getBaseValue();
             }
             // One axis of an entity's velocity (blocks/tick).
             case "velocityComponentOf" -> {

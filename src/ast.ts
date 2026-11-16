@@ -645,8 +645,10 @@ export type Expr =
   //   account name, while customNameOf is the renamable label
   //   any entity can carry. No value when the entity is
   //   unnamed.
-  // - attributeOf reads the TOTAL (modifier-applied) value of
-  //   one named attribute (`<name> attribute of %entity%` in
+  // - attributeOf reads the BASE value of one named
+  //   attribute (probed: the original's read ignores
+  //   equipment modifiers, symmetric with the base write;
+  //   `<name> attribute of %entity%` in
   //   the original, whose attribute argument is an attribute
   //   TYPE literal). Values are the raw Bukkit attribute
   //   numbers — in particular "max health" reads hit points
