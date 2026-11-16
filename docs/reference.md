@@ -505,6 +505,68 @@ it as a value and as an index, and
 `examples/behavior/uuidof.behavior.ts` pins both under both
 runtimes.
 
+## Method chains (feedback E8)
+
+`ExprChain` (in `src/chain.ts`) is an additive wrapper for
+writing expressions in read → transform → compare order
+instead of the functional builders' inside-out order. It
+builds exactly the same AST nodes — there is no new `.sk`
+form, no IR change and no runtime difference — and
+`tests/chain.test.ts` pins chain-built and function-built
+programs to identical IR and identical `.sk` output.
+
+- **Entry.** `x(expr)` wraps any expression; `xValue(value)`
+  also accepts a plain string / number / boolean literal
+  (normalized exactly like a `Value` position). Handle reads
+  enter through `xPlayerVar(handle, player)` and
+  `xLocal(handle)` — standalone functions over the handles'
+  existing read methods, not new handle methods, so `api.ts`
+  and `chain.ts` never import each other. The motivating flow
+  is `xPlayerVar(playerVar("mining_level"), player()).gte(10)`,
+  which builds `greaterOrEqual(variable("mining_level",
+  player()), 10)`.
+- **Return convention.** A method that builds an expression
+  returns a new `ExprChain`, so it chains further; a method
+  that builds a condition (`eq` / `neq` / `gt` / `gte` / `lt` /
+  `lte`, `isSet()`, `contains()`, `startsWith()`, `endsWith()`)
+  returns the `Cond` itself — terminal, because conditions do
+  not chain into expressions in this subset. `unwrap()` (or
+  the readonly `.expr`) extracts the plain `Expr` where an
+  expression position needs one (`set()`, `fmt()`, ...). The
+  wrapper is a class, never an `Expr`: AST nodes stay plain
+  objects, and passing a chain where an `Expr` belongs is a
+  compile error until it is unwrapped.
+- **Methods.** Arithmetic: `plus` / `minus` / `times` /
+  `dividedBy` / `remainder`. Text: `length()`, `upper()` /
+  `lower()` (also spelled `upperCase()` / `lowerCase()`),
+  `substring(from, to)`, `first(n)`, `last(n)`, `charAt(i)`,
+  `colored()` / `formatted()` / `uncolored()` /
+  `unformatted()`, `split(delim, caseSensitive?)`,
+  `join(delim?)`, `size()`. Math: `floor()` / `ceil()` /
+  `abs()` / `sqrt()` / `round(places?)`, `min(...others)` /
+  `max(...others)` (the wrapped value is the first candidate).
+  Reads over the wrapped value as target: `health()` /
+  `maxHealth()` / `foodLevel()` / `saturation()` /
+  `gameMode()` / `experience()` / `level()`, and the generic
+  `type()` / `name()` / `amount()` / `lore()` / `uuid()` /
+  `tool()` / `offHandTool()` / `world()` / `location()` /
+  `x()` / `y()` / `z()`. Every method is a one-line delegation
+  to the existing builder of the same meaning; literal
+  arguments are accepted wherever the builder takes a `Value`.
+- **Brands.** The chain is generic over the wrapped node's
+  type: `x(player())` is `ExprChain<PlayerExpr>` and its
+  `unwrap()` is a `PlayerExpr`, so a branded value keeps its
+  T1 brand through the entry and back out. Transforming
+  methods return `ExprChain<Expr>` (their result is a plain
+  value), except `location()`, whose builder returns the
+  `LocationExpr` brand and so returns
+  `ExprChain<LocationExpr>`.
+
+`examples/chain.ts` writes one program twice — chained and
+functional — and the golden fixture `tests/fixtures/chain.sk`
+plus the identity tests in `tests/chain.test.ts` pin the two
+forms to the same output.
+
 ## Custom functions
 
 `defineFunction(name, params, returnType, body)` defines a
