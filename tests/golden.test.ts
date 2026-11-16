@@ -267,6 +267,7 @@ import {
   withLore,
   withName,
 } from "../src/index.js";
+import type { Expr } from "../src/index.js";
 import { welcomeScript } from "../examples/welcome.js";
 import { kitScript } from "../examples/kit.js";
 import { chatLogScript } from "../examples/chatlog.js";
@@ -3020,9 +3021,13 @@ describe("GUI slice 2: drags, slot add/remove, enchantments (phase 28)", () => {
   });
 
   it("build errors mirror the original's load errors", () => {
-    expect(() => emit(script(command("x", null, [addToSlot(player(), num(1), num(3))])))).toThrow(
-      /neither an item type nor an item stack/,
-    );
+    // The number-as-item call is deliberately unbranded (widened
+    // to a plain Expr): since the T1 rollout the item slot rejects
+    // a NumExpr at the type level, and this case pins the emit-time
+    // rejection for callers that bypass the types.
+    expect(() =>
+      emit(script(command("x", null, [addToSlot(player(), num(1), num(3) as Expr)]))),
+    ).toThrow(/neither an item type nor an item stack/);
     expect(() =>
       emit(
         script(

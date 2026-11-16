@@ -83,7 +83,19 @@ purely additive and differs only at the type level:
   (a mob picker, an offline request), the payload readers of
   http / cf responses — returns a `Maybe…Expr` type
   (`MaybeEntityExpr`, `MaybeBlockExpr`, `MaybeItemExpr`,
-  `MaybePlayerExpr`, or the unbranded `MaybeExpr`). A Maybe
+  `MaybePlayerExpr`, or the unbranded `MaybeExpr`). Since the
+  T1 full rollout the payload readers with a known kind use the
+  matching new Maybe brands instead of the generic one —
+  `httpStatus()` / `cfR2Size()` return `MaybeNumExpr`,
+  `httpBody()` / `httpError()` / `cfError()` / `cfSignedUrl()`
+  and `guiEventId()` return `MaybeTextExpr` (the full Maybe
+  family also has `MaybeBoolExpr`, `MaybeWorldExpr`,
+  `MaybeInventoryExpr`, `MaybeBossBarExpr`,
+  `MaybeTimespanExpr` and `MaybeDateExpr`). A Maybe type
+  carries ONLY the maybe brand — never a definite brand as
+  well — so there are no double-branded intersection types,
+  and a Maybe value fills neither a strict `defineFn` slot nor
+  a lenient `…ExprInput` builder slot. A Maybe
   value is still an `Expr`, so generic positions (`fmt()` parts,
   comparisons, `send()` targets) and `isSet(...)` accept it
   directly, but it does **not** fill a definite branded slot —
@@ -713,10 +725,17 @@ programs to identical IR and identical `.sk` output.
   type: `x(player())` is `ExprChain<PlayerExpr>` and its
   `unwrap()` is a `PlayerExpr`, so a branded value keeps its
   T1 brand through the entry and back out. Transforming
-  methods return `ExprChain<Expr>` (their result is a plain
-  value), except `location()`, whose builder returns the
-  `LocationExpr` brand and so returns
-  `ExprChain<LocationExpr>`.
+  methods return the chain of their builder's branded return
+  type where the builder has one — `location()` returns
+  `ExprChain<LocationExpr>`, `health()` `ExprChain<NumExpr>`,
+  `tool()` `ExprChain<ItemExpr>`, `world()`
+  `ExprChain<WorldExpr>`, the text transforms
+  `ExprChain<TextExpr>`, and so on — and `ExprChain<Expr>`
+  where the result kind is mixed or a list (`plus()`,
+  `split()`). The read methods stay permissive about the
+  wrapped value's kind: they widen it to a plain `Expr` before
+  delegating, so a chain never refuses a value the functional
+  builders would have accepted unbranded.
 
 `examples/chain.ts` writes one program twice — chained and
 functional — and the golden fixture `tests/fixtures/chain.sk`
@@ -785,26 +804,80 @@ carries the compile-time negative checks (wrong arity, a text
 literal in a player slot, a void handle called as an expression)
 as suppressed type errors in a never-called function.
 
-**Branded value kinds (feedback T1).** The common accessors
-return phantom-branded expression types — `player()`,
-`eventPlayer()` and `loopPlayer()` return `PlayerExpr`;
-`victim()`, `attacker()` and `eventEntity()` return
-`EntityExpr`; `eventBlock()` and `blockAt()` return
-`BlockExpr`; `eventItem()` and `item()` return `ItemExpr`;
-`locationOf()` returns `LocationExpr`. The brand is type-only
-(the runtime node is unchanged), and a `PlayerExpr` is accepted
-wherever an `EntityExpr` is (a player is an entity), never the
-other way round. Through a `defineFn` handle, a parameter
-declared `player` / `entity` / `block` / `item` / `location`
-(or a plural of one) accepts only expressions of that brand, so
-passing e.g. `victim()` (an entity) into a player parameter —
-which otherwise fails silently at runtime with an unset
-argument — is a compile error. Values whose kind the compiler
-cannot see (read back from variables, lists, function results)
-are branded explicitly with `asPlayer` / `asEntity` / `asBlock`
-/ `asItem` / `asLocation`, identity functions that assert the
-provenance. Plain (unbranded) positions elsewhere in the API
-are unaffected: the brands only gate handle parameters.
+**Branded value kinds (feedback T1, fully rolled out).** Every
+expression builder whose result kind is semantically determined
+returns a phantom-branded expression type. The original five
+kinds — `PlayerExpr`, `EntityExpr`, `BlockExpr`, `ItemExpr`,
+`LocationExpr` — cover `player()` / `eventPlayer()` /
+`loopPlayer()`, `victim()` / `attacker()` / `eventEntity()` /
+`hookedEntity()` / `fishingHook()` / `droppedItemEntity()` /
+`lastSpawnedEntity()`, `eventBlock()` / `blockAt()` /
+`relativeBlock()`, `eventItem()` / `item()` / `smeltedItem()` /
+`itemOfEntity()` / `toolOf()` / `offHandToolOf()` / `slotItem()`
+/ `eventCursor()` / the item suffixes (`withName` / `withLore` /
+`withAmount` / `withEnchantment`, `customItem()`,
+`equipmentOf()`), and `locationOf()` / `location()` /
+`offsetLocation()` / `eventLocation()` / `borderCenter()`.
+The rollout adds `NumExpr` (number literals, the numeric math /
+random builders, and every numeric read: health, coordinates,
+amounts, counts, indices, timestamps …), `TextExpr` (string /
+format literals and every text-valued read or transform:
+`chatMessage()`, `nameOf()`, `uuidOf()`, the text operations,
+the file / placeholder / http / cf text readers … — `TextExpr`
+is now the `"text"` brand itself rather than a structural
+extract of the string / format nodes, which could not cover
+those other text nodes), `BoolExpr`, `WorldExpr` (`world()` /
+`worldOf()`), `InventoryExpr` (`chestInventory()` /
+`currentInventoryOf()` / `eventInventory()`), `BossBarExpr`
+(`bossBar()` / `keyedBossBar()` / `keyedBossBarOf()` /
+`eventBossBar()`), `TimespanExpr` (`timespan()`,
+`differenceBetween()`, the fishing wait / bite readings) and
+`DateExpr` (`now()`, `dateFromUnix()`). The brand is type-only
+(the runtime node, the IR and the emitted `.sk` are unchanged),
+and a `PlayerExpr` is accepted wherever an `EntityExpr` is (a
+player is an entity), never the other way round. Expressions
+whose kind is genuinely mixed or unknown stay unbranded:
+variable / list / call / argument / loop reads, `plus()` and
+`arith()` (`+` is also text concatenation), the list-returning
+builders, the enum-style literals and reads (`typeOf()`,
+`gameModeOf()`, `worldWeather()`, `fishingState()` …), and the
+runtime-only handle values (`dataSource()`, paint shapes and
+fills — the `GuiHandle` family is likewise a separate system,
+not a value kind).
+
+Kind-checked positions come in two tiers. **Strict slots** are
+the `defineFn` handle parameters: a parameter declared `player`
+/ `entity` / `block` / `item` / `location` (or a plural of one)
+accepts only expressions of that brand, so passing e.g.
+`victim()` (an entity) into a player parameter — which
+otherwise fails silently at runtime with an unset argument —
+is a compile error; `number` / `text` / `boolean` parameters
+(and their plurals) now likewise reject wrongly-branded
+expressions while still accepting JS literals, branded reads
+and unbranded expressions. **Lenient slots** are the direct
+builder arguments whose kind the construct fixes — the
+`…ExprInput` types (`EntityExprInput`, `ItemExprInput`,
+`LocationExprInput`, `NumExprInput`, `TextExprInput`,
+`WorldExprInput`, `InventoryExprInput`, `BossBarExprInput`,
+…): teleport's target and destination, `healthOf`'s target,
+the item arguments of `giveItem` / `setBlockAt` / the slot and
+inventory operations, `location()`'s coordinates, the world
+arguments of the world builders, the boss-bar arguments, and
+so on. A lenient slot accepts a correctly-branded expression
+or an **unbranded** one (a variable read, a call result — the
+compiler cannot see its kind, and existing programs pass those
+through these positions), but rejects a **wrongly-branded**
+expression and a **Maybe-branded** one (see the event-context
+section: a Maybe value may have no value at runtime, so it
+fills no definite slot of either tier). Values whose kind the
+compiler cannot see are branded explicitly with `asPlayer` /
+`asEntity` / `asBlock` / `asItem` / `asLocation` / `asNum` /
+`asBool` / `asText` / `asWorld` / `asInventory` / `asBossBar` /
+`asTimespan` / `asDate`, identity functions that assert the
+provenance. Generic positions (comparisons, `fmt()` parts,
+`send()` targets, `set()` values, …) accept every brand
+unchanged. `tests/branding.test.ts` pins the positive and
+negative cases per boundary.
 
 Semantics (verified against the real Skript 2.17.1 with probe
 scripts, in value and string positions alike):

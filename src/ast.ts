@@ -732,6 +732,96 @@ export type ItemExpr = Expr & { readonly [exprKindBrand]: "item" };
 /** An expression known to evaluate to a location. */
 export type LocationExpr = Expr & { readonly [exprKindBrand]: "location" };
 
+/** An expression known to evaluate to a number. */
+export type NumExpr = Expr & { readonly [exprKindBrand]: "number" };
+
+/** An expression known to evaluate to a boolean. */
+export type BoolExpr = Expr & { readonly [exprKindBrand]: "boolean" };
+
+/** An expression known to evaluate to a world. */
+export type WorldExpr = Expr & { readonly [exprKindBrand]: "world" };
+
+/** An expression known to evaluate to an inventory. */
+export type InventoryExpr = Expr & { readonly [exprKindBrand]: "inventory" };
+
+/** An expression known to evaluate to a boss bar. */
+export type BossBarExpr = Expr & { readonly [exprKindBrand]: "bossbar" };
+
+/** An expression known to evaluate to a timespan. */
+export type TimespanExpr = Expr & { readonly [exprKindBrand]: "timespan" };
+
+/** An expression known to evaluate to a date. */
+export type DateExpr = Expr & { readonly [exprKindBrand]: "date" };
+
+/**
+ * An expression carrying NO kind brand at all — neither a definite
+ * brand nor a Maybe brand: variable reads, function calls, loop
+ * values, command arguments and every other read whose value kind
+ * the compiler cannot see. The two `?: never` brand slots are what
+ * make the input types below work: a wrongly-branded expression
+ * (an ItemExpr, a TextExpr, a NumExpr ...) has a brand value that
+ * is not `never`, and a Maybe expression has a maybeKindBrand, so
+ * neither is an UnbrandedExpr.
+ */
+export type UnbrandedExpr = Expr & {
+  readonly [exprKindBrand]?: never;
+  readonly [maybeKindBrand]?: never;
+};
+
+/**
+ * Lenient kind-checked argument slots (feedback T1, full
+ * rollout): a direct builder position whose value kind is fixed
+ * by the construct's semantics accepts either an expression
+ * branded with that kind or an unbranded expression (whose kind
+ * the compiler cannot see — see UnbrandedExpr). A wrongly-branded
+ * expression and a Maybe-branded expression are both rejected:
+ * the first is a proven kind mismatch, the second may have no
+ * value at runtime (assert presence with asPlayer / asEntity /
+ * ... first). This is deliberately weaker than a defineFn handle
+ * parameter, which stays definite-brand-only; the builder slots
+ * historically accepted any Expr, and existing legitimate code
+ * passes variable reads and call results through them.
+ */
+export type PlayerExprInput = PlayerExpr | UnbrandedExpr;
+
+/** The entity counterpart of {@link PlayerExprInput} (a player qualifies). */
+export type EntityExprInput = EntityExpr | UnbrandedExpr;
+
+/** The block counterpart of {@link PlayerExprInput}. */
+export type BlockExprInput = BlockExpr | UnbrandedExpr;
+
+/** The item counterpart of {@link PlayerExprInput}. */
+export type ItemExprInput = ItemExpr | UnbrandedExpr;
+
+/** The location counterpart of {@link PlayerExprInput}. */
+export type LocationExprInput = LocationExpr | UnbrandedExpr;
+
+/** The number counterpart of {@link PlayerExprInput}. */
+export type NumExprInput = NumExpr | UnbrandedExpr;
+
+/** The boolean counterpart of {@link PlayerExprInput}. */
+export type BoolExprInput = BoolExpr | UnbrandedExpr;
+
+/** The world counterpart of {@link PlayerExprInput}. */
+export type WorldExprInput = WorldExpr | UnbrandedExpr;
+
+/**
+ * The inventory counterpart of {@link PlayerExprInput}, plus a player:
+ * in this subset a player used as an inventory means their own
+ * inventory (the setSlot / openInventory semantics), so a
+ * PlayerExpr is a legitimate inventory position value.
+ */
+export type InventoryExprInput = InventoryExpr | PlayerExpr | UnbrandedExpr;
+
+/** The boss-bar counterpart of {@link PlayerExprInput}. */
+export type BossBarExprInput = BossBarExpr | UnbrandedExpr;
+
+/** The timespan counterpart of {@link PlayerExprInput}. */
+export type TimespanExprInput = TimespanExpr | UnbrandedExpr;
+
+/** The date counterpart of {@link PlayerExprInput}. */
+export type DateExprInput = DateExpr | UnbrandedExpr;
+
 declare const maybeKindBrand: unique symbol;
 
 /**
@@ -770,14 +860,62 @@ export type MaybeItemExpr = Expr & { readonly [maybeKindBrand]: "item" };
 /** An expression that evaluates to a location when it has a value. */
 export type MaybeLocationExpr = Expr & { readonly [maybeKindBrand]: "location" };
 
+/**
+ * Maybe counterparts of the T1 rollout brands (number / text /
+ * world / inventory / boss bar / timespan / date). Same rule as
+ * the original five: a Maybe type carries ONLY the maybeKindBrand
+ * — never an exprKindBrand as well — so it is not assignable to
+ * the definite branded types nor to the lenient `...Input` slots
+ * (whose unbranded arm requires `maybeKindBrand?: never`). There
+ * is deliberately no intersection type combining a definite brand
+ * with a Maybe brand: presence is asserted with a cast, never
+ * encoded as a double brand.
+ */
+
+/** An expression that evaluates to a number when it has a value. */
+export type MaybeNumExpr = Expr & { readonly [maybeKindBrand]: "number" };
+
+/** An expression that evaluates to a text when it has a value. */
+export type MaybeTextExpr = Expr & { readonly [maybeKindBrand]: "text" };
+
+/** An expression that evaluates to a boolean when it has a value. */
+export type MaybeBoolExpr = Expr & { readonly [maybeKindBrand]: "boolean" };
+
+/** An expression that evaluates to a world when it has a value. */
+export type MaybeWorldExpr = Expr & { readonly [maybeKindBrand]: "world" };
+
+/** An expression that evaluates to an inventory when it has a value. */
+export type MaybeInventoryExpr = Expr & { readonly [maybeKindBrand]: "inventory" };
+
+/** An expression that evaluates to a boss bar when it has a value. */
+export type MaybeBossBarExpr = Expr & { readonly [maybeKindBrand]: "bossbar" };
+
+/** An expression that evaluates to a timespan when it has a value. */
+export type MaybeTimespanExpr = Expr & { readonly [maybeKindBrand]: "timespan" };
+
+/** An expression that evaluates to a date when it has a value. */
+export type MaybeDateExpr = Expr & { readonly [maybeKindBrand]: "date" };
+
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
 
 /** Represents a built-in math function name. */
 export type MathFn = "floor" | "ceil" | "round" | "abs" | "sqrt" | "min" | "max";
 
-/** Represents a Skript text expression. */
-export type TextExpr = Extract<Expr, { kind: "string" } | { kind: "format" }>;
+/**
+ * Represents a Skript text expression. Before the T1 full
+ * rollout this was a structural Extract of the string / format
+ * nodes, but that shape could not cover the other text-valued
+ * nodes (chatMessage, nameOf, the file / placeholder readers,
+ * the font-char node the resource-pack builders cast in), so it
+ * is now the "text" kind brand like every other branded kind:
+ * a text value is rejected by the other kinds' branded / ExprInput
+ * slots, and text builders of every node kind return it.
+ */
+export type TextExpr = Expr & { readonly [exprKindBrand]: "text" };
+
+/** The lenient text slot: a branded text or an unbranded expression (see PlayerExprInput). */
+export type TextExprInput = TextExpr | UnbrandedExpr;
 
 /** Represents a Skript condition. */
 export type Cond =
