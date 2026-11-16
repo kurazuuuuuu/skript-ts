@@ -3633,6 +3633,8 @@ export function chunkTag(target: Expr, key: string): Expr {
 /** Construct a has-chunk-tag condition (engine-only): the chunk containing the target carries a hidden tag under the key. */
 export function hasChunkTag(target: Expr, key: string): Cond {
   return { kind: "hasChunkTag", target, key: requireChunkTagKey(key) };
+}
+
 // Per-player sidebars (feedback D): ENGINE-ONLY
 //
 // Skript core has no sidebar / scoreboard-objective syntax at
