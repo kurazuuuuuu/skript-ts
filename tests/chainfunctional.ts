@@ -3,6 +3,7 @@ import {
   script,
   command,
   onJoin,
+  onChat,
   broadcast,
   fmt,
   send,
@@ -28,7 +29,10 @@ import {
 // Method chains (feedback E8): the functional-builder twin of
 // examples/chain.ts — the same program written without the
 // ExprChain wrapper. Both build the identical AST and emit
-// byte-identical .sk (pinned by tests/chain.test.ts).
+// byte-identical .sk (pinned by tests/chain.test.ts). This twin
+// lives under tests/ (not examples/) because it is a test
+// artifact: deployed side by side, the two scripts would define
+// the same commands twice.
 
 const miningLevel = playerVar("mining_level");
 
@@ -43,7 +47,7 @@ export const chainFunctionalScript: Script = script(
     send(player(), fmt("hp=", healthOf(player()), " bonus=", variable("bonus"))),
     ifElse(lessThan(healthOf(player()), num(5)), [broadcast(str("someone is low on health"))]),
   ]),
-  command("chainshout", null, [
+  onChat([
     ifElse(greaterThan(textLength(chatMessage()), num(10)), [
       broadcast(fmt("shout: ", upperCase(chatMessage()))),
     ]),

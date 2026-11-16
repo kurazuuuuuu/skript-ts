@@ -9,7 +9,6 @@ command /chainstats:
         if health of player is less than 5:
             broadcast "someone is low on health"
 
-command /chainshout:
-    trigger:
-        if length of message is greater than 10:
-            broadcast "shout: %message in uppercase%"
+on chat:
+    if length of message is greater than 10:
+        broadcast "shout: %message in uppercase%"

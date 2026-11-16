@@ -81,7 +81,7 @@ import {
 } from "../src/index.js";
 import type { Expr, LocationExpr, PlayerExpr, Stmt } from "../src/index.js";
 import { chainScript } from "../examples/chain.js";
-import { chainFunctionalScript } from "../examples/chainfunctional.js";
+import { chainFunctionalScript } from "./chainfunctional.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
