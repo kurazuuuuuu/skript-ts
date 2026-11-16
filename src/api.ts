@@ -262,6 +262,7 @@ const COND_KINDS: ReadonlySet<string> = new Set([
   "hasItemTag",
   "hasAi",
   "hasEntityTag",
+  "customNameVisible",
   "chance",
   "timerActive",
   "guiEventIs",
@@ -842,6 +843,7 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "hasItemTag",
   "hasAi",
   "hasEntityTag",
+  "customNameVisible",
   "isOp",
   "equals",
   "notEquals",
@@ -3859,7 +3861,7 @@ function requireEquipmentSlot(slot: string): string {
   return slot;
 }
 
-/** Construct an equipment expression: the item in one equipment slot of a living entity (`helmet of <target>`, `tool of <target>` for the main hand). An empty armor slot has no value; an empty hand reads as the air item. */
+/** Construct an equipment expression: the item in one equipment slot of a living entity (`helmet of <target>`, `tool of <target>` for the main hand). An empty slot reads as the air item. */
 export function equipmentOf(target: Expr, slot: EquipmentSlotName): Expr {
   return { kind: "equipmentOf", target, slot: requireEquipmentSlot(slot) };
 }
@@ -3884,9 +3886,14 @@ export function setCustomName(target: Expr, name: Expr): Stmt {
   return withLoc({ kind: "setCustomName", target, name });
 }
 
-/** Construct a set-custom-name-visible statement: show or hide an entity's custom name tag. */
+/** Construct a set-custom-name-visible statement: show or hide an entity's custom name tag (the original's `show/hide custom name of <target>` effects). */
 export function setCustomNameVisible(target: Expr, visible: boolean): Stmt {
   return withLoc({ kind: "setCustomNameVisible", target, visible });
+}
+
+/** Construct a custom-name-visible condition: the entity's custom name tag is currently visible. False for a non-entity target. */
+export function customNameVisible(target: Expr): Cond {
+  return { kind: "customNameVisible", target };
 }
 
 /** Construct a has-AI condition: the living entity currently has its AI enabled. False for a non-living target. */
@@ -3930,7 +3937,9 @@ export type AttributeName =
   | "knockback resistance"
   | "max health"
   | "attack speed"
-  | "follow range";
+  | "follow range"
+  | "scale"
+  | "step height";
 
 const ATTRIBUTE_NAMES: readonly string[] = [
   "attack damage",
@@ -3941,6 +3950,8 @@ const ATTRIBUTE_NAMES: readonly string[] = [
   "max health",
   "attack speed",
   "follow range",
+  "scale",
+  "step height",
 ];
 
 function requireAttributeName(attribute: string): string {

@@ -6,7 +6,7 @@ command /entmake:
         set chestplate of last spawned entity to iron chestplate
         set tool of last spawned entity to iron sword
         set custom name of last spawned entity to "Boss Zombie"
-        set custom name visibility of last spawned entity to true
+        show custom name of last spawned entity
         add "boss" to scoreboard tags of last spawned entity
         set attack damage attribute of last spawned entity to 5
         set armor attribute of last spawned entity to 2
@@ -23,6 +23,10 @@ command /entcheck:
             broadcast "entcheck: ai=on"
         else:
             broadcast "entcheck: ai=off"
+        if last spawned entity's custom name is visible:
+            broadcast "entcheck: vis=on"
+        else:
+            broadcast "entcheck: vis=off"
 
 command /entvel:
     trigger:

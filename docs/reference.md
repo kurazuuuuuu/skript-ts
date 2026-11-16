@@ -1751,20 +1751,28 @@ rounds in the lane findings):
   entities (`tool of %entity%` / `offhand tool of %entity%`)
   — so for a player, `equipmentOf(p, "mainhand")` reads the
   same live hand as `toolOf(p)`, which stays as the
-  player-spelled convenience. An empty armor slot has **no
-  value**; an empty hand reads as the `air` item (the tool
-  expressions' probed rule). A target with no equipment (a
-  non-living entity) has no value, and writing to one does
-  nothing. Setting a slot from an item expression with no
-  value clears the slot.
+  player-spelled convenience. An empty slot reads as the
+  `air` item (probed: the original's slot read of an empty
+  slot is an amount-0 air stack — `"0 airs"` in string form;
+  the engine normalizes it to the plain air item, the
+  recorded G3 string-form divergence the tool reads already
+  carry). A target with no equipment (a non-living entity)
+  has no value, and writing to one does nothing. Setting a
+  slot from an item expression with no value clears the
+  slot (probed: `set boots of %entity% to air` empties it).
 - **Custom name**: `customNameOf(entity)` /
-  `setCustomName(entity, text)` /
-  `setCustomNameVisible(entity, bool)` — the entity's
-  name-tag name (`custom name of %entity%`). This is NOT a
-  player's account name: `nameOf(player)` stays the account
-  name, and an item's display name is also `nameOf` — the
-  three are kept distinct in the API names on purpose. An
-  unnamed entity's custom name has no value.
+  `setCustomName(entity, text)` — the entity's name-tag
+  name (`custom name of %entity%`). This is NOT a player's
+  account name: `nameOf(player)` stays the account name,
+  and an item's display name is also `nameOf` — the three
+  are kept distinct in the API names on purpose. An unnamed
+  entity's custom name has no value. Visibility is separate:
+  `customNameVisible(entity)` reads it (the original's
+  `%entity%'s custom name is visible` condition, probed)
+  and `setCustomNameVisible(entity, bool)` writes it
+  through the original's `show / hide custom name of
+  %entity%` effects — the original has **no** "set …
+  visibility" form (probed: that spelling does not parse).
 - **AI and scoreboard tags**: `hasAi(entity)` /
   `setAi(entity, bool)` switch a living entity's AI (a mob
   with AI off stands still and does not act), and
@@ -1777,7 +1785,8 @@ rounds in the lane findings):
   value of one validated attribute literal: `"attack
   damage"`, `"movement speed"`, `"armor"`, `"armor
   toughness"`, `"knockback resistance"`, `"max health"`,
-  `"attack speed"`, `"follow range"`. Values are the raw
+  `"attack speed"`, `"follow range"`, `"scale"`, `"step
+  height"`. Values are the raw
   Bukkit attribute numbers — in particular `"max health"`
   reads **hit points** (20 for a full-health player), NOT
   the hearts of `maxHealthOf`; the other attributes are

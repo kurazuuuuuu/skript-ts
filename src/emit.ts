@@ -725,6 +725,10 @@ function emitLeafCond(c: Cond, negated: boolean): string {
       return negated
         ? `scoreboard tags of ${emitValue(c.target)} does not contain "${escapeText(c.tag)}"`
         : `scoreboard tags of ${emitValue(c.target)} contains "${escapeText(c.tag)}"`;
+    case "customNameVisible":
+      return negated
+        ? `${emitValue(c.target)}'s custom name is not visible`
+        : `${emitValue(c.target)}'s custom name is visible`;
     case "eventCancelled":
       return negated ? "event is not cancelled" : "event is cancelled";
     case "isSet":
@@ -1356,9 +1360,11 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
         ),
       ];
     case "setCustomNameVisible":
+      // The original has no "set ... visibility" form
+      // (probed); its toggles are the show / hide effects.
       return [
         own(
-          `${prefix}set custom name visibility of ${emitValue(s.target)} to ${s.visible ? "true" : "false"}`,
+          `${prefix}${s.visible ? "show" : "hide"} custom name of ${emitValue(s.target)}`,
           path,
           s.loc,
         ),

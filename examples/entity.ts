@@ -5,6 +5,7 @@ import {
   broadcast,
   command,
   customNameOf,
+  customNameVisible,
   equipmentOf,
   fmt,
   hasAi,
@@ -94,6 +95,11 @@ const entcheck = command("entcheck", null, [
     hasAi(lastSpawnedEntity()),
     [broadcast(str("entcheck: ai=on"))],
     [broadcast(str("entcheck: ai=off"))],
+  ),
+  ifElse(
+    customNameVisible(lastSpawnedEntity()),
+    [broadcast(str("entcheck: vis=on"))],
+    [broadcast(str("entcheck: vis=off"))],
   ),
 ]);
 

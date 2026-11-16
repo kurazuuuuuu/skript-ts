@@ -634,9 +634,11 @@ export type Expr =
   //   ...`, `boots of ...`; the hands reuse the tool forms
   //   `tool of ...` / `offhand tool of ...`, which the original
   //   also defines over living entities, not only players). An
-  //   empty armor slot has NO value; an empty hand reads as the
-  //   air item, exactly like toolOf. A target without equipment
-  //   (a non-living entity) has no value.
+  //   empty slot reads as the air item, exactly like toolOf
+  //   (probed: the original's empty-slot read is an amount-0
+  //   air stack, "0 airs" as a string; the engine normalizes
+  //   it to the plain air item — the G3 divergence). A target
+  //   without equipment (a non-living entity) has no value.
   // - customNameOf reads an entity's custom name — the name-tag
   //   name (`custom name of %entity%` in the original), NOT a
   //   player's account/display name: nameOf(player) stays the
@@ -778,6 +780,11 @@ export type Cond =
   // scoreboard tag set. Both are leaf conditions.
   | { kind: "hasAi"; target: Expr }
   | { kind: "hasEntityTag"; target: Expr; tag: string }
+  // The entity's custom name is currently visible (the
+  // original's `%entity%'s custom name is visible` condition,
+  // probed; the write side is its show / hide custom name
+  // effects — there is no "set visibility" form).
+  | { kind: "customNameVisible"; target: Expr }
   // Core-language randomness (phase 28): the draw succeeds with
   // the given probability. The value is a FRACTION — chance(0.5)
   // is a 50% chance — which is the original's own percent model

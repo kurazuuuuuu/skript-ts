@@ -14,13 +14,13 @@ import { defineBehavior } from "../../src/behavior.js";
 export default defineBehavior(async (t) => {
   const bot = await t.connect("EntityBot");
   try {
-    await t.console("difficulty peaceful");
+    await t.console("difficulty easy");
     await t.console("tp EntityBot 500.5 -60 500.5");
     await t.sleep(500);
     await t.console("fill 496 -61 496 504 -61 504 stone");
     await t.console("fill 496 -60 496 504 -56 504 air");
     await t.console("tp EntityBot 500.5 -60 500.5");
-    await t.console("time set day");
+    await t.console("time set night");
     await t.console("weather clear");
     await t.console("gamemode survival EntityBot");
     await t.console("clear EntityBot");
@@ -35,11 +35,18 @@ export default defineBehavior(async (t) => {
     await chat("/entmake");
     await bot.waitForMessage("entmade");
     await chat("/entcheck");
+    // An empty slot reads as the air item in both runtimes;
+    // only its string form differs (the recorded G3
+    // divergence: the original prints an amount-0 stack as
+    // "0 airs", the engine normalizes it to "air").
     await bot.waitForMessage(
-      /entcheck: helmet=iron helmet chest=iron chestplate hand=iron sword off=air boots=<none> name=Boss Zombie dmg=5 armor=2 maxhp=20/,
+      t.mode === "engine"
+        ? /entcheck: helmet=iron helmet chest=iron chestplate hand=iron sword off=air boots=air name=Boss Zombie dmg=5 armor=2 maxhp=20/
+        : /entcheck: helmet=iron helmet chest=iron chestplate hand=iron sword off=0 airs boots=0 airs name=Boss Zombie dmg=5 armor=2 maxhp=20/,
     );
     await bot.waitForMessage("entcheck: tag=boss");
     await bot.waitForMessage("entcheck: ai=off");
+    await bot.waitForMessage("entcheck: vis=on");
 
     // -- Velocity: set straight up, components read back in
     // the same trigger. --
@@ -55,7 +62,9 @@ export default defineBehavior(async (t) => {
     // player tool expression and the entity equipment form. --
     await t.console("clear EntityBot");
     await chat("/enthand");
-    await bot.waitForMessage(/enthand: tool=air equip=air/);
+    await bot.waitForMessage(
+      t.mode === "engine" ? /enthand: tool=air equip=air/ : /enthand: tool=0 airs equip=0 airs/,
+    );
 
     await t.console("execute at EntityBot run kill @e[type=!minecraft:player,distance=..30]");
   } finally {

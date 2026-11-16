@@ -3,6 +3,7 @@ import {
   attributeOf,
   command,
   customNameOf,
+  customNameVisible,
   emit,
   equipmentOf,
   hasAi,
@@ -53,6 +54,7 @@ describe("entity equipment/name/AI/tags/attributes/velocity (ext-entity)", () =>
           setAttribute(lastSpawnedEntity(), "follow range", num(16)),
           setVelocity(lastSpawnedEntity(), num(1), num(2), num(3)),
           ifElse(hasAi(lastSpawnedEntity()), [broadcast(str("ai"))]),
+          ifElse(customNameVisible(lastSpawnedEntity()), [broadcast(str("vis"))]),
           ifElse(hasEntityTag(lastSpawnedEntity(), "boss"), [broadcast(str("tag"))]),
           broadcast(customNameOf(lastSpawnedEntity())),
           broadcast(attributeOf(lastSpawnedEntity(), "armor")),
@@ -63,10 +65,11 @@ describe("entity equipment/name/AI/tags/attributes/velocity (ext-entity)", () =>
     );
     expect(out).toContain("set boots of last spawned entity to iron boots");
     expect(out).toContain("set artificial intelligence of last spawned entity to true");
-    expect(out).toContain("set custom name visibility of last spawned entity to false");
+    expect(out).toContain("hide custom name of last spawned entity");
     expect(out).toContain("set follow range attribute of last spawned entity to 16");
     expect(out).toContain("set velocity of last spawned entity to vector(1, 2, 3)");
     expect(out).toContain("if artificial intelligence of last spawned entity is true:");
+    expect(out).toContain("if last spawned entity's custom name is visible:");
     expect(out).toContain('if scoreboard tags of last spawned entity contains "boss":');
     expect(out).toContain("broadcast custom name of last spawned entity");
     expect(out).toContain("broadcast armor attribute of last spawned entity");

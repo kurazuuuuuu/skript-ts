@@ -3471,6 +3471,10 @@ final class Engine {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Entity e && e.getScoreboardTags().contains(str(cond.get("tag")));
             }
+            case "customNameVisible" -> {
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                yield target instanceof Entity e && e.isCustomNameVisible();
+            }
             case "isOp" -> {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && p.isOp();
@@ -4073,20 +4077,18 @@ final class Engine {
                         : null;
             }
             // Entity equipment (ext-entity wave): one slot of
-            // a living entity's equipment. The armor slots read
-            // the raw stack (an empty slot has NO value — the
-            // deliberate contrast with the hands, whose empty
-            // read is the air item, exactly as toolOf probed);
-            // a non-living target has no equipment at all.
+            // a living entity's equipment. An empty slot reads
+            // as the air item, exactly like the hands (probed:
+            // the original's slot read of an empty slot is an
+            // amount-0 air stack, whose string form is
+            // "0 airs" — the engine normalizes it to the plain
+            // air item, the recorded G3 string-form divergence
+            // the toolOf reads already carry). A non-living
+            // target has no equipment at all (no value).
             case "equipmentOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);
                 if (!(target instanceof LivingEntity le) || le.getEquipment() == null) yield null;
-                String slot = str(expr.get("slot"));
-                ItemStack stack = equipmentItem(le.getEquipment(), slot);
-                if ("mainhand".equals(slot) || "offhand".equals(slot)) {
-                    yield normalizeHand(stack);
-                }
-                yield stack == null || stack.getType().isAir() ? null : stack;
+                yield normalizeHand(equipmentItem(le.getEquipment(), str(expr.get("slot"))));
             }
             // An entity's custom (name-tag) name as a §-coded
             // string, or no value when unnamed. A player's
@@ -5769,6 +5771,8 @@ final class Engine {
             case "max health" -> Attribute.MAX_HEALTH;
             case "attack speed" -> Attribute.ATTACK_SPEED;
             case "follow range" -> Attribute.FOLLOW_RANGE;
+            case "scale" -> Attribute.SCALE;
+            case "step height" -> Attribute.STEP_HEIGHT;
             default -> null;
         };
     }
