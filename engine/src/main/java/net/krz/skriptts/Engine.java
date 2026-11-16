@@ -40,6 +40,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.inventory.FurnaceSmeltEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.ItemStack;
@@ -48,6 +49,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.components.CustomModelDataComponent;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.util.Vector;
 
 import java.time.Duration;
 import java.util.AbstractMap;
@@ -2144,6 +2146,8 @@ final class Engine {
                 // setChunkTag; a missing tag is a no-op.
                 org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(stmt.get("target")), ctx));
                 if (chunk != null) ChunkTags.remove(chunk, str(stmt.get("key")));
+                cont.run();
+            }
             case "setSidebar" -> {
                 // Replace the target player's whole sidebar
                 // (feedback D, engine-only; see Sidebars). Title
@@ -2578,6 +2582,76 @@ final class Engine {
                     exprNode.put("kind", exprKind);
                     exprNode.put("target", stmt.get("target"));
                     writeStateValue(exprNode, ctx, n.doubleValue());
+                }
+                cont.run();
+            }
+            case "setEquipment" -> {
+                // Write one equipment slot of a living entity.
+                // The item value materializes like give's (a
+                // bare type name becomes a fresh stack); an item
+                // expression with no value clears the slot.
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof LivingEntity le
+                        && le.getEquipment() != null) {
+                    ItemStack stack = toItemStack(evalExpr(node(stmt.get("item")), ctx));
+                    setEquipmentItem(le.getEquipment(), str(stmt.get("slot")), stack);
+                }
+                cont.run();
+            }
+            case "setCustomName" -> {
+                // Rename an entity: the name text is a §-coded
+                // string, stored as a component like item names.
+                // A name expression with no value clears the
+                // custom name.
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Entity e) {
+                    String name = renderText(node(stmt.get("name")), ctx);
+                    e.customName(name == null || name.isEmpty() ? null : LEGACY.deserialize(name));
+                }
+                cont.run();
+            }
+            case "setCustomNameVisible" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Entity e) {
+                    e.setCustomNameVisible(Boolean.TRUE.equals(stmt.get("visible")));
+                }
+                cont.run();
+            }
+            case "setAi" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof LivingEntity le) {
+                    le.setAI(Boolean.TRUE.equals(stmt.get("enabled")));
+                }
+                cont.run();
+            }
+            case "addEntityTag" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Entity e) {
+                    e.addScoreboardTag(str(stmt.get("tag")));
+                }
+                cont.run();
+            }
+            case "removeEntityTag" -> {
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Entity e) {
+                    e.removeScoreboardTag(str(stmt.get("tag")));
+                }
+                cont.run();
+            }
+            case "setAttribute" -> {
+                // Write an attribute's BASE value (reads
+                // through attributeOf are totals). An entity
+                // without the attribute instance is left alone.
+                Object v = evalExpr(node(stmt.get("value")), ctx);
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof LivingEntity le
+                        && v instanceof Number n) {
+                    Attribute attr = attributeByName(str(stmt.get("attribute")));
+                    AttributeInstance inst = attr == null ? null : le.getAttribute(attr);
+                    if (inst != null) inst.setBaseValue(n.doubleValue());
+                }
+                cont.run();
+            }
+            case "setVelocity" -> {
+                Object x = evalExpr(node(stmt.get("x")), ctx);
+                Object y = evalExpr(node(stmt.get("y")), ctx);
+                Object z = evalExpr(node(stmt.get("z")), ctx);
+                if (evalExpr(node(stmt.get("target")), ctx) instanceof Entity e
+                        && x instanceof Number xn && y instanceof Number yn && z instanceof Number zn) {
+                    e.setVelocity(new Vector(xn.doubleValue(), yn.doubleValue(), zn.doubleValue()));
                 }
                 cont.run();
             }
@@ -3538,11 +3612,29 @@ final class Engine {
                 // target, and an unloaded chunk.
                 org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(cond.get("target")), ctx));
                 yield chunk != null && ChunkTags.has(chunk, str(cond.get("key")));
+            }
             case "hasSidebar" -> {
                 // Per-player sidebars (feedback D, engine-only):
                 // false for a non-player target.
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && Sidebars.has(p);
+            }
+            case "hasAi" -> {
+                // Entity AI (ext-entity wave): a living entity
+                // with AI disabled stands still; a non-living
+                // target has no AI to read (false).
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                yield target instanceof LivingEntity le && le.hasAI();
+            }
+            case "hasEntityTag" -> {
+                // Scoreboard tags (ext-entity wave): membership
+                // in the entity's Bukkit scoreboard tag set.
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                yield target instanceof Entity e && e.getScoreboardTags().contains(str(cond.get("tag")));
+            }
+            case "customNameVisible" -> {
+                Object target = evalExpr(node(cond.get("target")), ctx);
+                yield target instanceof Entity e && e.isCustomNameVisible();
             }
             case "isOp" -> {
                 Object target = evalExpr(node(cond.get("target")), ctx);
@@ -4149,6 +4241,58 @@ final class Engine {
                         ? normalizeHand(p.getInventory().getItemInOffHand())
                         : null;
             }
+            // Entity equipment (ext-entity wave): one slot of
+            // a living entity's equipment. An empty slot reads
+            // as the air item, exactly like the hands (probed:
+            // the original's slot read of an empty slot is an
+            // amount-0 air stack, whose string form is
+            // "0 airs" — the engine normalizes it to the plain
+            // air item, the recorded G3 string-form divergence
+            // the toolOf reads already carry). A non-living
+            // target has no equipment at all (no value).
+            case "equipmentOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (!(target instanceof LivingEntity le) || le.getEquipment() == null) yield null;
+                yield normalizeHand(equipmentItem(le.getEquipment(), str(expr.get("slot"))));
+            }
+            // An entity's custom (name-tag) name as a §-coded
+            // string, or no value when unnamed. A player's
+            // custom name is NOT their account name (nameOf).
+            case "customNameOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (!(target instanceof Entity e)) yield null;
+                Component name = e.customName();
+                yield name == null ? null : LEGACY.serialize(name);
+            }
+            // General attributes (ext-entity wave): the BASE
+            // value of the named attribute, in raw Bukkit
+            // units — "max health" is hit points here, not
+            // maxHealthOf's hearts. No value when the entity
+            // has no such attribute instance.
+            case "attributeOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (!(target instanceof LivingEntity le)) yield null;
+                Attribute attr = attributeByName(str(expr.get("attribute")));
+                if (attr == null) yield null;
+                AttributeInstance inst = le.getAttribute(attr);
+                // The original's attribute expression reads
+                // the BASE value (probed: a sword in hand and
+                // armor worn do NOT move the read — equipment
+                // modifiers are not included), symmetric with
+                // the base write of setAttribute.
+                yield inst == null ? null : inst.getBaseValue();
+            }
+            // One axis of an entity's velocity (blocks/tick).
+            case "velocityComponentOf" -> {
+                Object target = evalExpr(node(expr.get("target")), ctx);
+                if (!(target instanceof Entity e)) yield null;
+                Vector v = e.getVelocity();
+                yield switch (str(expr.get("axis"))) {
+                    case "x" -> v.getX();
+                    case "y" -> v.getY();
+                    default -> v.getZ();
+                };
+            }
             case "attacker" -> ctx.attacker;
             case "damageAmount" -> ctx.damageEvent == null ? null : ctx.damageEvent.getDamage();
             case "damageCause" -> ctx.damageEvent == null
@@ -4295,6 +4439,7 @@ final class Engine {
                 // the chunk is not loaded (chunkOf never loads).
                 org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(expr.get("target")), ctx));
                 yield chunk == null ? null : ChunkTags.get(chunk, str(expr.get("key")));
+            }
             case "sidebarTitle" -> {
                 // Per-player sidebars (feedback D, engine-only):
                 // the stored (already colorized) title text, or
@@ -5831,6 +5976,59 @@ final class Engine {
      */
     private static ItemStack normalizeHand(ItemStack stack) {
         return stack == null || stack.getType().isAir() ? new AirItemStack() : stack;
+    }
+
+    /**
+     * The Bukkit attribute for a validated attribute literal
+     * (ext-entity wave; the API validates the name, so an
+     * unknown name here yields null and the caller no-ops).
+     * Drafted with Ollama (deepseek-v4.1-flash), reviewed by
+     * hand against the Paper API names.
+     */
+    private static Attribute attributeByName(String name) {
+        if (name == null) return null;
+        return switch (name) {
+            case "attack damage" -> Attribute.ATTACK_DAMAGE;
+            case "movement speed" -> Attribute.MOVEMENT_SPEED;
+            case "armor" -> Attribute.ARMOR;
+            case "armor toughness" -> Attribute.ARMOR_TOUGHNESS;
+            case "knockback resistance" -> Attribute.KNOCKBACK_RESISTANCE;
+            case "max health" -> Attribute.MAX_HEALTH;
+            case "attack speed" -> Attribute.ATTACK_SPEED;
+            case "follow range" -> Attribute.FOLLOW_RANGE;
+            case "scale" -> Attribute.SCALE;
+            case "step height" -> Attribute.STEP_HEIGHT;
+            default -> null;
+        };
+    }
+
+    /** Read one equipment slot (ext-entity wave). Drafted with Ollama, reviewed by hand. */
+    private static ItemStack equipmentItem(EntityEquipment eq, String slot) {
+        if (eq == null || slot == null) return null;
+        return switch (slot) {
+            case "helmet" -> eq.getHelmet();
+            case "chestplate" -> eq.getChestplate();
+            case "leggings" -> eq.getLeggings();
+            case "boots" -> eq.getBoots();
+            case "mainhand" -> eq.getItemInMainHand();
+            case "offhand" -> eq.getItemInOffHand();
+            default -> null;
+        };
+    }
+
+    /** Write one equipment slot (ext-entity wave); a null item clears the slot. */
+    private static void setEquipmentItem(EntityEquipment eq, String slot, ItemStack item) {
+        if (eq == null || slot == null) return;
+        switch (slot) {
+            case "helmet" -> eq.setHelmet(item);
+            case "chestplate" -> eq.setChestplate(item);
+            case "leggings" -> eq.setLeggings(item);
+            case "boots" -> eq.setBoots(item);
+            case "mainhand" -> eq.setItemInMainHand(item);
+            case "offhand" -> eq.setItemInOffHand(item);
+            default -> {
+            }
+        }
     }
 
     /**

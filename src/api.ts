@@ -278,6 +278,9 @@ const COND_KINDS: ReadonlySet<string> = new Set([
   "hasItemTag",
   "hasChunkTag",
   "hasSidebar",
+  "hasAi",
+  "hasEntityTag",
+  "customNameVisible",
   "chance",
   "timerActive",
   "guiEventIs",
@@ -933,6 +936,9 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "hasItemTag",
   "hasChunkTag",
   "hasSidebar",
+  "hasAi",
+  "hasEntityTag",
+  "customNameVisible",
   "isOp",
   "equals",
   "notEquals",
@@ -4718,6 +4724,195 @@ export function setHealth(target: Expr, value: Expr): Stmt {
 /** Construct a set-max-health statement (`set max health of <target> to <value>`), in hearts; rewrites the attribute base, current health untouched. */
 export function setMaxHealth(target: Expr, value: Expr): Stmt {
   return withLoc({ kind: "setMaxHealth", target, value });
+}
+
+// ---------------------------------------------------------------------------
+// Entity equipment, custom name, AI, scoreboard tags, general
+// attributes and velocity (ext-entity wave, feedback D).
+// Drafted with Ollama (deepseek-v4.1-flash) and finished by
+// hand; semantics probed against the real Skript 2.17.1 (see
+// the lane findings for the probe rounds and for which units
+// are core and which are engine-only):
+//
+// - Equipment: equipmentOf / setEquipment address one slot of
+//   a living entity. The armor slots emit the original's armor
+//   forms (`helmet of %entity%` ...); the hands emit its tool
+//   forms over living entities (`tool of %entity%` /
+//   `offhand tool of %entity%`) — the same reads toolOf /
+//   offHandToolOf give for players, generalized: toolOf stays
+//   as the player-spelled convenience, equipmentOf is the
+//   entity-general form (they coexist; for a player target and
+//   the mainhand slot they read the same live hand). An empty
+//   armor slot has no value; an empty hand reads as air.
+// - Custom name: customNameOf / setCustomName /
+//   setCustomNameVisible are the entity's name-tag name — a
+//   different thing from a player's account name (nameOf) or
+//   an item's display name (also nameOf), kept distinct in the
+//   API names on purpose.
+// - Attributes: attributeOf reads the TOTAL value and
+//   setAttribute writes the BASE value of one validated
+//   attribute literal, in raw Bukkit units (see ast.ts —
+//   "max health" here is hit points, unlike maxHealthOf's
+//   hearts).
+// - Velocity: the original's velocity is a vector and the
+//   subset has no vector type, so reads are per-component
+//   (velocityComponentOf) and the write takes the three
+//   components (setVelocity) — together they cover the main
+//   practical use (knockback / launching) without inventing a
+//   vector value type.
+// ---------------------------------------------------------------------------
+
+/** An equipment slot name for equipmentOf / setEquipment. */
+export type EquipmentSlotName =
+  | "helmet"
+  | "chestplate"
+  | "leggings"
+  | "boots"
+  | "mainhand"
+  | "offhand";
+
+const EQUIPMENT_SLOTS: readonly string[] = [
+  "helmet",
+  "chestplate",
+  "leggings",
+  "boots",
+  "mainhand",
+  "offhand",
+];
+
+function requireEquipmentSlot(slot: string): string {
+  if (!EQUIPMENT_SLOTS.includes(slot)) {
+    throw new RangeError(`invalid equipment slot: ${String(slot)}`);
+  }
+  return slot;
+}
+
+/** Construct an equipment expression: the item in one equipment slot of a living entity (`helmet of <target>`, `tool of <target>` for the main hand). An empty slot reads as the air item. */
+export function equipmentOf(target: Expr, slot: EquipmentSlotName): Expr {
+  return { kind: "equipmentOf", target, slot: requireEquipmentSlot(slot) };
+}
+
+/** Construct a set-equipment statement (`set helmet of <target> to <item>`): write an item into one equipment slot of a living entity; an item expression with no value clears the slot. */
+export function setEquipment(target: Expr, slot: EquipmentSlotName, itemValue: Expr): Stmt {
+  return withLoc({
+    kind: "setEquipment",
+    target,
+    slot: requireEquipmentSlot(slot),
+    item: itemValue,
+  });
+}
+
+/** Construct a custom-name expression: an entity's custom (name-tag) name, or no value when unnamed. Not a player's account name — see nameOf for that. */
+export function customNameOf(target: Expr): Expr {
+  return { kind: "customNameOf", target };
+}
+
+/** Construct a set-custom-name statement: rename an entity (its name-tag name). */
+export function setCustomName(target: Expr, name: Expr): Stmt {
+  return withLoc({ kind: "setCustomName", target, name });
+}
+
+/** Construct a set-custom-name-visible statement: show or hide an entity's custom name tag (the original's `show/hide custom name of <target>` effects). */
+export function setCustomNameVisible(target: Expr, visible: boolean): Stmt {
+  return withLoc({ kind: "setCustomNameVisible", target, visible });
+}
+
+/** Construct a custom-name-visible condition: the entity's custom name tag is currently visible. False for a non-entity target. */
+export function customNameVisible(target: Expr): Cond {
+  return { kind: "customNameVisible", target };
+}
+
+/** Construct a has-AI condition: the living entity currently has its AI enabled. False for a non-living target. */
+export function hasAi(target: Expr): Cond {
+  return { kind: "hasAi", target };
+}
+
+/** Construct a set-AI statement: enable or disable a living entity's AI (a disabled mob stands still and does not act). */
+export function setAi(target: Expr, enabled: boolean): Stmt {
+  return withLoc({ kind: "setAi", target, enabled });
+}
+
+function requireEntityTag(tag: string): string {
+  if (typeof tag !== "string" || tag.trim() === "") {
+    throw new RangeError("entity tag must be a non-empty string");
+  }
+  return tag;
+}
+
+/** Construct an add-entity-tag statement: add a scoreboard tag to an entity. */
+export function addEntityTag(target: Expr, tag: string): Stmt {
+  return withLoc({ kind: "addEntityTag", target, tag: requireEntityTag(tag) });
+}
+
+/** Construct a remove-entity-tag statement: remove a scoreboard tag from an entity. */
+export function removeEntityTag(target: Expr, tag: string): Stmt {
+  return withLoc({ kind: "removeEntityTag", target, tag: requireEntityTag(tag) });
+}
+
+/** Construct a has-entity-tag condition: the entity carries the given scoreboard tag. */
+export function hasEntityTag(target: Expr, tag: string): Cond {
+  return { kind: "hasEntityTag", target, tag: requireEntityTag(tag) };
+}
+
+/** An attribute name for attributeOf / setAttribute: a validated literal, mapped to the matching Bukkit attribute. */
+export type AttributeName =
+  | "attack damage"
+  | "movement speed"
+  | "armor"
+  | "armor toughness"
+  | "knockback resistance"
+  | "max health"
+  | "attack speed"
+  | "follow range"
+  | "scale"
+  | "step height";
+
+const ATTRIBUTE_NAMES: readonly string[] = [
+  "attack damage",
+  "movement speed",
+  "armor",
+  "armor toughness",
+  "knockback resistance",
+  "max health",
+  "attack speed",
+  "follow range",
+  "scale",
+  "step height",
+];
+
+function requireAttributeName(attribute: string): string {
+  if (!ATTRIBUTE_NAMES.includes(attribute)) {
+    throw new RangeError(`invalid attribute name: ${String(attribute)}`);
+  }
+  return attribute;
+}
+
+/** Construct an attribute expression: the BASE value of one attribute of a living entity, in raw Bukkit units (`attack damage attribute of <target>`). "max health" reads hit points here — use maxHealthOf for hearts. No value when the entity lacks the attribute. */
+export function attributeOf(target: Expr, attribute: AttributeName): Expr {
+  return { kind: "attributeOf", target, attribute: requireAttributeName(attribute) };
+}
+
+/** Construct a set-attribute statement: write the BASE value of one attribute of a living entity, in raw Bukkit units. */
+export function setAttribute(target: Expr, attribute: AttributeName, value: Expr): Stmt {
+  return withLoc({
+    kind: "setAttribute",
+    target,
+    attribute: requireAttributeName(attribute),
+    value,
+  });
+}
+
+/** Construct a velocity-component expression: one axis ("x" / "y" / "z") of an entity's velocity, in blocks per tick. */
+export function velocityComponentOf(target: Expr, axis: "x" | "y" | "z"): Expr {
+  if (axis !== "x" && axis !== "y" && axis !== "z") {
+    throw new RangeError(`invalid velocity axis: ${String(axis)}`);
+  }
+  return { kind: "velocityComponentOf", target, axis };
+}
+
+/** Construct a set-velocity statement: replace an entity's velocity with the given x / y / z components, in blocks per tick (the knockback / launch write). */
+export function setVelocity(target: Expr, x: Expr, y: Expr, z: Expr): Stmt {
+  return withLoc({ kind: "setVelocity", target, x, y, z });
 }
 
 /** Construct a set-food-level statement (`set food level of <target> to <value>`), in drumsticks; rounds to whole food points. */

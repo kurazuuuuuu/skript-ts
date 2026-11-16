@@ -667,7 +667,44 @@ export type Expr =
   | { kind: "keyedBossBarOf"; key: Expr }
   | { kind: "bossBarKeyOf"; bar: Expr }
   | { kind: "bossBarStyleOf"; bar: Expr }
-  | { kind: "eventBossBar" };
+  | { kind: "eventBossBar" }
+  // Entity equipment, custom name, attributes and velocity
+  // (ext-entity wave, feedback D). Semantics probed against the
+  // real Skript 2.17.1 in the sandbox (see the lane findings):
+  // - equipmentOf reads one equipment slot of a LIVING entity
+  //   (`helmet of %entity%`, `chestplate of ...`, `leggings of
+  //   ...`, `boots of ...`; the hands reuse the tool forms
+  //   `tool of ...` / `offhand tool of ...`, which the original
+  //   also defines over living entities, not only players). An
+  //   empty slot reads as the air item, exactly like toolOf
+  //   (probed: the original's empty-slot read is an amount-0
+  //   air stack, "0 airs" as a string; the engine normalizes
+  //   it to the plain air item — the G3 divergence). A target
+  //   without equipment (a non-living entity) has no value.
+  // - customNameOf reads an entity's custom name — the name-tag
+  //   name (`custom name of %entity%` in the original), NOT a
+  //   player's account/display name: nameOf(player) stays the
+  //   account name, while customNameOf is the renamable label
+  //   any entity can carry. No value when the entity is
+  //   unnamed.
+  // - attributeOf reads the BASE value of one named
+  //   attribute (probed: the original's read ignores
+  //   equipment modifiers, symmetric with the base write;
+  //   `<name> attribute of %entity%` in
+  //   the original, whose attribute argument is an attribute
+  //   TYPE literal). Values are the raw Bukkit attribute
+  //   numbers — in particular "max health" reads hit points
+  //   (20 for a full-health player), NOT the hearts of
+  //   maxHealthOf. The name is a validated literal (see api.ts).
+  // - velocityComponentOf reads one axis of an entity's
+  //   velocity in blocks per tick (`x component of velocity of
+  //   %entity%` — the original's velocity is a vector; the
+  //   subset has no vector type, so components are the read
+  //   surface and setVelocity is the write surface).
+  | { kind: "equipmentOf"; target: Expr; slot: string }
+  | { kind: "customNameOf"; target: Expr }
+  | { kind: "attributeOf"; target: Expr; attribute: string }
+  | { kind: "velocityComponentOf"; target: Expr; axis: string };
 
 declare const exprKindBrand: unique symbol;
 
@@ -826,6 +863,19 @@ export type Cond =
   // condition — the target player currently has a sidebar set
   // by setSidebar. False for a non-player target.
   | { kind: "hasSidebar"; target: Expr }
+  // Entity AI and scoreboard tags (ext-entity wave, feedback
+  // D). Whether these are core or engine-only is decided by
+  // probe against the real Skript 2.17.1 (see the lane
+  // findings): hasAi reads a living entity's AI flag,
+  // hasEntityTag tests membership in the entity's Bukkit
+  // scoreboard tag set. Both are leaf conditions.
+  | { kind: "hasAi"; target: Expr }
+  | { kind: "hasEntityTag"; target: Expr; tag: string }
+  // The entity's custom name is currently visible (the
+  // original's `%entity%'s custom name is visible` condition,
+  // probed; the write side is its show / hide custom name
+  // effects — there is no "set visibility" form).
+  | { kind: "customNameVisible"; target: Expr }
   // Core-language randomness (phase 28): the draw succeeds with
   // the given probability. The value is a FRACTION — chance(0.5)
   // is a 50% chance — which is the original's own percent model
@@ -1277,6 +1327,30 @@ export type Stmt =
       loc?: SourceLoc;
     }
   | { kind: "removePotion"; target: Expr; potion: string; loc?: SourceLoc }
+  // Entity equipment / name / AI / tags / attributes /
+  // velocity writes (ext-entity wave, feedback D), the write
+  // halves of the expressions above:
+  // - setEquipment writes one slot (`set helmet of %entity%
+  //   to %item%` and friends; the hands use the tool forms).
+  //   An item expression with no value clears the slot.
+  // - setCustomName renames an entity (`set custom name of
+  //   %entity% to %text%`); setCustomNameVisible toggles the
+  //   name tag's visibility.
+  // - setAi switches a living entity's AI; addEntityTag /
+  //   removeEntityTag edit its scoreboard tag set.
+  // - setAttribute writes an attribute's BASE value (the
+  //   original's set form writes the base; reads through
+  //   attributeOf are totals).
+  // - setVelocity replaces an entity's velocity vector from
+  //   its three numeric components (blocks per tick).
+  | { kind: "setEquipment"; target: Expr; slot: string; item: Expr; loc?: SourceLoc }
+  | { kind: "setCustomName"; target: Expr; name: Expr; loc?: SourceLoc }
+  | { kind: "setCustomNameVisible"; target: Expr; visible: boolean; loc?: SourceLoc }
+  | { kind: "setAi"; target: Expr; enabled: boolean; loc?: SourceLoc }
+  | { kind: "addEntityTag"; target: Expr; tag: string; loc?: SourceLoc }
+  | { kind: "removeEntityTag"; target: Expr; tag: string; loc?: SourceLoc }
+  | { kind: "setAttribute"; target: Expr; attribute: string; value: Expr; loc?: SourceLoc }
+  | { kind: "setVelocity"; target: Expr; x: Expr; y: Expr; z: Expr; loc?: SourceLoc }
   | { kind: "spawnEntity"; entityType: string; at: Expr; count?: number; loc?: SourceLoc }
   | { kind: "dropItem"; item: Expr; at: Expr; loc?: SourceLoc }
   | { kind: "playSound"; name: string; at: Expr; loc?: SourceLoc }

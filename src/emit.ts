@@ -275,6 +275,24 @@ function emitValue(e: Expr): string {
       return `weather in ${emitValue(e.world)}`;
     case "weatherType":
       return e.name;
+    case "equipmentOf":
+      // Armor slots use the original's armor forms; the
+      // hands use its tool forms (both defined over living
+      // entities in the original).
+      switch (e.slot) {
+        case "mainhand":
+          return `tool of ${emitValue(e.target)}`;
+        case "offhand":
+          return `offhand tool of ${emitValue(e.target)}`;
+        default:
+          return `${e.slot} of ${emitValue(e.target)}`;
+      }
+    case "customNameOf":
+      return `custom name of ${emitValue(e.target)}`;
+    case "attributeOf":
+      return `${e.attribute} attribute of ${emitValue(e.target)}`;
+    case "velocityComponentOf":
+      return `${e.axis} component of velocity of ${emitValue(e.target)}`;
     case "healthOf":
       return `health of ${emitValue(e.target)}`;
     case "maxHealthOf":
@@ -539,6 +557,10 @@ function emitString(e: Expr): string {
     case "worldWeather":
     case "weatherType":
     case "fishingState":
+    case "equipmentOf":
+    case "customNameOf":
+    case "attributeOf":
+    case "velocityComponentOf":
     case "healthOf":
     case "maxHealthOf":
     case "foodLevelOf":
@@ -720,6 +742,18 @@ function emitLeafCond(c: Cond, negated: boolean): string {
       return negated
         ? `${emitValue(c.target)} does not end with ${emitValue(c.suffix)}`
         : `${emitValue(c.target)} ends with ${emitValue(c.suffix)}`;
+    case "hasAi":
+      return negated
+        ? `artificial intelligence of ${emitValue(c.target)} is not true`
+        : `artificial intelligence of ${emitValue(c.target)} is true`;
+    case "hasEntityTag":
+      return negated
+        ? `scoreboard tags of ${emitValue(c.target)} does not contain "${escapeText(c.tag)}"`
+        : `scoreboard tags of ${emitValue(c.target)} contains "${escapeText(c.tag)}"`;
+    case "customNameVisible":
+      return negated
+        ? `${emitValue(c.target)}'s custom name is not visible`
+        : `${emitValue(c.target)}'s custom name is visible`;
     case "eventCancelled":
       return negated ? "event is not cancelled" : "event is cancelled";
     case "isSet":
@@ -1336,6 +1370,72 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
       return [
         own(
           `${prefix}set max health of ${emitValue(s.target)} to ${emitValue(s.value)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "setEquipment":
+      return [
+        own(
+          `${prefix}set ${s.slot === "mainhand" ? "tool" : s.slot === "offhand" ? "offhand tool" : s.slot} of ${emitValue(s.target)} to ${emitValue(s.item)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "setCustomName":
+      return [
+        own(
+          `${prefix}set custom name of ${emitValue(s.target)} to ${emitValue(s.name)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "setCustomNameVisible":
+      // The original has no "set ... visibility" form
+      // (probed); its toggles are the show / hide effects.
+      return [
+        own(
+          `${prefix}${s.visible ? "show" : "hide"} custom name of ${emitValue(s.target)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "setAi":
+      return [
+        own(
+          `${prefix}set artificial intelligence of ${emitValue(s.target)} to ${s.enabled ? "true" : "false"}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "addEntityTag":
+      return [
+        own(
+          `${prefix}add "${escapeText(s.tag)}" to scoreboard tags of ${emitValue(s.target)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "removeEntityTag":
+      return [
+        own(
+          `${prefix}remove "${escapeText(s.tag)}" from scoreboard tags of ${emitValue(s.target)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "setAttribute":
+      return [
+        own(
+          `${prefix}set ${s.attribute} attribute of ${emitValue(s.target)} to ${emitValue(s.value)}`,
+          path,
+          s.loc,
+        ),
+      ];
+    case "setVelocity":
+      return [
+        own(
+          `${prefix}set velocity of ${emitValue(s.target)} to vector(${emitValue(s.x)}, ${emitValue(s.y)}, ${emitValue(s.z)})`,
           path,
           s.loc,
         ),
