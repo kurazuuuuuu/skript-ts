@@ -33,6 +33,10 @@ Anything not listed here is outside the supported subset.
 | `onProjectileHit` | `on projectile hit:` |
 | `onToggleSneak`   | `on toggle sneak:`   |
 | `onSwapHand`      | — (engine-only)      |
+| `onSmelt`         | `on smelt:`          |
+| `onMove`          | `on player move:`    |
+| `onAreaEnter`     | — (engine-only)      |
+| `onAreaLeave`     | — (engine-only)      |
 
 ## Script load order (feedback B4)
 
@@ -90,6 +94,7 @@ section.
 | `cancelEvent()`                                   | `cancel event` (in a cancellable event handler)                                         |
 | `uncancelEvent()`                                 | `uncancel event`                                                                        |
 | `setDamage(value)`                                | `set damage to <value>` (inside `onDamage`)                                             |
+| `setSmeltedItem(item)`                            | `set the smelted item to <item>` (inside `onSmelt`)                                     |
 | `replaceAllIn(var, find, repl, caseSensitive?)`   | `replace all <find> in {var} with <repl>` (`with case sensitivity` when asked)          |
 | `replaceFirstIn(var, find, repl, caseSensitive?)` | `replace first <find> in {var} with <repl>`                                             |
 
@@ -135,6 +140,10 @@ expressions. See `examples/literals.ts`.
 | `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                    |
 | `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                        |
 | `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                         |
+| `eventLocation()`                                                | `event-location`                                             | `%event-location%`                     |
+| `pastEventLocation()`                                            | `past event-location`                                        | `%past event-location%`                |
+| `smeltedItem()`                                                  | `smelted item`                                               | `%smelted item%`                       |
+| `areaName()`                                                     | — (engine-only)                                              | —                                      |
 | `toolOf(target)`                                                 | `tool of <target>`                                           | `%tool of <target>%`                   |
 | `offHandToolOf(target)`                                          | `offhand tool of <target>`                                   | `%offhand tool of <target>%`           |
 | `attacker()`                                                     | `attacker`                                                   | `%attacker%`                           |
@@ -2635,3 +2644,53 @@ generation; neither changes any script-facing builder except
 its absence for font-less packs) and the whole H2 matrix:
 default, lone number, single pair, mixed-shape range, pair
 range, and the validation errors.
+
+## Smelt, move and area events
+
+| TypeScript API                            | Emitted as                               | Tier   |
+| ----------------------------------------- | ---------------------------------------- | ------ |
+| `onSmelt(body, { item }?)`                | `on smelt [of <types>]:`                 | core   |
+| `onMove(body)`                            | `on player move:`                        | core   |
+| `defineArea(name, corner1, corner2)`      | —                                        | engine |
+| `onAreaEnter(body)` / `onAreaLeave(body)` | —                                        | engine |
+| `smeltedItem()`                           | `smelted item`                           | core   |
+| `setSmeltedItem(item)`                    | `set the smelted item to <item>`         | core   |
+| `eventLocation()` / `pastEventLocation()` | `event-location` / `past event-location` | core   |
+| `areaName()`                              | —                                        | engine |
+
+Semantics, probed against the real Skript 2.17.1 (the area
+events are engine-only by design, so they have no original
+counterpart to probe):
+
+- **smelt** — the `item` filter matches the **source** item
+  in the furnace's input slot (`on smelt of raw iron` fires
+  for raw iron, not for the iron ingot it produces).
+  `eventBlock()` is the furnace block and `eventItem()` that
+  block in item form; the result is the dedicated
+  `smeltedItem()`, rewritable with `setSmeltedItem()`. There
+  is no player. The event is cancellable: a cancelled smelt
+  leaves the source in the input slot and produces no result.
+  `examples/smelt.ts` exercises the rewrite and the cancel.
+- **move** — fires on every position change, including
+  sub-block movement (per movement packet, probed with a
+  walking bot), and never for look-only changes.
+  `eventLocation()` is the destination (with yaw/pitch),
+  `pastEventLocation()` the origin. Cancellable — a cancelled
+  move simply does not happen. The subset ships the player
+  form only; the original's entity-type forms and its
+  turn-around variant stay out of scope.
+- **areas** — `defineArea` is a top-level declaration; its
+  two corner expressions are evaluated once when the engine
+  loads the program (a definition whose corners are not two
+  locations in one world is dropped with a warning). The
+  engine tracks each player's block position as they move
+  and fires `areaEnter` / `areaLeave` on transitions, with
+  `areaName()`, `eventLocation()` and `pastEventLocation()`
+  set; a move cancelled by an `onMove` handler produces no
+  transition. A player who joins inside an area is recorded
+  as inside silently — entering is a transition, and there
+  is none at join. Definitions are not persisted: the script
+  is the source of truth. This replaces the once-a-second
+  position polling scripts used to write by hand.
+  `examples/areas.ts` defines one zone and announces both
+  transitions.

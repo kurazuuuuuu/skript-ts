@@ -1,0 +1,17 @@
+on player move:
+    add 1 to {extmove::count}
+    if {extmove::frozen} is true:
+        cancel event
+
+command /movecount:
+    trigger:
+        send "moves %{extmove::count}%" to player
+
+command /movefreeze:
+    trigger:
+        if {extmove::frozen} is true:
+            set {extmove::frozen} to false
+            broadcast "moves unfrozen"
+        else:
+            set {extmove::frozen} to true
+            broadcast "moves frozen"
