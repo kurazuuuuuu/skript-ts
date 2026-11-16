@@ -23,7 +23,8 @@ import type {
   WorldExprInput,
   InventoryExprInput,
   BossBarExprInput,
-  MaybeExpr,
+  TimespanExprInput,
+  DateExprInput,
   MaybePlayerExpr,
   MaybeEntityExpr,
   MaybeBlockExpr,
@@ -442,7 +443,7 @@ export function randomInteger(min: Value, max: Value): NumExpr {
  * succeeds; a missing or non-number value never does. Every
  * check draws again.
  */
-export function chance(value: Expr): Cond {
+export function chance(value: NumExprInput): Cond {
   return { kind: "chance", value };
 }
 
@@ -600,12 +601,12 @@ export function executeConsoleCommand(command: Value): Stmt {
 }
 
 /** Construct a give statement. */
-export function give(target: Expr, itemName: string, amount: number): Stmt {
+export function give(target: PlayerExprInput, itemName: string, amount: number): Stmt {
   return withLoc({ kind: "give", target, itemName, amount });
 }
 
 /** Construct a teleport statement. */
-export function teleport(target: Expr, location: Expr): Stmt {
+export function teleport(target: EntityExprInput, location: LocationExprInput): Stmt {
   return withLoc({ kind: "teleport", target, location });
 }
 
@@ -940,12 +941,12 @@ export function loopList(list: Expr, body: readonly Stmt[]): Stmt {
 }
 
 /** Construct a counted loop: runs the body count times with loopValue() as the 1-based counter. */
-export function loopTimes(count: Expr, body: readonly Stmt[]): Stmt {
+export function loopTimes(count: NumExprInput, body: readonly Stmt[]): Stmt {
   return withLoc({ kind: "loopTimes", count, body });
 }
 
 /** Construct a numeric range loop: loopValue() runs from `from` to `to`, step 1, in either direction. */
-export function loopRange(from: Expr, to: Expr, body: readonly Stmt[]): Stmt {
+export function loopRange(from: NumExprInput, to: NumExprInput, body: readonly Stmt[]): Stmt {
   return withLoc({ kind: "loopRange", from, to, body });
 }
 
@@ -1013,7 +1014,7 @@ export function whileLoop(cond: CondLike, body: readonly Stmt[]): Stmt {
 }
 
 /** Construct a wait statement: suspend the rest of the trigger for the given duration. */
-export function wait(amount: Expr, unit: TimeUnit): Stmt {
+export function wait(amount: NumExprInput, unit: TimeUnit): Stmt {
   return withLoc({ kind: "wait", amount, unit });
 }
 
@@ -1184,25 +1185,31 @@ export type FnArg<T extends FunctionTypeName> = T extends "players"
         ? ItemExpr | readonly ItemExpr[]
         : T extends "locations"
           ? LocationExpr | readonly LocationExpr[]
-          : T extends `${string}s`
-            ? Expr | readonly Expr[]
-            : T extends "number"
-              ? number | Expr
-              : T extends "text"
-                ? string | Expr
-                : T extends "boolean"
-                  ? boolean | Expr
-                  : T extends "player"
-                    ? PlayerExpr
-                    : T extends "entity"
-                      ? EntityExpr
-                      : T extends "block"
-                        ? BlockExpr
-                        : T extends "item"
-                          ? ItemExpr
-                          : T extends "location"
-                            ? LocationExpr
-                            : Expr;
+          : T extends "numbers"
+            ? NumExprInput | readonly NumExprInput[]
+            : T extends "texts"
+              ? TextExprInput | readonly TextExprInput[]
+              : T extends "booleans"
+                ? BoolExprInput | readonly BoolExprInput[]
+                : T extends `${string}s`
+                  ? Expr | readonly Expr[]
+                  : T extends "number"
+                    ? number | NumExprInput
+                    : T extends "text"
+                      ? string | TextExprInput
+                      : T extends "boolean"
+                        ? boolean | BoolExprInput
+                        : T extends "player"
+                          ? PlayerExpr
+                          : T extends "entity"
+                            ? EntityExpr
+                            : T extends "block"
+                              ? BlockExpr
+                              : T extends "item"
+                                ? ItemExpr
+                                : T extends "location"
+                                  ? LocationExpr
+                                  : Expr;
 
 /** The call-argument tuple of a parameter list: one FnArg per declared parameter, in order. */
 export type FnArgs<Ps extends readonly FunctionParam[]> = {
@@ -2445,7 +2452,7 @@ export function droppedItemEntity(): EntityExpr {
 }
 
 /** Construct an item-of expression: the item stack an Item entity carries (the caught fish, the dropped item); no value for other entities. */
-export function itemOfEntity(target: Expr): ItemExpr {
+export function itemOfEntity(target: EntityExprInput): ItemExpr {
   return { kind: "itemOfEntity", target } as ItemExpr;
 }
 
@@ -2614,7 +2621,11 @@ export function onAreaLeave(body: readonly Stmt[], options?: EventOptions): TopL
 }
 
 /** Define a named cuboid area from two corner locations (any pair of opposite corners). The corners are evaluated once when the engine loads the program; definitions are not persisted — the script is the source of truth. ENGINE-ONLY. */
-export function defineArea(name: string, corner1: Expr, corner2: Expr): TopLevel {
+export function defineArea(
+  name: string,
+  corner1: LocationExprInput,
+  corner2: LocationExprInput,
+): TopLevel {
   if (typeof name !== "string" || name.trim() === "") {
     throw new RangeError("defineArea requires a non-empty area name");
   }
@@ -2967,22 +2978,22 @@ export function wsId(): TextExpr {
 // phase-18 section at the end of this file.
 
 /** Construct a border-size expression (engine builtin): the current size of a world's border. */
-export function borderSize(world: Expr): NumExpr {
+export function borderSize(world: WorldExprInput): NumExpr {
   return { kind: "borderSize", world } as NumExpr;
 }
 
 /** Construct a border-center expression (engine builtin): the center location of a world's border. */
-export function borderCenter(world: Expr): LocationExpr {
+export function borderCenter(world: WorldExprInput): LocationExpr {
   return { kind: "borderCenter", world } as LocationExpr;
 }
 
 /** Construct a set-border-size statement (engine builtin). */
-export function setBorderSize(world: Expr, size: Expr): Stmt {
+export function setBorderSize(world: WorldExprInput, size: NumExprInput): Stmt {
   return withLoc({ kind: "setBorderSize", world, size });
 }
 
 /** Construct a set-border-center statement (engine builtin). */
-export function setBorderCenter(world: Expr, center: Expr): Stmt {
+export function setBorderCenter(world: WorldExprInput, center: LocationExprInput): Stmt {
   return withLoc({ kind: "setBorderCenter", world, center });
 }
 
@@ -3007,7 +3018,7 @@ function requireTimerId(id: string): string {
 }
 
 /** Construct a timer-create statement (engine builtin): start a named countdown of the given seconds. */
-export function timerCreate(id: string, seconds: Expr): Stmt {
+export function timerCreate(id: string, seconds: NumExprInput): Stmt {
   return withLoc({ kind: "timerCreate", id: requireTimerId(id), seconds });
 }
 
@@ -3046,7 +3057,7 @@ export function timerId(): TextExpr {
 }
 
 /** Construct a timer-time-left expression (engine builtin): seconds remaining on the named timer, or no value when it is not active. */
-export function timerTimeLeft(name: Expr): NumExpr {
+export function timerTimeLeft(name: TextExprInput): NumExpr {
   return { kind: "timerTimeLeft", name } as NumExpr;
 }
 
@@ -3152,7 +3163,7 @@ export function fileContents(path: TextExpr): TextExpr {
 }
 
 /** Construct a file-line expression (engine builtin): the 1-based line of a file, or no value when out of range / missing. */
-export function fileLine(path: TextExpr, line: Expr): TextExpr {
+export function fileLine(path: TextExpr, line: NumExprInput): TextExpr {
   return { kind: "fileLine", path, line } as TextExpr;
 }
 
@@ -3209,7 +3220,7 @@ function requirePrefixes(prefix: string | readonly string[]): readonly string[] 
 }
 
 /** Construct a placeholder-value expression (engine builtin): evaluate PAPI placeholders in a text for a player. */
-export function placeholderValue(player: Expr, text: TextExpr): TextExpr {
+export function placeholderValue(player: PlayerExprInput, text: TextExpr): TextExpr {
   return { kind: "placeholderValue", player, text } as TextExpr;
 }
 
@@ -3292,37 +3303,37 @@ export function setPlaceholderResult(text: TextExpr): Stmt {
 // ---------------------------------------------------------------------------
 
 /** Construct a text-length expression: the number of characters (UTF-16 code units) of a text. */
-export function textLength(target: Expr): NumExpr {
+export function textLength(target: TextExprInput): NumExpr {
   return { kind: "textLength", target } as NumExpr;
 }
 
 /** Construct a substring expression: characters `from`..`to` of a text, 1-based and inclusive. */
-export function substring(target: Expr, from: Expr, to: Expr): TextExpr {
+export function substring(target: TextExprInput, from: NumExprInput, to: NumExprInput): TextExpr {
   return { kind: "substring", target, from, to } as TextExpr;
 }
 
 /** Construct a first-characters expression: the first `count` characters of a text. */
-export function firstChars(target: Expr, count: Expr): TextExpr {
+export function firstChars(target: TextExprInput, count: NumExprInput): TextExpr {
   return { kind: "firstChars", target, count } as TextExpr;
 }
 
 /** Construct a last-characters expression: the last `count` characters of a text. */
-export function lastChars(target: Expr, count: Expr): TextExpr {
+export function lastChars(target: TextExprInput, count: NumExprInput): TextExpr {
   return { kind: "lastChars", target, count } as TextExpr;
 }
 
 /** Construct a character-at expression: the character at a 1-based index of a text. */
-export function charAt(target: Expr, index: Expr): TextExpr {
+export function charAt(target: TextExprInput, index: NumExprInput): TextExpr {
   return { kind: "charAt", target, index } as TextExpr;
 }
 
 /** Construct an uppercase expression: a text converted to upper case. */
-export function upperCase(target: Expr): TextExpr {
+export function upperCase(target: TextExprInput): TextExpr {
   return { kind: "upperCase", target } as TextExpr;
 }
 
 /** Construct a lowercase expression: a text converted to lower case. */
-export function lowerCase(target: Expr): TextExpr {
+export function lowerCase(target: TextExprInput): TextExpr {
   return { kind: "lowerCase", target } as TextExpr;
 }
 
@@ -3331,7 +3342,11 @@ export function lowerCase(target: Expr): TextExpr {
  * delimiter into a list of texts. Matching is case-insensitive
  * unless `caseSensitive` is true.
  */
-export function splitText(target: Expr, delimiter: Expr, caseSensitive = false): Expr {
+export function splitText(
+  target: TextExprInput,
+  delimiter: TextExprInput,
+  caseSensitive = false,
+): Expr {
   return { kind: "splitText", target, delimiter, caseSensitive };
 }
 
@@ -3340,27 +3355,27 @@ export function splitText(target: Expr, delimiter: Expr, caseSensitive = false):
  * a list (or of a split result) into one text, with an optional
  * delimiter (default "").
  */
-export function joinText(source: Expr, delimiter?: Expr): TextExpr {
+export function joinText(source: Expr, delimiter?: TextExprInput): TextExpr {
   return { kind: "joinText", source, delimiter: delimiter ?? null } as TextExpr;
 }
 
 /** Construct a colored expression: parse & codes and named tags in a text into formatting. */
-export function colored(target: Expr): TextExpr {
+export function colored(target: TextExprInput): TextExpr {
   return { kind: "coloredText", target } as TextExpr;
 }
 
 /** Construct a formatted expression: like colored(), with Skript's full tag parser. */
-export function formatted(target: Expr): TextExpr {
+export function formatted(target: TextExprInput): TextExpr {
   return { kind: "formattedText", target } as TextExpr;
 }
 
 /** Construct an uncolored expression: strip all formatting codes (colors and styles) from a text. */
-export function uncolored(target: Expr): TextExpr {
+export function uncolored(target: TextExprInput): TextExpr {
   return { kind: "uncoloredText", target } as TextExpr;
 }
 
 /** Construct an unformatted expression: strip all formatting from a text. */
-export function unformatted(target: Expr): TextExpr {
+export function unformatted(target: TextExprInput): TextExpr {
   return { kind: "unformattedText", target } as TextExpr;
 }
 
@@ -3477,18 +3492,18 @@ export function replaceFirstIn(
 // ---------------------------------------------------------------------------
 
 /** Construct a named-item expression: the item with a custom display name (`<item> named <name>`). */
-export function withName(base: Expr, name: Expr): ItemExpr {
+export function withName(base: ItemExprInput, name: Expr): ItemExpr {
   return { kind: "itemWithName", base, name } as ItemExpr;
 }
 
 /** Construct a lored-item expression: the item with lore lines (`<item> with lore <a> and <b>`). At least one line is required. */
-export function withLore(base: Expr, ...lines: Expr[]): ItemExpr {
+export function withLore(base: ItemExprInput, ...lines: Expr[]): ItemExpr {
   if (lines.length === 0) throw new RangeError("withLore requires at least one lore line");
   return { kind: "itemWithLore", base, lines } as unknown as ItemExpr;
 }
 
 /** Construct a counted-item expression: a stack of the item (`<count> of <item>`). */
-export function withAmount(base: Expr, amount: Expr): ItemExpr {
+export function withAmount(base: ItemExprInput, amount: NumExprInput): ItemExpr {
   return { kind: "itemWithAmount", base, amount } as ItemExpr;
 }
 
@@ -3563,12 +3578,12 @@ export function fontCharOf(ref: string | FontCharDef): TextExpr {
 }
 
 /** Construct an item-model-of expression: the item's `item_model` component id (no value when unset). */
-export function itemModelOf(target: Expr): TextExpr {
+export function itemModelOf(target: ItemExprInput): TextExpr {
   return { kind: "itemModelOf", target } as TextExpr;
 }
 
 /** Construct a custom-model-data-of expression: the item's first CustomModelData float as a number (0 when unset). */
-export function customModelDataOf(target: Expr): NumExpr {
+export function customModelDataOf(target: ItemExprInput): NumExpr {
   return { kind: "customModelDataOf", target } as NumExpr;
 }
 
@@ -3593,12 +3608,12 @@ export function amountOf(target: Expr): NumExpr {
 }
 
 /** Construct a tool-of expression: the item in the player's main hand (`tool of %player%`). An empty hand reads as an air item, exactly like Skript's tool expression; only a non-player target has no value. In a block break this is the digging tool — eventItem() there is the broken block in item form, not the tool. */
-export function toolOf(target: Expr): ItemExpr {
+export function toolOf(target: EntityExprInput): ItemExpr {
   return { kind: "toolOf", target } as ItemExpr;
 }
 
 /** Construct an off-hand tool-of expression: the item in the player's off hand (`offhand tool of %player%`). The same value rules as toolOf: an empty off hand reads as an air item, and only a non-player target has no value. This is the typed read that replaces scanning slot 40 of the inventory by hand. */
-export function offHandToolOf(target: Expr): ItemExpr {
+export function offHandToolOf(target: EntityExprInput): ItemExpr {
   return { kind: "offHandToolOf", target } as ItemExpr;
 }
 
@@ -3610,7 +3625,7 @@ export function chestInventory(rows: Expr, title?: Expr): InventoryExpr {
 }
 
 /** Construct a current-inventory expression: the inventory the player is currently viewing. */
-export function currentInventoryOf(target: Expr): InventoryExpr {
+export function currentInventoryOf(target: EntityExprInput): InventoryExpr {
   return { kind: "currentInventory", target } as InventoryExpr;
 }
 
@@ -3620,7 +3635,7 @@ export function eventInventory(): InventoryExpr {
 }
 
 /** Construct a slot-item expression: the item in a 0-based slot of an inventory (a player means their own inventory). */
-export function slotItem(inventory: Expr, slot: Expr): ItemExpr {
+export function slotItem(inventory: InventoryExprInput, slot: NumExprInput): ItemExpr {
   return { kind: "slotItem", inventory, slot } as ItemExpr;
 }
 
@@ -3635,7 +3650,7 @@ export function clickedRawSlotIndex(): NumExpr {
 }
 
 /** Construct a give-item statement: hand an item-valued expression (meta included) to a player. */
-export function giveItem(target: Expr, itemValue: Expr): Stmt {
+export function giveItem(target: PlayerExprInput, itemValue: ItemExprInput): Stmt {
   return withLoc({ kind: "giveItem", target, item: itemValue });
 }
 
@@ -3713,12 +3728,12 @@ export function setItemTag(target: ScalarVarExpr, key: string, value: Value): St
 }
 
 /** Construct an item-tag expression (engine-only): the tag value stored on an item, or no value when absent. */
-export function itemTag(item: Expr, key: string): Expr {
+export function itemTag(item: ItemExprInput, key: string): Expr {
   return { kind: "itemTag", item, key: requireItemTagKey(key) };
 }
 
 /** Construct a has-item-tag condition (engine-only): the item carries a hidden tag under the key. */
-export function hasItemTag(item: Expr, key: string): Cond {
+export function hasItemTag(item: ItemExprInput, key: string): Cond {
   return { kind: "hasItemTag", item, key: requireItemTagKey(key) };
 }
 
@@ -3760,7 +3775,11 @@ function requireChunkTagKey(key: string): string {
  * value that is not text / number / boolean, a non-location
  * target, and an unloaded chunk are all no-ops.
  */
-export function setChunkTag(target: Expr, key: string, value: Value): Stmt {
+export function setChunkTag(
+  target: BlockExprInput | LocationExprInput | EntityExprInput,
+  key: string,
+  value: Value,
+): Stmt {
   return withLoc({
     kind: "setChunkTag",
     target,
@@ -3770,17 +3789,26 @@ export function setChunkTag(target: Expr, key: string, value: Value): Stmt {
 }
 
 /** Construct a delete-chunk-tag statement (engine-only): remove a hidden tag from the chunk containing the target. */
-export function deleteChunkTag(target: Expr, key: string): Stmt {
+export function deleteChunkTag(
+  target: BlockExprInput | LocationExprInput | EntityExprInput,
+  key: string,
+): Stmt {
   return withLoc({ kind: "deleteChunkTag", target, key: requireChunkTagKey(key) });
 }
 
 /** Construct a chunk-tag expression (engine-only): the tag value on the chunk containing the target, or no value when absent / unloaded. */
-export function chunkTag(target: Expr, key: string): Expr {
+export function chunkTag(
+  target: BlockExprInput | LocationExprInput | EntityExprInput,
+  key: string,
+): Expr {
   return { kind: "chunkTag", target, key: requireChunkTagKey(key) };
 }
 
 /** Construct a has-chunk-tag condition (engine-only): the chunk containing the target carries a hidden tag under the key. */
-export function hasChunkTag(target: Expr, key: string): Cond {
+export function hasChunkTag(
+  target: BlockExprInput | LocationExprInput | EntityExprInput,
+  key: string,
+): Cond {
   return { kind: "hasChunkTag", target, key: requireChunkTagKey(key) };
 }
 
@@ -3823,7 +3851,7 @@ export function hasChunkTag(target: Expr, key: string): Cond {
  * whole sidebar with the given title and lines (at most 15 lines are shown).
  * A non-player target is a no-op.
  */
-export function setSidebar(target: Expr, title: Value, ...lines: Value[]): Stmt {
+export function setSidebar(target: PlayerExprInput, title: Value, ...lines: Value[]): Stmt {
   return withLoc({
     kind: "setSidebar",
     target,
@@ -3833,37 +3861,41 @@ export function setSidebar(target: Expr, title: Value, ...lines: Value[]): Stmt 
 }
 
 /** Construct a clear-sidebar statement (engine-only): remove the target player's sidebar and restore the main scoreboard. */
-export function clearSidebar(target: Expr): Stmt {
+export function clearSidebar(target: PlayerExprInput): Stmt {
   return withLoc({ kind: "clearSidebar", target });
 }
 
 /** Construct a sidebar-title expression (engine-only): the target player's current sidebar title, or no value when they have none. */
-export function sidebarTitleOf(target: Expr): TextExpr {
+export function sidebarTitleOf(target: PlayerExprInput): TextExpr {
   return { kind: "sidebarTitle", target } as TextExpr;
 }
 
 /** Construct a sidebar-line expression (engine-only): the 1-based line of the target player's sidebar, or no value when out of range / no sidebar. */
-export function sidebarLine(target: Expr, index: Value): TextExpr {
+export function sidebarLine(target: PlayerExprInput, index: Value): TextExpr {
   return { kind: "sidebarLine", target, index: toExpr(index) } as TextExpr;
 }
 
 /** Construct a sidebar-line-count expression (engine-only): how many lines the target player's sidebar has, or no value when they have none. */
-export function sidebarLineCount(target: Expr): NumExpr {
+export function sidebarLineCount(target: PlayerExprInput): NumExpr {
   return { kind: "sidebarLineCount", target } as NumExpr;
 }
 
 /** Construct a has-sidebar condition (engine-only): the target player currently has a sidebar set by setSidebar. */
-export function hasSidebar(target: Expr): Cond {
+export function hasSidebar(target: PlayerExprInput): Cond {
   return { kind: "hasSidebar", target };
 }
 
 /** Construct a set-slot statement: write an item into a 0-based slot of an inventory (a player means their own inventory). */
-export function setSlot(inventory: Expr, slot: Expr, itemValue: Expr): Stmt {
+export function setSlot(
+  inventory: InventoryExprInput,
+  slot: NumExprInput,
+  itemValue: ItemExprInput,
+): Stmt {
   return withLoc({ kind: "setSlot", inventory, slot, item: itemValue });
 }
 
 /** Construct an open-inventory statement: show an inventory value to a player. */
-export function openInventory(target: Expr, inventory: Expr): Stmt {
+export function openInventory(target: PlayerExprInput, inventory: InventoryExprInput): Stmt {
   return withLoc({ kind: "openInventory", target, inventory });
 }
 
@@ -3931,7 +3963,12 @@ export function guiHandle(id: string): GuiHandle {
  * under the handle's id (ENGINE-ONLY — see guiHandle); without
  * one the statement is plain core language.
  */
-export function openGui(target: Expr, rows: Expr, title?: Expr, gui?: GuiHandle): Stmt {
+export function openGui(
+  target: PlayerExprInput,
+  rows: NumExprInput,
+  title?: Expr,
+  gui?: GuiHandle,
+): Stmt {
   if (gui !== undefined) {
     const guiId = requireGuiId(gui?.id);
     return title === undefined
@@ -3965,7 +4002,7 @@ export function guiEventId(): TextExpr {
 }
 
 /** Construct a close-inventory statement: close the inventory view a player has open. */
-export function closeInventory(target: Expr): Stmt {
+export function closeInventory(target: PlayerExprInput): Stmt {
   return withLoc({ kind: "closeInventory", target });
 }
 
@@ -4050,22 +4087,22 @@ export function onInventoryClose(
 // ---------------------------------------------------------------------------
 
 /** Test whether a target inventory holds at least the pattern item's amount of matching items. */
-export function hasItem(target: Expr, item: Expr): Cond {
+export function hasItem(target: InventoryExprInput, item: ItemExprInput): Cond {
   return { kind: "hasItem", target, item };
 }
 
 /** Read how many items matching the pattern a target inventory holds (armor and offhand included for players). */
-export function itemCountIn(target: Expr, item: Expr): NumExpr {
+export function itemCountIn(target: InventoryExprInput, item: ItemExprInput): NumExpr {
   return { kind: "itemCountIn", target, item } as NumExpr;
 }
 
 /** Remove up to the pattern item's amount of matching items from a target, in slot order; a shortfall removes what exists. */
-export function removeItem(target: Expr, item: Expr): Stmt {
+export function removeItem(target: InventoryExprInput, item: ItemExprInput): Stmt {
   return withLoc({ kind: "removeItem", target, item });
 }
 
 /** Remove every item matching the pattern from a target, whatever the count. The pattern must not carry an amount. */
-export function removeAllItems(target: Expr, item: Expr): Stmt {
+export function removeAllItems(target: InventoryExprInput, item: ItemExprInput): Stmt {
   if (item.kind === "itemWithAmount") {
     throw new RangeError(
       "removeAllItems takes a bare item pattern: 'remove all' has no counted form in Skript — " +
@@ -4076,12 +4113,12 @@ export function removeAllItems(target: Expr, item: Expr): Stmt {
 }
 
 /** Test whether the pattern item's amount still fits into a target's storage slots (exact-similarity merging; see the section note). */
-export function canHoldItem(target: Expr, item: Expr): Cond {
+export function canHoldItem(target: InventoryExprInput, item: ItemExprInput): Cond {
   return { kind: "canHoldItem", target, item };
 }
 
 /** Read how many more of the pattern item fit into a target's storage slots. ENGINE-ONLY: Skript has no such expression. */
-export function freeSpaceFor(target: Expr, item: Expr): NumExpr {
+export function freeSpaceFor(target: InventoryExprInput, item: ItemExprInput): NumExpr {
   return { kind: "freeSpaceFor", target, item } as NumExpr;
 }
 
@@ -4146,7 +4183,7 @@ export function freeSpaceFor(target: Expr, item: Expr): NumExpr {
 // ---------------------------------------------------------------------------
 
 /** Construct an item-with-enchantment expression: the item with an enchantment at a literal level. The base must be an item literal (the original's suffix exists only in item type literals). */
-export function withEnchantment(base: Expr, enchant: string, level: number): ItemExpr {
+export function withEnchantment(base: ItemExprInput, enchant: string, level: number): ItemExpr {
   if (!Number.isInteger(level) || level < 0) {
     throw new RangeError("withEnchantment: level must be a non-negative integer");
   }
@@ -4154,12 +4191,12 @@ export function withEnchantment(base: Expr, enchant: string, level: number): Ite
 }
 
 /** Construct an enchantment-level expression: the level of an enchantment on an item (no value when the item lacks it). */
-export function enchantmentLevelOf(target: Expr, enchant: string): NumExpr {
+export function enchantmentLevelOf(target: ItemExprInput, enchant: string): NumExpr {
   return { kind: "enchantmentLevelOf", target, enchant } as NumExpr;
 }
 
 /** Construct an enchantments expression: an item's enchantments in print form ("sharpness 5") as a text list (no value when there are none). */
-export function enchantmentsOf(target: Expr): Expr {
+export function enchantmentsOf(target: ItemExprInput): Expr {
   return { kind: "enchantmentsOf", target };
 }
 
@@ -4184,22 +4221,30 @@ export function eventCursor(): ItemExpr {
 }
 
 /** Construct an add-to-slot statement: add an item into a 0-based slot of an inventory, merging with a similar stack; whatever does not fit or match is silently dropped. */
-export function addToSlot(inventory: Expr, slot: Expr, itemValue: Expr): Stmt {
+export function addToSlot(
+  inventory: InventoryExprInput,
+  slot: NumExprInput,
+  itemValue: ItemExprInput,
+): Stmt {
   return withLoc({ kind: "addToSlot", inventory, slot, item: itemValue });
 }
 
 /** Construct a remove-from-slot statement: subtract an item from a 0-based slot of an inventory, matching by type only. */
-export function removeFromSlot(inventory: Expr, slot: Expr, itemValue: Expr): Stmt {
+export function removeFromSlot(
+  inventory: InventoryExprInput,
+  slot: NumExprInput,
+  itemValue: ItemExprInput,
+): Stmt {
   return withLoc({ kind: "removeFromSlot", inventory, slot, item: itemValue });
 }
 
 /** Construct an add-to-inventory statement: add an item to an inventory (merge similar partial stacks, then empty slots); the rest is silently dropped. */
-export function addToInventory(inventory: Expr, itemValue: Expr): Stmt {
+export function addToInventory(inventory: InventoryExprInput, itemValue: ItemExprInput): Stmt {
   return withLoc({ kind: "addToInventory", inventory, item: itemValue });
 }
 
 /** Construct a remove-from-inventory statement: subtract an item from an inventory by type, in slot order. */
-export function removeFromInventory(inventory: Expr, itemValue: Expr): Stmt {
+export function removeFromInventory(inventory: InventoryExprInput, itemValue: ItemExprInput): Stmt {
   return withLoc({ kind: "removeFromInventory", inventory, item: itemValue });
 }
 
@@ -4212,7 +4257,12 @@ export function enchantItem(target: ScalarVarExpr, enchant: string, level: numbe
 }
 
 /** Construct an enchant-slot statement: apply an enchantment at a literal level to the item in a 0-based slot of an inventory. */
-export function enchantSlot(inventory: Expr, slot: Expr, enchant: string, level: number): Stmt {
+export function enchantSlot(
+  inventory: InventoryExprInput,
+  slot: NumExprInput,
+  enchant: string,
+  level: number,
+): Stmt {
   if (!Number.isInteger(level) || level < 0) {
     throw new RangeError("enchantSlot: level must be a non-negative integer");
   }
@@ -4220,7 +4270,7 @@ export function enchantSlot(inventory: Expr, slot: Expr, enchant: string, level:
 }
 
 /** Construct a set-cursor-item statement: replace the item on a player's cursor. Engine-only: the original has no cursor syntax. */
-export function setCursorItem(target: Expr, itemValue: Expr): Stmt {
+export function setCursorItem(target: PlayerExprInput, itemValue: ItemExprInput): Stmt {
   return withLoc({ kind: "setCursorItem", target, item: itemValue });
 }
 
@@ -4289,7 +4339,7 @@ export function onInventoryDrag(
 // ---------------------------------------------------------------------------
 
 /** Construct a block-at expression: the block at a location (`block at %location%`). */
-export function blockAt(location: Expr): BlockExpr {
+export function blockAt(location: LocationExprInput): BlockExpr {
   return { kind: "blockAt", location } as BlockExpr;
 }
 
@@ -4299,29 +4349,39 @@ export function blockAt(location: Expr): BlockExpr {
  * world; pass a world expression as the fourth argument to build
  * it in a specific world.
  */
-export function location(x: Expr, y: Expr, z: Expr, world?: Expr): LocationExpr {
+export function location(
+  x: NumExprInput,
+  y: NumExprInput,
+  z: NumExprInput,
+  world?: WorldExprInput,
+): LocationExpr {
   return world === undefined
     ? ({ kind: "locationAt", x, y, z } as LocationExpr)
     : ({ kind: "locationAt", x, y, z, world } as LocationExpr);
 }
 
 /** Construct an x-coordinate expression: the x coordinate of a location. */
-export function xOf(target: Expr): NumExpr {
+export function xOf(target: LocationExprInput | EntityExprInput | BlockExprInput): NumExpr {
   return { kind: "xOf", target } as NumExpr;
 }
 
 /** Construct a y-coordinate expression: the y coordinate of a location. */
-export function yOf(target: Expr): NumExpr {
+export function yOf(target: LocationExprInput | EntityExprInput | BlockExprInput): NumExpr {
   return { kind: "yOf", target } as NumExpr;
 }
 
 /** Construct a z-coordinate expression: the z coordinate of a location. */
-export function zOf(target: Expr): NumExpr {
+export function zOf(target: LocationExprInput | EntityExprInput | BlockExprInput): NumExpr {
   return { kind: "zOf", target } as NumExpr;
 }
 
 /** Construct an offset-location expression: a location shifted by the given vector components (`<loc> ~ vector(<dx>, <dy>, <dz>)`). */
-export function offsetLocation(location: Expr, dx: Expr, dy: Expr, dz: Expr): LocationExpr {
+export function offsetLocation(
+  location: LocationExprInput,
+  dx: NumExprInput,
+  dy: NumExprInput,
+  dz: NumExprInput,
+): LocationExpr {
   return { kind: "offsetLoc", location, dx, dy, dz } as LocationExpr;
 }
 
@@ -4342,7 +4402,11 @@ const RELATIVE_DIRECTIONS: ReadonlySet<string> = new Set([
  * front / behind follow the target location's facing direction;
  * the other directions are absolute.
  */
-export function relativeBlock(target: Expr, direction: RelativeDirection, amount = 1): BlockExpr {
+export function relativeBlock(
+  target: BlockExprInput | LocationExprInput,
+  direction: RelativeDirection,
+  amount = 1,
+): BlockExpr {
   if (!RELATIVE_DIRECTIONS.has(direction)) {
     throw new RangeError(`invalid relative direction: ${String(direction)}`);
   }
@@ -4361,12 +4425,12 @@ export function world(name: string): WorldExpr {
 }
 
 /** Construct a world-of expression: the world of a player / location / block expression (core language since phase 18; an engine builtin in phase 6). */
-export function worldOf(target: Expr): WorldExpr {
+export function worldOf(target: EntityExprInput | LocationExprInput | BlockExprInput): WorldExpr {
   return { kind: "worldOf", target } as WorldExpr;
 }
 
 /** Construct a world-time expression: the world's clock as an "H:MM" text (`time in %world%`; 0 ticks reads "6:00"). */
-export function worldTime(world: Expr): TextExpr {
+export function worldTime(world: WorldExprInput): TextExpr {
   return { kind: "worldTime", world } as TextExpr;
 }
 
@@ -4390,7 +4454,7 @@ export function clockTime(text: string): Expr {
 }
 
 /** Construct a world-weather expression: the world's weather as a name text (`weather in %world%`). */
-export function worldWeather(world: Expr): Expr {
+export function worldWeather(world: WorldExprInput): Expr {
   return { kind: "worldWeather", world };
 }
 
@@ -4405,7 +4469,7 @@ export function weatherType(name: WeatherName): Expr {
 }
 
 /** Construct a set-block statement: write an item's material at a location (`set block at <loc> to <item>`); an air item clears the block. */
-export function setBlockAt(location: Expr, itemValue: Expr): Stmt {
+export function setBlockAt(location: LocationExprInput, itemValue: ItemExprInput): Stmt {
   return withLoc({ kind: "setBlock", location, item: itemValue });
 }
 
@@ -4440,7 +4504,7 @@ export function blockLine(from: Expr, to: Expr): Expr {
 }
 
 /** Construct a uniform fill: one item's material at every position of the shape. */
-export function uniformFill(item: Expr): Expr {
+export function uniformFill(item: ItemExprInput): Expr {
   return { kind: "uniformFill", item };
 }
 
@@ -4569,7 +4633,7 @@ function requireParticleName(particle: string): string {
  * know is a warned no-op in the engine, never an error. The
  * count defaults to 1; a count of 0 or less spawns nothing.
  */
-export function spawnParticle(particle: string, location: Expr, count?: number): Stmt {
+export function spawnParticle(particle: string, location: LocationExprInput, count?: number): Stmt {
   const name = requireParticleName(particle);
   if (count !== undefined && (typeof count !== "number" || !Number.isFinite(count))) {
     throw new RangeError(`particle count must be a finite number, got ${String(count)}`);
@@ -4613,7 +4677,7 @@ const FIREWORK_COLOR_PATTERN: RegExp = /^#[0-9a-fA-F]{6}$/;
  * unparseable hex color, an unknown type, a non-finite power —
  * are RangeErrors at build time.
  */
-export function launchFirework(location: Expr, options: FireworkOptions = {}): Stmt {
+export function launchFirework(location: LocationExprInput, options: FireworkOptions = {}): Stmt {
   const { power, colors, type, flicker, trail } = options;
   if (power !== undefined && (typeof power !== "number" || !Number.isFinite(power))) {
     throw new RangeError(`firework power must be a finite number, got ${String(power)}`);
@@ -4649,12 +4713,12 @@ export function launchFirework(location: Expr, options: FireworkOptions = {}): S
 }
 
 /** Construct a set-world-time statement: set a world's clock (`set time in <world> to <time>`). The value is a clockTime literal or an expression carrying a clock text. */
-export function setWorldTime(world: Expr, value: Expr): Stmt {
+export function setWorldTime(world: WorldExprInput, value: TextExprInput): Stmt {
   return withLoc({ kind: "setWorldTime", world, value });
 }
 
 /** Construct a set-world-weather statement: set a world's weather by name (`set weather in <world> to rain`). */
-export function setWorldWeather(world: Expr, name: WeatherName): Stmt {
+export function setWorldWeather(world: WorldExprInput, name: WeatherName): Stmt {
   if (!WEATHER_NAMES.has(name)) {
     throw new RangeError(`invalid weather name: ${String(name)}`);
   }
@@ -4722,27 +4786,27 @@ export function every(amount: number, unit: TimeUnit, body: EventBody<Periodical
 // ---------------------------------------------------------------------------
 
 /** Construct a health expression: the living entity's health in hearts (`health of %entity%`; 10 is full for a player). */
-export function healthOf(target: Expr): NumExpr {
+export function healthOf(target: EntityExprInput): NumExpr {
   return { kind: "healthOf", target } as NumExpr;
 }
 
 /** Construct a max-health expression: the living entity's maximum health in hearts (`max health of %entity%`). */
-export function maxHealthOf(target: Expr): NumExpr {
+export function maxHealthOf(target: EntityExprInput): NumExpr {
   return { kind: "maxHealthOf", target } as NumExpr;
 }
 
 /** Construct a food-level expression: the player's food level in drumsticks (`food level of %player%`; 10 is full). */
-export function foodLevelOf(target: Expr): NumExpr {
+export function foodLevelOf(target: EntityExprInput): NumExpr {
   return { kind: "foodLevelOf", target } as NumExpr;
 }
 
 /** Construct a saturation expression: the player's saturation, unscaled (`saturation of %player%`). */
-export function saturationOf(target: Expr): NumExpr {
+export function saturationOf(target: EntityExprInput): NumExpr {
   return { kind: "saturationOf", target } as NumExpr;
 }
 
 /** Construct a game-mode expression: the player's game mode as its name text (`gamemode of %player%`). For comparisons use gameModeType — a plain text never compares equal in the original. */
-export function gameModeOf(target: Expr): Expr {
+export function gameModeOf(target: PlayerExprInput): Expr {
   return { kind: "gameModeOf", target };
 }
 
@@ -4762,12 +4826,12 @@ export function gameModeType(name: GameModeName): Expr {
 }
 
 /** Construct an experience expression: the player's total experience points (`experience of %player%`). */
-export function experienceOf(target: Expr): NumExpr {
+export function experienceOf(target: EntityExprInput): NumExpr {
   return { kind: "experienceOf", target } as NumExpr;
 }
 
 /** Construct a level expression: the player's experience level (`level of %player%`). */
-export function levelOf(target: Expr): NumExpr {
+export function levelOf(target: EntityExprInput): NumExpr {
   return { kind: "levelOf", target } as NumExpr;
 }
 
@@ -4777,12 +4841,12 @@ export function lastSpawnedEntity(): EntityExpr {
 }
 
 /** Construct a set-health statement (`set health of <target> to <value>`), in hearts; clamps to the maximum, 0 kills. */
-export function setHealth(target: Expr, value: Expr): Stmt {
+export function setHealth(target: EntityExprInput, value: NumExprInput): Stmt {
   return withLoc({ kind: "setHealth", target, value });
 }
 
 /** Construct a set-max-health statement (`set max health of <target> to <value>`), in hearts; rewrites the attribute base, current health untouched. */
-export function setMaxHealth(target: Expr, value: Expr): Stmt {
+export function setMaxHealth(target: EntityExprInput, value: NumExprInput): Stmt {
   return withLoc({ kind: "setMaxHealth", target, value });
 }
 
@@ -4848,12 +4912,16 @@ function requireEquipmentSlot(slot: string): string {
 }
 
 /** Construct an equipment expression: the item in one equipment slot of a living entity (`helmet of <target>`, `tool of <target>` for the main hand). An empty slot reads as the air item. */
-export function equipmentOf(target: Expr, slot: EquipmentSlotName): ItemExpr {
+export function equipmentOf(target: EntityExprInput, slot: EquipmentSlotName): ItemExpr {
   return { kind: "equipmentOf", target, slot: requireEquipmentSlot(slot) } as ItemExpr;
 }
 
 /** Construct a set-equipment statement (`set helmet of <target> to <item>`): write an item into one equipment slot of a living entity; an item expression with no value clears the slot. */
-export function setEquipment(target: Expr, slot: EquipmentSlotName, itemValue: Expr): Stmt {
+export function setEquipment(
+  target: EntityExprInput,
+  slot: EquipmentSlotName,
+  itemValue: ItemExprInput,
+): Stmt {
   return withLoc({
     kind: "setEquipment",
     target,
@@ -4863,32 +4931,32 @@ export function setEquipment(target: Expr, slot: EquipmentSlotName, itemValue: E
 }
 
 /** Construct a custom-name expression: an entity's custom (name-tag) name, or no value when unnamed. Not a player's account name — see nameOf for that. */
-export function customNameOf(target: Expr): TextExpr {
+export function customNameOf(target: EntityExprInput): TextExpr {
   return { kind: "customNameOf", target } as TextExpr;
 }
 
 /** Construct a set-custom-name statement: rename an entity (its name-tag name). */
-export function setCustomName(target: Expr, name: Expr): Stmt {
+export function setCustomName(target: EntityExprInput, name: Expr): Stmt {
   return withLoc({ kind: "setCustomName", target, name });
 }
 
 /** Construct a set-custom-name-visible statement: show or hide an entity's custom name tag (the original's `show/hide custom name of <target>` effects). */
-export function setCustomNameVisible(target: Expr, visible: boolean): Stmt {
+export function setCustomNameVisible(target: EntityExprInput, visible: boolean): Stmt {
   return withLoc({ kind: "setCustomNameVisible", target, visible });
 }
 
 /** Construct a custom-name-visible condition: the entity's custom name tag is currently visible. False for a non-entity target. */
-export function customNameVisible(target: Expr): Cond {
+export function customNameVisible(target: EntityExprInput): Cond {
   return { kind: "customNameVisible", target };
 }
 
 /** Construct a has-AI condition: the living entity currently has its AI enabled. False for a non-living target. */
-export function hasAi(target: Expr): Cond {
+export function hasAi(target: EntityExprInput): Cond {
   return { kind: "hasAi", target };
 }
 
 /** Construct a set-AI statement: enable or disable a living entity's AI (a disabled mob stands still and does not act). */
-export function setAi(target: Expr, enabled: boolean): Stmt {
+export function setAi(target: EntityExprInput, enabled: boolean): Stmt {
   return withLoc({ kind: "setAi", target, enabled });
 }
 
@@ -4900,17 +4968,17 @@ function requireEntityTag(tag: string): string {
 }
 
 /** Construct an add-entity-tag statement: add a scoreboard tag to an entity. */
-export function addEntityTag(target: Expr, tag: string): Stmt {
+export function addEntityTag(target: EntityExprInput, tag: string): Stmt {
   return withLoc({ kind: "addEntityTag", target, tag: requireEntityTag(tag) });
 }
 
 /** Construct a remove-entity-tag statement: remove a scoreboard tag from an entity. */
-export function removeEntityTag(target: Expr, tag: string): Stmt {
+export function removeEntityTag(target: EntityExprInput, tag: string): Stmt {
   return withLoc({ kind: "removeEntityTag", target, tag: requireEntityTag(tag) });
 }
 
 /** Construct a has-entity-tag condition: the entity carries the given scoreboard tag. */
-export function hasEntityTag(target: Expr, tag: string): Cond {
+export function hasEntityTag(target: EntityExprInput, tag: string): Cond {
   return { kind: "hasEntityTag", target, tag: requireEntityTag(tag) };
 }
 
@@ -4948,12 +5016,16 @@ function requireAttributeName(attribute: string): string {
 }
 
 /** Construct an attribute expression: the BASE value of one attribute of a living entity, in raw Bukkit units (`attack damage attribute of <target>`). "max health" reads hit points here — use maxHealthOf for hearts. No value when the entity lacks the attribute. */
-export function attributeOf(target: Expr, attribute: AttributeName): NumExpr {
+export function attributeOf(target: EntityExprInput, attribute: AttributeName): NumExpr {
   return { kind: "attributeOf", target, attribute: requireAttributeName(attribute) } as NumExpr;
 }
 
 /** Construct a set-attribute statement: write the BASE value of one attribute of a living entity, in raw Bukkit units. */
-export function setAttribute(target: Expr, attribute: AttributeName, value: Expr): Stmt {
+export function setAttribute(
+  target: EntityExprInput,
+  attribute: AttributeName,
+  value: NumExprInput,
+): Stmt {
   return withLoc({
     kind: "setAttribute",
     target,
@@ -4963,7 +5035,7 @@ export function setAttribute(target: Expr, attribute: AttributeName, value: Expr
 }
 
 /** Construct a velocity-component expression: one axis ("x" / "y" / "z") of an entity's velocity, in blocks per tick. */
-export function velocityComponentOf(target: Expr, axis: "x" | "y" | "z"): NumExpr {
+export function velocityComponentOf(target: EntityExprInput, axis: "x" | "y" | "z"): NumExpr {
   if (axis !== "x" && axis !== "y" && axis !== "z") {
     throw new RangeError(`invalid velocity axis: ${String(axis)}`);
   }
@@ -4971,22 +5043,27 @@ export function velocityComponentOf(target: Expr, axis: "x" | "y" | "z"): NumExp
 }
 
 /** Construct a set-velocity statement: replace an entity's velocity with the given x / y / z components, in blocks per tick (the knockback / launch write). */
-export function setVelocity(target: Expr, x: Expr, y: Expr, z: Expr): Stmt {
+export function setVelocity(
+  target: EntityExprInput,
+  x: NumExprInput,
+  y: NumExprInput,
+  z: NumExprInput,
+): Stmt {
   return withLoc({ kind: "setVelocity", target, x, y, z });
 }
 
 /** Construct a set-food-level statement (`set food level of <target> to <value>`), in drumsticks; rounds to whole food points. */
-export function setFoodLevel(target: Expr, value: Expr): Stmt {
+export function setFoodLevel(target: EntityExprInput, value: NumExprInput): Stmt {
   return withLoc({ kind: "setFoodLevel", target, value });
 }
 
 /** Construct a set-saturation statement (`set saturation of <target> to <value>`), unscaled; not clamped to the food level. */
-export function setSaturation(target: Expr, value: Expr): Stmt {
+export function setSaturation(target: EntityExprInput, value: NumExprInput): Stmt {
   return withLoc({ kind: "setSaturation", target, value });
 }
 
 /** Construct a set-game-mode statement (`set gamemode of <target> to creative`): the mode is a literal name. */
-export function setGameMode(target: Expr, name: GameModeName): Stmt {
+export function setGameMode(target: PlayerExprInput, name: GameModeName): Stmt {
   if (!GAME_MODE_NAMES.has(name)) {
     throw new RangeError(`invalid game mode name: ${String(name)}`);
   }
@@ -4994,17 +5071,17 @@ export function setGameMode(target: Expr, name: GameModeName): Stmt {
 }
 
 /** Construct a set-experience statement (`set experience of <target> to <value>`): sets the total points exactly; level and progress are re-derived. */
-export function setExperience(target: Expr, value: Expr): Stmt {
+export function setExperience(target: EntityExprInput, value: NumExprInput): Stmt {
   return withLoc({ kind: "setExperience", target, value });
 }
 
 /** Construct a set-level statement (`set level of <target> to <value>`): sets the experience level, keeping the progress fraction. */
-export function setLevel(target: Expr, value: Expr): Stmt {
+export function setLevel(target: EntityExprInput, value: NumExprInput): Stmt {
   return withLoc({ kind: "setLevel", target, value });
 }
 
 /** Construct a heal statement (`heal <target>` or `heal <target> by <amount>`): without an amount, refills to full; with one, heals that many hearts. */
-export function heal(target: Expr, amount?: Expr): Stmt {
+export function heal(target: EntityExprInput, amount?: NumExprInput): Stmt {
   return amount === undefined
     ? withLoc({ kind: "heal", target })
     : withLoc({ kind: "heal", target, amount });
@@ -5091,7 +5168,7 @@ function requirePotionType(name: string): string {
  * 1) and `durationSeconds` (default: the original's 30 seconds).
  */
 export function applyPotion(
-  target: Expr,
+  target: EntityExprInput,
   potion: string,
   options?: { level?: number; durationSeconds?: number },
 ): Stmt {
@@ -5117,7 +5194,7 @@ export function applyPotion(
 }
 
 /** Construct a remove-potion statement (`remove <type> from <target>`): removes one effect type. The original has no remove-all form. */
-export function removePotion(target: Expr, potion: string): Stmt {
+export function removePotion(target: EntityExprInput, potion: string): Stmt {
   return withLoc({ kind: "removePotion", target, potion: requirePotionType(potion) });
 }
 
@@ -5138,7 +5215,11 @@ function requireEntityType(name: string): string {
  * an entity. The last spawned entity is readable afterwards via
  * lastSpawnedEntity(). The count defaults to 1.
  */
-export function spawnEntity(entityType: string, at: Expr, count?: number): Stmt {
+export function spawnEntity(
+  entityType: string,
+  at: LocationExprInput | EntityExprInput,
+  count?: number,
+): Stmt {
   const canonical = requireEntityType(entityType);
   if (count !== undefined && (!Number.isInteger(count) || count < 1)) {
     throw new RangeError("spawn count must be a positive integer");
@@ -5152,7 +5233,7 @@ export function spawnEntity(entityType: string, at: Expr, count?: number): Stmt 
 }
 
 /** Construct a drop-item statement (`drop <item> at <at>`): drop an item-valued expression at a location or at an entity. */
-export function dropItem(itemValue: Expr, at: Expr): Stmt {
+export function dropItem(itemValue: ItemExprInput, at: LocationExprInput): Stmt {
   return withLoc({ kind: "dropItem", item: itemValue, at });
 }
 
@@ -5162,7 +5243,7 @@ export function dropItem(itemValue: Expr, at: Expr): Stmt {
  * entity. The original offers no working volume or pitch option
  * for named sounds (probed), so neither is taken.
  */
-export function playSound(name: string, at: Expr): Stmt {
+export function playSound(name: string, at: LocationExprInput | EntityExprInput): Stmt {
   if (typeof name !== "string" || !/^[a-z0-9][a-z0-9_.:/-]*$/i.test(name.trim())) {
     throw new RangeError(`invalid sound name: ${String(name)}`);
   }
@@ -5287,7 +5368,11 @@ function titleTimingFields(options: TitleTimingOptions): {
  * given, the rest are filled with the defaults (fade-in 10,
  * stay 70, fade-out 20 ticks) — all probed on the wire.
  */
-export function sendTitle(target: Expr, title: Expr, options: SendTitleOptions = {}): Stmt {
+export function sendTitle(
+  target: PlayerExprInput,
+  title: Expr,
+  options: SendTitleOptions = {},
+): Stmt {
   return withLoc({
     kind: "sendTitle",
     target,
@@ -5303,7 +5388,11 @@ export function sendTitle(target: Expr, title: Expr, options: SendTitleOptions =
  * title (or the next one), with the same optional timing tail
  * as sendTitle. No title packet is sent.
  */
-export function sendSubtitle(target: Expr, subtitle: Expr, options: TitleTimingOptions = {}): Stmt {
+export function sendSubtitle(
+  target: PlayerExprInput,
+  subtitle: Expr,
+  options: TitleTimingOptions = {},
+): Stmt {
   return withLoc({
     kind: "sendTitle",
     target,
@@ -5313,17 +5402,17 @@ export function sendSubtitle(target: Expr, subtitle: Expr, options: TitleTimingO
 }
 
 /** Construct a send-action-bar statement (`send action bar <message> to <target>`): show a message in the player's action bar. The message is any expression, stringified like a chat message. */
-export function sendActionBar(target: Expr, message: Expr): Stmt {
+export function sendActionBar(target: PlayerExprInput, message: Expr): Stmt {
   return withLoc({ kind: "sendActionBar", target, message });
 }
 
 /** Construct a clear-title statement (`clear title of <target>`): hide the title currently shown to the player. The title timings are kept. */
-export function clearTitle(target: Expr): Stmt {
+export function clearTitle(target: PlayerExprInput): Stmt {
   return withLoc({ kind: "clearTitle", target, reset: false });
 }
 
 /** Construct a reset-title statement (`reset title of <target>`): hide the title currently shown to the player AND reset its timings to the client's defaults. */
-export function resetTitle(target: Expr): Stmt {
+export function resetTitle(target: PlayerExprInput): Stmt {
   return withLoc({ kind: "clearTitle", target, reset: true });
 }
 
@@ -5374,12 +5463,12 @@ export function bossBar(options: { title?: Expr; color?: BossBarColorName } = {}
 }
 
 /** Construct a set-boss-bar-title statement (`set title of <bar> to <title>`). */
-export function setBossBarTitle(bar: Expr, title: Expr): Stmt {
+export function setBossBarTitle(bar: BossBarExprInput, title: Expr): Stmt {
   return withLoc({ kind: "setBossBarTitle", bar, title });
 }
 
 /** Construct a set-boss-bar-color statement (`set color of <bar> to <name>`): the color is a literal name. */
-export function setBossBarColor(bar: Expr, name: BossBarColorName): Stmt {
+export function setBossBarColor(bar: BossBarExprInput, name: BossBarColorName): Stmt {
   if (!BOSS_BAR_COLOR_NAMES.has(name)) {
     throw new RangeError(`invalid boss bar color name: ${String(name)}`);
   }
@@ -5387,27 +5476,27 @@ export function setBossBarColor(bar: Expr, name: BossBarColorName): Stmt {
 }
 
 /** Construct a set-boss-bar-progress statement (`set progress of <bar> to <value>`): the value is a fraction (1 is full); the original clamps it to 0..1. */
-export function setBossBarProgress(bar: Expr, value: Expr): Stmt {
+export function setBossBarProgress(bar: BossBarExprInput, value: NumExprInput): Stmt {
   return withLoc({ kind: "setBossBarProgress", bar, value });
 }
 
 /** Construct an add-boss-bar-viewer statement (`add <viewer> to viewers of <bar>`): show the bar to a player. */
-export function addBossBarViewer(bar: Expr, viewer: Expr): Stmt {
+export function addBossBarViewer(bar: BossBarExprInput, viewer: PlayerExprInput): Stmt {
   return withLoc({ kind: "addBossBarViewer", bar, viewer });
 }
 
 /** Construct a remove-boss-bar-viewer statement (`remove <viewer> from viewers of <bar>`): stop showing the bar to a player. */
-export function removeBossBarViewer(bar: Expr, viewer: Expr): Stmt {
+export function removeBossBarViewer(bar: BossBarExprInput, viewer: PlayerExprInput): Stmt {
   return withLoc({ kind: "removeBossBarViewer", bar, viewer });
 }
 
 /** Construct a boss bar title expression: the bar's current title text (`title of %bossbar%`). */
-export function bossBarTitleOf(bar: Expr): TextExpr {
+export function bossBarTitleOf(bar: BossBarExprInput): TextExpr {
   return { kind: "bossBarTitleOf", bar } as TextExpr;
 }
 
 /** Construct a boss bar progress expression: the bar's current progress as a fraction (`progress of %bossbar%`; 1 is full). */
-export function bossBarProgressOf(bar: Expr): NumExpr {
+export function bossBarProgressOf(bar: BossBarExprInput): NumExpr {
   return { kind: "bossBarProgressOf", bar } as NumExpr;
 }
 
@@ -5420,7 +5509,7 @@ export function bossBarProgressOf(bar: Expr): NumExpr {
  * CAN be stored in a persistent variable.
  */
 export function keyedBossBar(
-  key: Expr,
+  key: TextExprInput,
   options: { title?: Expr; color?: BossBarColorName } = {},
 ): BossBarExpr {
   if (options.color !== undefined && !BOSS_BAR_COLOR_NAMES.has(options.color)) {
@@ -5435,17 +5524,17 @@ export function keyedBossBar(
 }
 
 /** Construct a keyed boss bar fetch expression (`boss bar with key <key>`): the bar stored under the key, or no value when the key has no bar. Fetching never creates a bar. */
-export function keyedBossBarOf(key: Expr): BossBarExpr {
+export function keyedBossBarOf(key: TextExprInput): BossBarExpr {
   return { kind: "keyedBossBarOf", key } as BossBarExpr;
 }
 
 /** Construct a boss bar key expression (`boss bar key of <bar>`): the full `namespace:key` text of a keyed bar; not set for a plain bar. */
-export function bossBarKeyOf(bar: Expr): TextExpr {
+export function bossBarKeyOf(bar: BossBarExprInput): TextExpr {
   return { kind: "bossBarKeyOf", bar } as TextExpr;
 }
 
 /** Construct a boss bar style expression (`style of <bar>`): the style as text — "solid" or "N segments". */
-export function bossBarStyleOf(bar: Expr): TextExpr {
+export function bossBarStyleOf(bar: BossBarExprInput): TextExpr {
   return { kind: "bossBarStyleOf", bar } as TextExpr;
 }
 
@@ -5455,12 +5544,12 @@ export function eventBossBar(): BossBarExpr {
 }
 
 /** Construct a delete-keyed-boss-bar statement (`delete boss bar with key <key>`): remove the bar stored under the key. A missing key is a silent no-op. */
-export function deleteKeyedBossBar(key: Expr): Stmt {
+export function deleteKeyedBossBar(key: TextExprInput): Stmt {
   return withLoc({ kind: "deleteKeyedBossBar", key });
 }
 
 /** Construct a set-boss-bar-style statement (`set style of <bar> to <style>`): the style is a literal name. */
-export function setBossBarStyle(bar: Expr, style: BossBarStyleName): Stmt {
+export function setBossBarStyle(bar: BossBarExprInput, style: BossBarStyleName): Stmt {
   if (!BOSS_BAR_STYLE_NAMES.has(style)) {
     throw new RangeError(`invalid boss bar style name: ${String(style)}`);
   }
@@ -5468,7 +5557,11 @@ export function setBossBarStyle(bar: Expr, style: BossBarStyleName): Stmt {
 }
 
 /** Construct a set-boss-bar-flag statement (`make <bar> darken the sky` / `create fog` / `play boss music`, or `make <bar> no longer ...` when enabled is false). */
-export function setBossBarFlag(bar: Expr, flag: BossBarFlagName, enabled: boolean): Stmt {
+export function setBossBarFlag(
+  bar: BossBarExprInput,
+  flag: BossBarFlagName,
+  enabled: boolean,
+): Stmt {
   if (!BOSS_BAR_FLAG_NAMES.has(flag)) {
     throw new RangeError(`invalid boss bar flag name: ${String(flag)}`);
   }
@@ -5476,17 +5569,17 @@ export function setBossBarFlag(bar: Expr, flag: BossBarFlagName, enabled: boolea
 }
 
 /** Construct a boss-bar-darkens-the-sky condition (`<bar> darkens the sky`). */
-export function bossBarDarkensSky(bar: Expr): Cond {
+export function bossBarDarkensSky(bar: BossBarExprInput): Cond {
   return { kind: "bossBarDarkensSky", bar };
 }
 
 /** Construct a boss-bar-creates-fog condition (`<bar> creates fog`). */
-export function bossBarCreatesFog(bar: Expr): Cond {
+export function bossBarCreatesFog(bar: BossBarExprInput): Cond {
   return { kind: "bossBarCreatesFog", bar };
 }
 
 /** Construct a boss-bar-plays-boss-music condition (`<bar> plays boss music`). */
-export function bossBarPlaysBossMusic(bar: Expr): Cond {
+export function bossBarPlaysBossMusic(bar: BossBarExprInput): Cond {
   return { kind: "bossBarPlaysBossMusic", bar };
 }
 
@@ -5554,7 +5647,7 @@ export function timespan(amount: number, unit: TimespanUnit): TimespanExpr {
 }
 
 /** Builds the original's `wait <timespan>` statement (phase 23); a variable or an arithmetic result both work. */
-export function waitFor(value: Expr): Stmt {
+export function waitFor(value: TimespanExprInput): Stmt {
   return withLoc({ kind: "waitFor", value });
 }
 
@@ -5582,17 +5675,17 @@ export function fishingApproachAngle(bound: "min" | "max"): NumExpr {
 }
 
 /** Sets the current fishing hook's wait-time bound (phase 23). */
-export function setFishingWaitTime(bound: "min" | "max", value: Expr): Stmt {
+export function setFishingWaitTime(bound: "min" | "max", value: TimespanExprInput): Stmt {
   return withLoc({ kind: "setFishingWaitTime", bound: requireFishingBound(bound), value });
 }
 
 /** Sets the current fishing hook's bite time (phase 23). */
-export function setFishingBiteTime(value: Expr): Stmt {
+export function setFishingBiteTime(value: TimespanExprInput): Stmt {
   return withLoc({ kind: "setFishingBiteTime", value });
 }
 
 /** Sets the current fishing hook's approach-angle bound (phase 23). */
-export function setFishingApproachAngle(bound: "min" | "max", value: Expr): Stmt {
+export function setFishingApproachAngle(bound: "min" | "max", value: NumExprInput): Stmt {
   return withLoc({ kind: "setFishingApproachAngle", bound: requireFishingBound(bound), value });
 }
 
@@ -5628,12 +5721,12 @@ export function now(): DateExpr {
 }
 
 /** A date as seconds since the unix epoch, fractional at millisecond precision (feedback C3); a non-date operand has no value. */
-export function unixTimestamp(date: Expr): NumExpr {
+export function unixTimestamp(date: DateExprInput): NumExpr {
   return { kind: "unixTimestamp", date } as NumExpr;
 }
 
 /** The date at the given number of seconds since the unix epoch (feedback C3); a non-number operand has no value. */
-export function dateFromUnix(seconds: Expr): DateExpr {
+export function dateFromUnix(seconds: NumExprInput): DateExpr {
   return { kind: "dateFromUnix", seconds } as DateExpr;
 }
 
@@ -6026,7 +6119,7 @@ function requirePackSha1(sha1: string | Expr): TextExpr {
 
 /** Construct a send-resource-pack statement: offer a resource pack to a player (engine builtin). */
 export function sendResourcePack(
-  target: Expr,
+  target: PlayerExprInput,
   url: Expr,
   sha1: string | Expr,
   opts?: { required?: boolean | Expr; prompt?: string | Expr },

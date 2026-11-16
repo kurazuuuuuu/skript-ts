@@ -96,7 +96,17 @@ import {
   bool,
 } from "./api.js";
 import type { LocalVarHandle, PlayerVarHandle, Value } from "./api.js";
-import type { Cond, Expr, LocalVariableExpr, LocationExpr, VariableExpr } from "./ast.js";
+import type {
+  Cond,
+  Expr,
+  ItemExpr,
+  LocalVariableExpr,
+  LocationExpr,
+  NumExpr,
+  TextExpr,
+  VariableExpr,
+  WorldExpr,
+} from "./ast.js";
 
 /**
  * Convert a Value into an Expr. Existing Expr nodes are returned unchanged;
@@ -188,153 +198,153 @@ export class ExprChain<T extends Expr = Expr> {
   }
 
   /** Subtract a value; returns a new chain wrapping the minus expression. */
-  minus(value: Value): ExprChain<Expr> {
+  minus(value: Value): ExprChain<NumExpr> {
     return new ExprChain(minus(this.expr, value));
   }
 
   /** Multiply by a value; returns a new chain wrapping the times expression. */
-  times(value: Value): ExprChain<Expr> {
+  times(value: Value): ExprChain<NumExpr> {
     return new ExprChain(times(this.expr, value));
   }
 
   /** Divide by a value; returns a new chain wrapping the dividedBy expression. */
-  dividedBy(value: Value): ExprChain<Expr> {
+  dividedBy(value: Value): ExprChain<NumExpr> {
     return new ExprChain(dividedBy(this.expr, value));
   }
 
   /** Take the remainder by a value; returns a new chain wrapping the remainder expression. */
-  remainder(value: Value): ExprChain<Expr> {
+  remainder(value: Value): ExprChain<NumExpr> {
     return new ExprChain(remainder(this.expr, value));
   }
 
   /** Get the text length; returns a new chain. */
-  length(): ExprChain<Expr> {
-    return new ExprChain(textLength(this.expr));
+  length(): ExprChain<NumExpr> {
+    return new ExprChain(textLength(this.expr as Expr));
   }
 
   /** Convert to upper case; returns a new chain. */
-  upper(): ExprChain<Expr> {
-    return new ExprChain(upperCase(this.expr));
+  upper(): ExprChain<TextExpr> {
+    return new ExprChain(upperCase(this.expr as Expr));
   }
 
   /** Convert to lower case; returns a new chain. */
-  lower(): ExprChain<Expr> {
-    return new ExprChain(lowerCase(this.expr));
+  lower(): ExprChain<TextExpr> {
+    return new ExprChain(lowerCase(this.expr as Expr));
   }
 
   /** Convert to upper case; returns a new chain. */
-  upperCase(): ExprChain<Expr> {
-    return new ExprChain(upperCase(this.expr));
+  upperCase(): ExprChain<TextExpr> {
+    return new ExprChain(upperCase(this.expr as Expr));
   }
 
   /** Convert to lower case; returns a new chain. */
-  lowerCase(): ExprChain<Expr> {
-    return new ExprChain(lowerCase(this.expr));
+  lowerCase(): ExprChain<TextExpr> {
+    return new ExprChain(lowerCase(this.expr as Expr));
   }
 
   /** Take a substring from a start to an end value; returns a new chain. */
-  substring(from: Value, to: Value): ExprChain<Expr> {
-    return new ExprChain(substring(this.expr, toExprValue(from), toExprValue(to)));
+  substring(from: Value, to: Value): ExprChain<TextExpr> {
+    return new ExprChain(substring(this.expr as Expr, toExprValue(from), toExprValue(to)));
   }
 
   /** Take the first count characters; returns a new chain. */
-  first(count: Value): ExprChain<Expr> {
-    return new ExprChain(firstChars(this.expr, toExprValue(count)));
+  first(count: Value): ExprChain<TextExpr> {
+    return new ExprChain(firstChars(this.expr as Expr, toExprValue(count)));
   }
 
   /** Take the last count characters; returns a new chain. */
-  last(count: Value): ExprChain<Expr> {
-    return new ExprChain(lastChars(this.expr, toExprValue(count)));
+  last(count: Value): ExprChain<TextExpr> {
+    return new ExprChain(lastChars(this.expr as Expr, toExprValue(count)));
   }
 
   /** Get the character at an index; returns a new chain. */
-  charAt(index: Value): ExprChain<Expr> {
-    return new ExprChain(charAt(this.expr, toExprValue(index)));
+  charAt(index: Value): ExprChain<TextExpr> {
+    return new ExprChain(charAt(this.expr as Expr, toExprValue(index)));
   }
 
   /** Apply color formatting; returns a new chain. */
-  colored(): ExprChain<Expr> {
-    return new ExprChain(colored(this.expr));
+  colored(): ExprChain<TextExpr> {
+    return new ExprChain(colored(this.expr as Expr));
   }
 
   /** Apply formatting; returns a new chain. */
-  formatted(): ExprChain<Expr> {
-    return new ExprChain(formatted(this.expr));
+  formatted(): ExprChain<TextExpr> {
+    return new ExprChain(formatted(this.expr as Expr));
   }
 
   /** Remove color formatting; returns a new chain. */
-  uncolored(): ExprChain<Expr> {
-    return new ExprChain(uncolored(this.expr));
+  uncolored(): ExprChain<TextExpr> {
+    return new ExprChain(uncolored(this.expr as Expr));
   }
 
   /** Remove formatting; returns a new chain. */
-  unformatted(): ExprChain<Expr> {
-    return new ExprChain(unformatted(this.expr));
+  unformatted(): ExprChain<TextExpr> {
+    return new ExprChain(unformatted(this.expr as Expr));
   }
 
   /** Split text by a delimiter; returns a new chain. */
   split(delimiter: Value, caseSensitive?: boolean): ExprChain<Expr> {
-    return new ExprChain(splitText(this.expr, toExprValue(delimiter), caseSensitive));
+    return new ExprChain(splitText(this.expr as Expr, toExprValue(delimiter), caseSensitive));
   }
 
   /** Round down; returns a new chain. */
-  floor(): ExprChain<Expr> {
+  floor(): ExprChain<NumExpr> {
     return new ExprChain(floor(this.expr));
   }
 
   /** Round up; returns a new chain. */
-  ceil(): ExprChain<Expr> {
+  ceil(): ExprChain<NumExpr> {
     return new ExprChain(ceil(this.expr));
   }
 
   /** Absolute value; returns a new chain. */
-  abs(): ExprChain<Expr> {
+  abs(): ExprChain<NumExpr> {
     return new ExprChain(abs(this.expr));
   }
 
   /** Square root; returns a new chain. */
-  sqrt(): ExprChain<Expr> {
+  sqrt(): ExprChain<NumExpr> {
     return new ExprChain(sqrt(this.expr));
   }
 
   /** Round to optional places; returns a new chain. */
-  round(places?: Value): ExprChain<Expr> {
+  round(places?: Value): ExprChain<NumExpr> {
     return new ExprChain(round(this.expr, places));
   }
 
   /** Health accessor; returns a new chain. */
-  health(): ExprChain<Expr> {
-    return new ExprChain(healthOf(this.expr));
+  health(): ExprChain<NumExpr> {
+    return new ExprChain(healthOf(this.expr as Expr));
   }
 
   /** Max health accessor; returns a new chain. */
-  maxHealth(): ExprChain<Expr> {
-    return new ExprChain(maxHealthOf(this.expr));
+  maxHealth(): ExprChain<NumExpr> {
+    return new ExprChain(maxHealthOf(this.expr as Expr));
   }
 
   /** Food level accessor; returns a new chain. */
-  foodLevel(): ExprChain<Expr> {
-    return new ExprChain(foodLevelOf(this.expr));
+  foodLevel(): ExprChain<NumExpr> {
+    return new ExprChain(foodLevelOf(this.expr as Expr));
   }
 
   /** Saturation accessor; returns a new chain. */
-  saturation(): ExprChain<Expr> {
-    return new ExprChain(saturationOf(this.expr));
+  saturation(): ExprChain<NumExpr> {
+    return new ExprChain(saturationOf(this.expr as Expr));
   }
 
   /** Game mode accessor; returns a new chain. */
   gameMode(): ExprChain<Expr> {
-    return new ExprChain(gameModeOf(this.expr));
+    return new ExprChain(gameModeOf(this.expr as Expr));
   }
 
   /** Experience accessor; returns a new chain. */
-  experience(): ExprChain<Expr> {
-    return new ExprChain(experienceOf(this.expr));
+  experience(): ExprChain<NumExpr> {
+    return new ExprChain(experienceOf(this.expr as Expr));
   }
 
   /** Level accessor; returns a new chain. */
-  level(): ExprChain<Expr> {
-    return new ExprChain(levelOf(this.expr));
+  level(): ExprChain<NumExpr> {
+    return new ExprChain(levelOf(this.expr as Expr));
   }
 
   /** Type accessor; returns a new chain. */
@@ -343,12 +353,12 @@ export class ExprChain<T extends Expr = Expr> {
   }
 
   /** Name accessor; returns a new chain. */
-  name(): ExprChain<Expr> {
+  name(): ExprChain<TextExpr> {
     return new ExprChain(nameOf(this.expr));
   }
 
   /** Amount accessor; returns a new chain. */
-  amount(): ExprChain<Expr> {
+  amount(): ExprChain<NumExpr> {
     return new ExprChain(amountOf(this.expr));
   }
 
@@ -358,13 +368,13 @@ export class ExprChain<T extends Expr = Expr> {
   }
 
   /** UUID accessor; returns a new chain. */
-  uuid(): ExprChain<Expr> {
+  uuid(): ExprChain<TextExpr> {
     return new ExprChain(uuidOf(this.expr));
   }
 
   /** Tool accessor; returns a new chain. */
-  tool(): ExprChain<Expr> {
-    return new ExprChain(toolOf(this.expr));
+  tool(): ExprChain<ItemExpr> {
+    return new ExprChain(toolOf(this.expr as Expr));
   }
 
   /** Location accessor; returns a new chain typed as LocationExpr. */
@@ -373,49 +383,49 @@ export class ExprChain<T extends Expr = Expr> {
   }
 
   /** Off-hand tool accessor; returns a new chain. */
-  offHandTool(): ExprChain<Expr> {
-    return new ExprChain(offHandToolOf(this.expr));
+  offHandTool(): ExprChain<ItemExpr> {
+    return new ExprChain(offHandToolOf(this.expr as Expr));
   }
 
   /** World accessor; returns a new chain. */
-  world(): ExprChain<Expr> {
-    return new ExprChain(worldOf(this.expr));
+  world(): ExprChain<WorldExpr> {
+    return new ExprChain(worldOf(this.expr as Expr));
   }
 
   /** X coordinate accessor; returns a new chain. */
-  x(): ExprChain<Expr> {
-    return new ExprChain(xOf(this.expr));
+  x(): ExprChain<NumExpr> {
+    return new ExprChain(xOf(this.expr as Expr));
   }
 
   /** Y coordinate accessor; returns a new chain. */
-  y(): ExprChain<Expr> {
-    return new ExprChain(yOf(this.expr));
+  y(): ExprChain<NumExpr> {
+    return new ExprChain(yOf(this.expr as Expr));
   }
 
   /** Z coordinate accessor; returns a new chain. */
-  z(): ExprChain<Expr> {
-    return new ExprChain(zOf(this.expr));
+  z(): ExprChain<NumExpr> {
+    return new ExprChain(zOf(this.expr as Expr));
   }
 
   /** List size accessor (size of a list-valued expression); returns a new chain. */
-  size(): ExprChain<Expr> {
+  size(): ExprChain<NumExpr> {
     return new ExprChain(listSize(this.expr));
   }
 
   /** Join a list-valued expression into one text; returns a new chain. */
-  join(delimiter?: Value): ExprChain<Expr> {
+  join(delimiter?: Value): ExprChain<TextExpr> {
     return new ExprChain(
       delimiter === undefined ? joinText(this.expr) : joinText(this.expr, toExprValue(delimiter)),
     );
   }
 
   /** Minimum of the wrapped value and the given others; returns a new chain. */
-  min(...others: Value[]): ExprChain<Expr> {
+  min(...others: Value[]): ExprChain<NumExpr> {
     return new ExprChain(min(this.expr, ...others));
   }
 
   /** Maximum of the wrapped value and the given others; returns a new chain. */
-  max(...others: Value[]): ExprChain<Expr> {
+  max(...others: Value[]): ExprChain<NumExpr> {
     return new ExprChain(max(this.expr, ...others));
   }
 }
