@@ -24,9 +24,13 @@ command /visetup:
         set {vindex::%"d"%} to "D"
         send "visetup done" to player
 
-command /viread:
+command /viread <text> <text>:
     trigger:
-        send "vi ab=%{vindex::%"A"%::%"B"%}% ac=%{vindex::%"a"%::%"c"%}% d=%{vindex::%"d"%}%" to player
+        send "vi=%{vindex::%arg-1%::%arg-2%}%" to player
+
+command /viread1 <text>:
+    trigger:
+        send "vi1=%{vindex::%arg-1%}%" to player
 
 command /visize:
     trigger:
@@ -45,7 +49,7 @@ command /vifn:
 command /videlone:
     trigger:
         delete {vindex::%"a"%::%"b"%}
-        send "videl ab=%{vindex::%"a"%::%"b"%}% ac=%{vindex::%"a"%::%"c"%}%" to player
+        send "videl done" to player
 
 command /viclear:
     trigger:

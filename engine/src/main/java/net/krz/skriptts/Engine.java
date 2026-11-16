@@ -5367,7 +5367,18 @@ final class Engine {
         String prefix = listBase(rawName) + "::";
         List<Map.Entry<Object, Object>> out = new ArrayList<>();
         for (String key : store.keysWithPrefix(prefix)) {
-            Object index = decodeIndex(key.substring(prefix.length()));
+            String remainder = key.substring(prefix.length());
+            // Multi-level variables (ext-varindex, probed against
+            // the real Skript 2.17.1): {name::*} enumerates only
+            // the DIRECT scalar children of the node — a deeper
+            // entry ({name::a::b}) is invisible to the parent's
+            // {*} until its own node also holds a scalar value,
+            // and a child node with children but no scalar value
+            // does not appear at all. Single-level lists (every
+            // pre-existing program) have no "::" in the remainder,
+            // so this filter is a no-op for them.
+            if (remainder.contains("::")) continue;
+            Object index = decodeIndex(remainder);
             out.add(new AbstractMap.SimpleEntry<>(index, store.get(key)));
         }
         out.sort((a, b) -> compareIndices(a.getKey(), b.getKey()));

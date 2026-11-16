@@ -759,7 +759,11 @@ function splitIndicesAndValue(
   if (args.length === 0) throw new RangeError(`${label} requires a value`);
   const indices = args.slice(0, -1) as Expr[];
   for (const idx of indices) {
-    if (typeof idx !== "object" || idx === null || typeof (idx as { kind?: unknown }).kind !== "string") {
+    if (
+      typeof idx !== "object" ||
+      idx === null ||
+      typeof (idx as { kind?: unknown }).kind !== "string"
+    ) {
       throw new TypeError(`${label} extra indices must be expressions`);
     }
   }
@@ -862,7 +866,8 @@ export interface LocalVarHandle {
  */
 export function localHandle(name: string): LocalVarHandle {
   const validName = requireLocalHandleName(name);
-  const target = (indices: readonly Expr[] = []): LocalVariableExpr => localVar(validName, ...indices);
+  const target = (indices: readonly Expr[] = []): LocalVariableExpr =>
+    localVar(validName, ...indices);
   const write =
     (op: "set" | "add" | "remove") =>
     (...args: unknown[]): Stmt => {

@@ -570,12 +570,12 @@ describe("multi-level variable indices (ext-varindex)", () => {
       name: "xp",
       indices: [player(), str("mining")],
     });
-    expect(
-      emit(script(onJoin([set(variable("xp", player(), str("mining")), num(3))]))),
-    ).toBe('on join:\n    set {xp::%player%::%"mining"%} to 3\n');
-    expect(
-      emit(script(onJoin([set(localVar("xp", str("a"), num(2)), num(1))]))),
-    ).toBe('on join:\n    set {_xp::%"a"%::%2%} to 1\n');
+    expect(emit(script(onJoin([set(variable("xp", player(), str("mining")), num(3))])))).toBe(
+      'on join:\n    set {xp::%player%::%"mining"%} to 3\n',
+    );
+    expect(emit(script(onJoin([set(localVar("xp", str("a"), num(2)), num(1))])))).toBe(
+      'on join:\n    set {_xp::%"a"%::%2%} to 1\n',
+    );
   });
   it("playerVar with extra indices builds the same nodes as variable(name, player, ...)", () => {
     const xp = playerVar("xp");

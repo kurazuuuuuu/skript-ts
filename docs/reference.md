@@ -111,54 +111,55 @@ target parameters (variable targets, locations, inventories,
 players, …) are not value positions and still take built
 expressions. See `examples/literals.ts`.
 
-| TypeScript                                                       | value position                                               | inside a string                        |
-| ---------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- |
-| `player()`                                                       | `player`                                                     | `%player%`                             |
-| `eventPlayer()`                                                  | `event-player`                                               | `%event-player%`                       |
-| `loopPlayer()`                                                   | `loop-player`                                                | `%loop-player%`                        |
-| `victim()`                                                       | `victim`                                                     | `%victim%`                             |
-| `argument(n)` (1-based)                                          | `arg-<n>`                                                    | `%arg-<n>%`                            |
-| `chatMessage()`                                                  | `message`                                                    | `%message%`                            |
-| `variable(name)`                                                 | `{name}`                                                     | `%{name}%`                             |
-| `variable(name, index)`                                          | `{name::%<index>%}`                                          | `%{name::%<index>%}%`                  |
-| `listVar(name)`                                                  | `{name::*}`                                                  | `%{name::*}%`                          |
-| `localVar(name)` / `localVar(name, index)`                       | `{_name}` / `{_name::%<index>%}`                             | `%{_name}%`                            |
-| `localList(name)`                                                | `{_name::*}`                                                 | `%{_name::*}%`                         |
-| `call(name, ...args)`                                            | `<name>(<args>)`                                             | `%<name>(<args>)%`                     |
-| `listSize(list)`                                                 | `size of {name::*}`                                          | `%size of {name::*}%`                  |
-| `sortedList(list)`                                               | `sorted {name::*}`                                           | `%sorted {name::*}%`                   |
-| `loopValue()`                                                    | `loop-value`                                                 | `%loop-value%`                         |
-| `loopIndex()`                                                    | `loop-index`                                                 | `%loop-index%`                         |
-| `str(s)`                                                         | `"<s>"`                                                      | raw text                               |
-| `num(n)` / `bool(b)`                                             | `42` / `true`                                                | same                                   |
-| `item(name)`                                                     | `diamond sword`                                              | same                                   |
-| `locationOf(e)`                                                  | `location of <e>`                                            | `%location of <e>%`                    |
-| `eventBlock()`                                                   | `event-block`                                                | `%event-block%`                        |
-| `eventItem()`                                                    | `event-item`                                                 | `%event-item%`                         |
-| `toolOf(target)`                                                 | `tool of <target>`                                           | `%tool of <target>%`                   |
-| `offHandToolOf(target)`                                          | `offhand tool of <target>`                                   | `%offhand tool of <target>%`           |
-| `attacker()`                                                     | `attacker`                                                   | `%attacker%`                           |
-| `damageAmount()`                                                 | `damage`                                                     | `%damage%`                             |
-| `damageCause()`                                                  | `damage cause`                                               | `%damage cause%`                       |
-| `typeOf(e)`                                                      | `type of <e>`                                                | `%type of <e>%`                        |
-| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)` | `(<a> + <b>)` etc.                                           | `%(<a> + <b>)%` etc.                   |
-| `remainder(a, b)` (or `arith(op, a, b)` for any of the five)     | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                      |
-| `randomNumber(a, b)`                                             | `random number between <a> and <b>`                          | `%random number between <a> and <b>%`  |
-| `randomInteger(a, b)`                                            | `random integer between <a> and <b>`                         | `%random integer between <a> and <b>%` |
-| `floor(e)` / `ceil(e)` / `abs(e)` / `sqrt(e)`                    | `floor(<e>)` etc.                                            | `%floor(<e>)%` etc.                    |
-| `round(e)` / `round(e, places)`                                  | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` etc.                    |
-| `min(...es)` / `max(...es)` (one or more arguments)              | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` etc.                     |
-| `fmt(...parts)`                                                  | `"<parts>"`                                                  | flattened into the enclosing string    |
-| `` t`...${e}...` `` (tagged template)                            | `"<parts>"`                                                  | flattened into the enclosing string    |
-| `textLength(t)`                                                  | `length of <t>`                                              | `%length of <t>%`                      |
-| `substring(t, from, to)`                                         | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%`   |
-| `firstChars(t, n)` / `lastChars(t, n)`                           | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` etc.   |
-| `charAt(t, i)`                                                   | `character at <i> in <t>`                                    | `%character at <i> in <t>%`            |
-| `upperCase(t)` / `lowerCase(t)`                                  | `<t> in uppercase` / `<t> in lowercase`                      | `%<t> in uppercase%` etc.              |
-| `splitText(t, delim, caseSensitive?)`                            | `split <t> at <d>` (`with case sensitivity` when asked)      | `%split <t> at <d>%`                   |
-| `joinText(list, delim?)`                                         | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`               |
-| `colored(t)` / `formatted(t)`                                    | `colored <t>` / `formatted <t>`                              | `%colored <t>%` etc.                   |
-| `uncolored(t)` / `unformatted(t)`                                | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` etc.                 |
+| TypeScript                                                                 | value position                                               | inside a string                        |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- |
+| `player()`                                                                 | `player`                                                     | `%player%`                             |
+| `eventPlayer()`                                                            | `event-player`                                               | `%event-player%`                       |
+| `loopPlayer()`                                                             | `loop-player`                                                | `%loop-player%`                        |
+| `victim()`                                                                 | `victim`                                                     | `%victim%`                             |
+| `argument(n)` (1-based)                                                    | `arg-<n>`                                                    | `%arg-<n>%`                            |
+| `chatMessage()`                                                            | `message`                                                    | `%message%`                            |
+| `variable(name)`                                                           | `{name}`                                                     | `%{name}%`                             |
+| `variable(name, index)`                                                    | `{name::%<index>%}`                                          | `%{name::%<index>%}%`                  |
+| `variable(name, i1, i2, ...)`                                              | `{name::%<i1>%::%<i2>%::...}`                                | `%{name::%<i1>%::%<i2>%}%`             |
+| `listVar(name)`                                                            | `{name::*}`                                                  | `%{name::*}%`                          |
+| `localVar(name)` / `localVar(name, index)` / `localVar(name, i1, i2, ...)` | `{_name}` / `{_name::%<index>%}` / `{_name::%<i1>%::%<i2>%}` | `%{_name}%`                            |
+| `localList(name)`                                                          | `{_name::*}`                                                 | `%{_name::*}%`                         |
+| `call(name, ...args)`                                                      | `<name>(<args>)`                                             | `%<name>(<args>)%`                     |
+| `listSize(list)`                                                           | `size of {name::*}`                                          | `%size of {name::*}%`                  |
+| `sortedList(list)`                                                         | `sorted {name::*}`                                           | `%sorted {name::*}%`                   |
+| `loopValue()`                                                              | `loop-value`                                                 | `%loop-value%`                         |
+| `loopIndex()`                                                              | `loop-index`                                                 | `%loop-index%`                         |
+| `str(s)`                                                                   | `"<s>"`                                                      | raw text                               |
+| `num(n)` / `bool(b)`                                                       | `42` / `true`                                                | same                                   |
+| `item(name)`                                                               | `diamond sword`                                              | same                                   |
+| `locationOf(e)`                                                            | `location of <e>`                                            | `%location of <e>%`                    |
+| `eventBlock()`                                                             | `event-block`                                                | `%event-block%`                        |
+| `eventItem()`                                                              | `event-item`                                                 | `%event-item%`                         |
+| `toolOf(target)`                                                           | `tool of <target>`                                           | `%tool of <target>%`                   |
+| `offHandToolOf(target)`                                                    | `offhand tool of <target>`                                   | `%offhand tool of <target>%`           |
+| `attacker()`                                                               | `attacker`                                                   | `%attacker%`                           |
+| `damageAmount()`                                                           | `damage`                                                     | `%damage%`                             |
+| `damageCause()`                                                            | `damage cause`                                               | `%damage cause%`                       |
+| `typeOf(e)`                                                                | `type of <e>`                                                | `%type of <e>%`                        |
+| `plus(a, b)` / `minus(a, b)` / `times(a, b)` / `dividedBy(a, b)`           | `(<a> + <b>)` etc.                                           | `%(<a> + <b>)%` etc.                   |
+| `remainder(a, b)` (or `arith(op, a, b)` for any of the five)               | `mod(<a>, <b>)`                                              | `%mod(<a>, <b>)%`                      |
+| `randomNumber(a, b)`                                                       | `random number between <a> and <b>`                          | `%random number between <a> and <b>%`  |
+| `randomInteger(a, b)`                                                      | `random integer between <a> and <b>`                         | `%random integer between <a> and <b>%` |
+| `floor(e)` / `ceil(e)` / `abs(e)` / `sqrt(e)`                              | `floor(<e>)` etc.                                            | `%floor(<e>)%` etc.                    |
+| `round(e)` / `round(e, places)`                                            | `round(<e>)` / `round(<e>, <places>)`                        | `%round(<e>)%` etc.                    |
+| `min(...es)` / `max(...es)` (one or more arguments)                        | `min(<es>)` / `max(<es>)`                                    | `%min(<es>)%` etc.                     |
+| `fmt(...parts)`                                                            | `"<parts>"`                                                  | flattened into the enclosing string    |
+| `` t`...${e}...` `` (tagged template)                                      | `"<parts>"`                                                  | flattened into the enclosing string    |
+| `textLength(t)`                                                            | `length of <t>`                                              | `%length of <t>%`                      |
+| `substring(t, from, to)`                                                   | `substring of <t> from <a> to <b>`                           | `%substring of <t> from <a> to <b>%`   |
+| `firstChars(t, n)` / `lastChars(t, n)`                                     | `first <n> characters of <t>` / `last <n> characters of <t>` | `%first <n> characters of <t>%` etc.   |
+| `charAt(t, i)`                                                             | `character at <i> in <t>`                                    | `%character at <i> in <t>%`            |
+| `upperCase(t)` / `lowerCase(t)`                                            | `<t> in uppercase` / `<t> in lowercase`                      | `%<t> in uppercase%` etc.              |
+| `splitText(t, delim, caseSensitive?)`                                      | `split <t> at <d>` (`with case sensitivity` when asked)      | `%split <t> at <d>%`                   |
+| `joinText(list, delim?)`                                                   | `join <list>` / `join <list> with <d>`                       | `%join <list> with <d>%`               |
+| `colored(t)` / `formatted(t)`                                              | `colored <t>` / `formatted <t>`                              | `%colored <t>%` etc.                   |
+| `uncolored(t)` / `unformatted(t)`                                          | `uncolored <t>` / `unformatted <t>`                          | `%uncolored <t>%` etc.                 |
 
 Tagged templates: `` t`&a${label} &f+${amount} XP` `` is sugar
 over `fmt()` — it builds the same format node, so it emits
@@ -428,6 +429,39 @@ individual `name::index` keys in `variables.json`).
   as `<none>` — this applies to unset scalars and missing indices
   too, in both runtimes.
 
+Multi-level indices (ext-varindex; probed against the real
+Skript 2.17.1): `variable(name, i1, i2, ...)` addresses the
+nested entry `{name::%i1%::%i2%::...}`. Every segment goes
+through the ordinary index rules independently — string-form
+identity per segment (the number `5` and the text `"5"` are the
+same segment), case-insensitive text segments, and a player
+segment keys by UUID in the engine. A node can hold a scalar
+value and children at the same time: `{vi::%a%}` and
+`{vi::%a%::%b%}` coexist independently. The `{name::*}` view
+(`listVar`, `listSize`, `loopList`, list-as-text) sees only the
+node's **direct scalar children**: a deeper entry is invisible
+to its grandparent's `::*`, and a child node that has children
+but no scalar value of its own does not appear in the parent's
+list at all (so with only `{vindex::"a"::"b"}` and
+`{vindex::"d"}` set, `size of {vindex::*}` is 1). There is no
+builder for a prefixed list (`{name::%a%::*}`) in this slice —
+multi-level entries are addressed individually, and
+`deleteVar(listVar(name))` still clears the whole subtree at
+every depth. Deleting one indexed variable
+(`deleteVar(variable(name, a, b))`, or `delete {name::%a%}` in
+the original) removes only that node's own scalar value, never
+its children. Local variables behave the same way inside a
+frame (`localVar(name, i1, i2, ...)`).
+One Skript-mode caveat, pinned by verify: a multi-level
+variable whose segments are string **literals** does not parse
+inside string interpolation under Skript 2.17.1
+(`%{vindex::%"a"%::%"b"%}%` is a load error); expression
+segments (variables, arguments, player, ...) interpolate fine,
+and literal segments are fine in value positions. The engine
+has no such restriction.
+`examples/varindex.ts` + `examples/behavior/varindex.behavior.ts`
+pin all of this under both runtimes.
+
 Loop forms: `loopTimes` counts `loopValue()` from 1 to the count
 (a fractional count floors) and has **no** `loopIndex()` — Skript
 rejects it there ("There's no loop that matches 'loop-index'"),
@@ -471,11 +505,24 @@ is the index — the per-player slot:
 | `playerVar(name).remove(player, value)` | `remove(variable(name, player), value)` |
 | `playerVar(name).delete(player)`        | `deleteVar(variable(name, player))`     |
 
+Multi-level form (ext-varindex): extra index expressions
+after the player (for `playerVar`) or before the value (for the
+writing methods) build the multi-level variable on top of the
+same semantics — `playerVar(name).of(player, skill)` is
+`variable(name, player, skill)`, `.set(player, skill, value)`
+is `set(variable(name, player, skill), value)`, and
+`.delete(player, skill)` deletes that one slot. The typed
+overloads accept up to three extra segments; `variable()` /
+`localVar()` themselves are unlimited.
+
 `localHandle(name)` (feedback E7) handles one local variable,
 for use inside a trigger or a `defineFunction` body:
 `get()` is `localVar(name)`, and `set(value)` / `add(value)` /
 `remove(value)` / `delete()` are the corresponding statements
-over `localVar(name)`.
+over `localVar(name)`. With indices, `get(i1, i2)` is
+`localVar(name, i1, i2)`, the writing methods take the indices
+before the value (`set(i1, value)`), and `delete(i1)` deletes
+one indexed slot.
 
 The writing methods accept an `Expr` or a plain string /
 number / boolean literal, which is normalized (`str()` /
