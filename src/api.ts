@@ -260,6 +260,7 @@ const COND_KINDS: ReadonlySet<string> = new Set([
   "hasItem",
   "canHoldItem",
   "hasItemTag",
+  "hasSidebar",
   "chance",
   "timerActive",
   "guiEventIs",
@@ -838,6 +839,7 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "hasItem",
   "canHoldItem",
   "hasItemTag",
+  "hasSidebar",
   "isOp",
   "equals",
   "notEquals",
@@ -2899,6 +2901,80 @@ export function itemTag(item: Expr, key: string): Expr {
 /** Construct a has-item-tag condition (engine-only): the item carries a hidden tag under the key. */
 export function hasItemTag(item: Expr, key: string): Cond {
   return { kind: "hasItemTag", item, key: requireItemTagKey(key) };
+}
+
+// ---------------------------------------------------------------------------
+// Per-player sidebars (feedback D): ENGINE-ONLY
+//
+// Skript core has no sidebar / scoreboard-objective syntax at
+// all — the sidebar forms in the wild belong to addons — so,
+// like phase 26's HTTP client, these builders are a skript-ts
+// engine extension with no .sk form: a script using any of them
+// deploys as IR only (see ir.ts).
+//
+// - setSidebar replaces the target player's WHOLE sidebar in
+//   one statement (title + lines). HUDs are redrawn wholesale,
+//   so there is deliberately no line-at-a-time setter; lines
+//   are addressed by 1-based position for reading back.
+// - At most 15 lines are shown (the vanilla sidebar limit);
+//   extra lines are dropped from the end. A line with no value
+//   renders as an empty line, keeping positions stable; other
+//   values render through the usual text path (renderText),
+//   so `&` / § formatting behaves exactly like send.
+// - Duplicate and empty lines are fine: the engine's entry
+//   names are internal keys and the visible text rides on the
+//   score's custom name, with score numbers hidden.
+// - clearSidebar removes the sidebar and restores the server's
+//   main scoreboard for the player. Setting a sidebar replaces
+//   the player's scoreboard, so it competes with other plugins
+//   that assign one (PlaceholderAPI displays and the like);
+//   clearing cannot restore another plugin's board.
+// - Nothing is persisted: quitting forgets the sidebar and a
+//   script reload clears every player's sidebar.
+// - The read-back expressions (sidebarTitleOf / sidebarLine /
+//   sidebarLineCount / hasSidebar) read the engine's current
+//   state for the player — they are also how behavior tests
+//   observe the sidebar, since mineflayer cannot fully parse
+//   the 1.21 score packets' custom display names.
+// ---------------------------------------------------------------------------
+
+/**
+ * Construct a set-sidebar statement (engine-only): replace the target player's
+ * whole sidebar with the given title and lines (at most 15 lines are shown).
+ * A non-player target is a no-op.
+ */
+export function setSidebar(target: Expr, title: Value, ...lines: Value[]): Stmt {
+  return withLoc({
+    kind: "setSidebar",
+    target,
+    title: toExpr(title),
+    lines: lines.map((l) => toExpr(l)),
+  });
+}
+
+/** Construct a clear-sidebar statement (engine-only): remove the target player's sidebar and restore the main scoreboard. */
+export function clearSidebar(target: Expr): Stmt {
+  return withLoc({ kind: "clearSidebar", target });
+}
+
+/** Construct a sidebar-title expression (engine-only): the target player's current sidebar title, or no value when they have none. */
+export function sidebarTitleOf(target: Expr): Expr {
+  return { kind: "sidebarTitle", target };
+}
+
+/** Construct a sidebar-line expression (engine-only): the 1-based line of the target player's sidebar, or no value when out of range / no sidebar. */
+export function sidebarLine(target: Expr, index: Value): Expr {
+  return { kind: "sidebarLine", target, index: toExpr(index) };
+}
+
+/** Construct a sidebar-line-count expression (engine-only): how many lines the target player's sidebar has, or no value when they have none. */
+export function sidebarLineCount(target: Expr): Expr {
+  return { kind: "sidebarLineCount", target };
+}
+
+/** Construct a has-sidebar condition (engine-only): the target player currently has a sidebar set by setSidebar. */
+export function hasSidebar(target: Expr): Cond {
+  return { kind: "hasSidebar", target };
 }
 
 /** Construct a set-slot statement: write an item into a 0-based slot of an inventory (a player means their own inventory). */

@@ -371,6 +371,17 @@ export type Expr =
   // item at all). Keys are validated at build time by the API:
   // lowercase [a-z0-9._-] only.
   | { kind: "itemTag"; item: Expr; key: string }
+  // Per-player sidebars (feedback D): ENGINE-ONLY. Skript core
+  // has no sidebar / scoreboard-objective syntax (those forms
+  // belong to addons), so there is no .sk form. sidebarTitle /
+  // sidebarLine / sidebarLineCount read back the sidebar the
+  // engine currently shows the target player: the title text,
+  // the 1-based line's text, and the line count — each with no
+  // value when the player has no sidebar (or the line index is
+  // out of range, or the target is not a player).
+  | { kind: "sidebarTitle"; target: Expr }
+  | { kind: "sidebarLine"; target: Expr; index: Expr }
+  | { kind: "sidebarLineCount"; target: Expr }
   | { kind: "loreOf"; target: Expr }
   | { kind: "amountOf"; target: Expr }
   // Inventory operations (feedback lane D, 2026-11-13), semantics
@@ -737,6 +748,10 @@ export type Cond =
   // PersistentDataContainer. False for a missing tag, an item
   // without meta, and a non-item value.
   | { kind: "hasItemTag"; item: Expr; key: string }
+  // Per-player sidebars (feedback D): ENGINE-ONLY leaf
+  // condition — the target player currently has a sidebar set
+  // by setSidebar. False for a non-player target.
+  | { kind: "hasSidebar"; target: Expr }
   // Core-language randomness (phase 28): the draw succeeds with
   // the given probability. The value is a FRACTION — chance(0.5)
   // is a 50% chance — which is the original's own percent model
@@ -1025,6 +1040,12 @@ export type Stmt =
   // decides the stored PDC type: text -> STRING, number ->
   // DOUBLE, boolean -> BYTE (1/0); any other value is a no-op.
   | { kind: "setItemTag"; target: ScalarVarExpr; key: string; value: Expr; loc?: SourceLoc }
+  // Per-player sidebars (feedback D): ENGINE-ONLY statements.
+  // setSidebar replaces the target player's whole sidebar
+  // (title + lines, at most 15 lines kept); clearSidebar
+  // removes it and restores the main scoreboard.
+  | { kind: "setSidebar"; target: Expr; title: Expr; lines: readonly Expr[]; loc?: SourceLoc }
+  | { kind: "clearSidebar"; target: Expr; loc?: SourceLoc }
   | { kind: "setItemLore"; target: ScalarVarExpr; lines: readonly Expr[]; loc?: SourceLoc }
   | { kind: "setItemAmount"; target: ScalarVarExpr; amount: Expr; loc?: SourceLoc }
   | { kind: "setSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }

@@ -1,0 +1,221 @@
+{
+  "kind": "script",
+  "body": [
+    {
+      "kind": "command",
+      "name": "sbset",
+      "args": [],
+      "body": [
+        {
+          "kind": "setSidebar",
+          "target": {
+            "kind": "player"
+          },
+          "title": {
+            "kind": "string",
+            "value": "&6&lMy Server"
+          },
+          "lines": [
+            {
+              "kind": "string",
+              "value": "&7Welcome!"
+            },
+            {
+              "kind": "string",
+              "value": ""
+            },
+            {
+              "kind": "string",
+              "value": "&7Welcome!"
+            },
+            {
+              "kind": "format",
+              "parts": [
+                "&aOnline: ",
+                {
+                  "kind": "number",
+                  "value": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "string",
+            "value": "sbset: done"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "command",
+      "name": "sbread",
+      "args": [],
+      "body": [
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "hasSidebar",
+            "target": {
+              "kind": "player"
+            }
+          },
+          "then": [
+            {
+              "kind": "send",
+              "target": {
+                "kind": "player"
+              },
+              "message": {
+                "kind": "string",
+                "value": "sbread: has=yes"
+              }
+            }
+          ],
+          "else": [
+            {
+              "kind": "send",
+              "target": {
+                "kind": "player"
+              },
+              "message": {
+                "kind": "string",
+                "value": "sbread: has=no"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "format",
+            "parts": [
+              "sbread: title=",
+              {
+                "kind": "sidebarTitle",
+                "target": {
+                  "kind": "player"
+                }
+              },
+              " count=",
+              {
+                "kind": "sidebarLineCount",
+                "target": {
+                  "kind": "player"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "format",
+            "parts": [
+              "sbread: lines=",
+              {
+                "kind": "sidebarLine",
+                "target": {
+                  "kind": "player"
+                },
+                "index": {
+                  "kind": "number",
+                  "value": 1
+                }
+              },
+              "|",
+              {
+                "kind": "sidebarLine",
+                "target": {
+                  "kind": "player"
+                },
+                "index": {
+                  "kind": "number",
+                  "value": 2
+                }
+              },
+              "|",
+              {
+                "kind": "sidebarLine",
+                "target": {
+                  "kind": "player"
+                },
+                "index": {
+                  "kind": "number",
+                  "value": 3
+                }
+              },
+              "|",
+              {
+                "kind": "sidebarLine",
+                "target": {
+                  "kind": "player"
+                },
+                "index": {
+                  "kind": "number",
+                  "value": 4
+                }
+              }
+            ]
+          }
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "format",
+            "parts": [
+              "sbread: line9=",
+              {
+                "kind": "sidebarLine",
+                "target": {
+                  "kind": "player"
+                },
+                "index": {
+                  "kind": "number",
+                  "value": 9
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "command",
+      "name": "sbclear",
+      "args": [],
+      "body": [
+        {
+          "kind": "clearSidebar",
+          "target": {
+            "kind": "player"
+          }
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "string",
+            "value": "sbclear: done"
+          }
+        }
+      ]
+    }
+  ]
+}
