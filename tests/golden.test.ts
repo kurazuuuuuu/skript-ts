@@ -369,6 +369,7 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("eventctx", () => {
     expect(emit(eventCtxScript)).toBe(fixture("eventctx.sk"));
+  });
   it("smelt", () => {
     expect(emit(smeltScript)).toBe(fixture("smelt.sk"));
   });
