@@ -79,7 +79,7 @@ import {
   yOf,
   zOf,
 } from "../src/index.js";
-import type { Expr, LocationExpr, PlayerExpr } from "../src/index.js";
+import type { Expr, LocationExpr, PlayerExpr, Stmt } from "../src/index.js";
 import { chainFunctionalScript, chainScript } from "../examples/chain.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -89,7 +89,7 @@ function fixture(name: string): string {
 }
 
 /** Emit a one-statement script around a statement built either way. */
-function emitStmt(stmt: Parameters<typeof onJoin>[0][number]): string {
+function emitStmt(stmt: Stmt): string {
   return emit(script(onJoin([stmt])));
 }
 
