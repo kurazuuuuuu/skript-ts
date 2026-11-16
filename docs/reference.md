@@ -50,6 +50,73 @@ file names. `examples/loadorder1.ts` /
 `examples/loadorder2.ts` and their behavior suite pin the
 difference in both modes.
 
+## Event contexts (typed callbacks, feedback T2)
+
+Every event builder above also accepts a **callback body**,
+`(ctx) => Stmt[]`, as an alternative to the statement array:
+`onDamage((ctx) => [send(ctx.victim(), ...)])`. The callback is
+evaluated once at build time and its statements go through the
+exact same path as the array form — the AST, the emitted `.sk`
+and the IR are identical (pinned pairwise for every builder by
+`tests/eventctx.test.ts`, and by the `eventctx` golden sample).
+The array form keeps working unchanged; the callback form is
+purely additive and differs only at the type level:
+
+- **ctx carries only the values that exist in that event.**
+  Each ctx method returns the same expression node as the free
+  function of the same name (`ctx.victim()` is `victim()`), but
+  a value the event does not have is not on its ctx at all, so
+  using it is a compile error: a damage or death ctx has no
+  `player()` (Skript rejects `player` there at parse time), a
+  left-click ctx has no `clickedEntity()`, a fishing ctx has no
+  `eventItem()`, and so on.
+- **Values that may be absent are Maybe-branded.** An accessor
+  whose event value can be missing in a firing — `attacker()`
+  in damage / death / projectile-hit (environmental damage, a
+  dispenser shot), `eventBlock()` in clicks (an air click),
+  `eventItem()` in clicks and inventory clicks (an empty hand /
+  slot), `player()` in entity pickup and placeholder requests
+  (a mob picker, an offline request), the payload readers of
+  http / cf responses — returns a `Maybe…Expr` type
+  (`MaybeEntityExpr`, `MaybeBlockExpr`, `MaybeItemExpr`,
+  `MaybePlayerExpr`, or the unbranded `MaybeExpr`). A Maybe
+  value is still an `Expr`, so generic positions (`fmt()` parts,
+  comparisons, `send()` targets) and `isSet(...)` accept it
+  directly, but it does **not** fill a definite branded slot —
+  passing `ctx.attacker()` to a `defineFn` parameter declared
+  `entity` is a compile error, because at runtime that argument
+  would silently be unset. Branch on `isSet(...)` for the
+  runtime check and assert presence with the existing
+  `asEntity` / `asPlayer` / `asBlock` / `asItem` casts when a
+  definite slot needs the value. (The free functions keep their
+  definite return types; only ctx accessors are Maybe-branded.)
+- **Generic expressions are unaffected.** A callback body is an
+  ordinary statement list, so variables, function calls,
+  arithmetic and everything else keep using the free builders;
+  ctx is only for event-context values. Typing is therefore
+  opt-in per handler: array-form handlers keep the pre-T2
+  behaviour exactly.
+
+The per-event ctx surface follows the event-value semantics
+documented in the sections below (gameplay events, event
+filters, generalized events, items / inventories, and the
+engine-builtin event sections): player-only events expose
+`player()`; chat adds `chatMessage()`; damage exposes
+`victim()` / `attacker()` (Maybe) / `damageAmount()` /
+`damageCause()`; clicks expose `player()` plus Maybe
+`eventBlock()` / `eventItem()` (and, right click only, Maybe
+`clickedEntity()`); the fishing family exposes `player()` /
+`fishingHook()` / `eventFishingState()` and the hook readings,
+with `eventEntity()` added on the two catch events; inventory
+click / drag expose `eventInventory()` and their slot / cursor
+values; the builtin completion events expose their payload
+readers (`wsId()` / `wsMessage()`, `timerId()`, the placeholder
+parts, `http…()` / `cf…()` readers, `resourcePackStatus()`).
+A periodical (`every`) callback receives an empty context,
+matching its no-event-value semantics. `examples/eventctx.ts`
+exercises the core events and carries the compile-time
+negative checks as suppressed type errors.
+
 ## Commands
 
 `command(name, args, body, options?)` — any number of typed

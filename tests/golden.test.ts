@@ -274,6 +274,7 @@ import { taggedScript } from "../examples/tagged.js";
 import { events2Script } from "../examples/events2.js";
 import { events3Script } from "../examples/events3.js";
 import { events4Script } from "../examples/events4.js";
+import { eventCtxScript } from "../examples/eventctx.js";
 import { guiScript } from "../examples/gui.js";
 import { gui2Script } from "../examples/gui2.js";
 import { worldScript } from "../examples/world.js";
@@ -351,6 +352,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("events4", () => {
     expect(emit(events4Script)).toBe(fixture("events4.sk"));
+  });
+  it("eventctx", () => {
+    expect(emit(eventCtxScript)).toBe(fixture("eventctx.sk"));
   });
   it("timespan", () => {
     expect(emit(timespanScript)).toBe(fixture("timespan.sk"));

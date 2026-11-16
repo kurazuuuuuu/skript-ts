@@ -658,6 +658,44 @@ export type ItemExpr = Expr & { readonly [exprKindBrand]: "item" };
 /** An expression known to evaluate to a location. */
 export type LocationExpr = Expr & { readonly [exprKindBrand]: "location" };
 
+declare const maybeKindBrand: unique symbol;
+
+/**
+ * Maybe-branded expression types (feedback T2): an event-context
+ * value that exists in its event but may have NO value in a given
+ * firing — the attacker of an environmental damage event, the
+ * clicked block of an air click, the item of an empty hand. The
+ * brand is type-only (the runtime node is the plain Expr, so the
+ * emitted .sk and the IR are unchanged) and uses a DIFFERENT
+ * symbol from the definite brands above on purpose: a Maybe type
+ * does not carry `exprKindBrand`, so it is NOT assignable to the
+ * definite branded types (a MaybeEntityExpr cannot fill a
+ * defineFn `entity` parameter, which would otherwise fail
+ * silently at runtime with an unset argument), while it IS still
+ * an Expr, so generic positions (fmt parts, comparisons, isSet)
+ * accept it directly. Presence is asserted with the existing
+ * asPlayer / asEntity / ... identity casts, and branched on at
+ * runtime with isSet(...) — the same division of labour as T1.
+ */
+
+/** An expression that may have no value (kind unspecified). */
+export type MaybeExpr = Expr & { readonly [maybeKindBrand]: "value" };
+
+/** An expression that evaluates to a player when it has a value. */
+export type MaybePlayerExpr = Expr & { readonly [maybeKindBrand]: "player" };
+
+/** An expression that evaluates to an entity when it has a value. */
+export type MaybeEntityExpr = Expr & { readonly [maybeKindBrand]: "entity" };
+
+/** An expression that evaluates to a block when it has a value. */
+export type MaybeBlockExpr = Expr & { readonly [maybeKindBrand]: "block" };
+
+/** An expression that evaluates to an item when it has a value. */
+export type MaybeItemExpr = Expr & { readonly [maybeKindBrand]: "item" };
+
+/** An expression that evaluates to a location when it has a value. */
+export type MaybeLocationExpr = Expr & { readonly [maybeKindBrand]: "location" };
+
 /** Represents a binary arithmetic operator. */
 export type ArithOp = "+" | "-" | "*" | "/" | "mod";
 

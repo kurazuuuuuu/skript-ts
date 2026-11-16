@@ -1,0 +1,23 @@
+on join:
+    send "おかえりなさい、%player% さん" to player
+
+on chat:
+    broadcast "[CHAT] %player%: %message%"
+
+on damage:
+    if attacker is set:
+        send "damage %damage% (%damage cause%) by %attacker%" to victim
+    set damage to damage
+
+on death:
+    if attacker is set:
+        broadcast "%victim% was slain by %attacker%"
+
+on block break:
+    send "broke %event-block% with %event-item%" to player
+
+on right click:
+    if clicked entity is set:
+        send "clicked entity %clicked entity%" to player
+    if event-block is set:
+        send "clicked block %event-block%" to player

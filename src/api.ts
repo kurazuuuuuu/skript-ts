@@ -5,6 +5,11 @@ import type {
   BlockExpr,
   ItemExpr,
   LocationExpr,
+  MaybeExpr,
+  MaybePlayerExpr,
+  MaybeEntityExpr,
+  MaybeBlockExpr,
+  MaybeItemExpr,
   TextExpr,
   Cond,
   VariableExpr,
@@ -1329,24 +1334,401 @@ export function stopTrigger(): Stmt {
   return withLoc({ kind: "stop" });
 }
 
+// ---------------------------------------------------------------------------
+// Typed event contexts (feedback T2): every event builder also
+// accepts a callback body, `(ctx) => Stmt[]`, as an ADDITIVE
+// alternative to the statement-array form. The callback is
+// evaluated once at build time and the statements it returns go
+// through the exact same path as the array form — the AST, the
+// emitted .sk and the IR are identical (pinned by
+// tests/eventctx.test.ts). The difference is purely at the type
+// level: ctx carries ONLY the context accessors that exist in
+// that event, each returning the same expression node as the
+// free function of the same name, so using a context value the
+// event does not have (player() inside onDamage, whose Skript
+// form is a parse error) is a compile error instead. Accessors
+// whose value may be absent in a firing (the attacker of an
+// environmental damage event, the block of an air click) return
+// the Maybe-branded types from ast.ts: they still work in
+// generic Expr positions and with isSet(), but cannot fill a
+// definite branded slot (a defineFn player / entity / block /
+// item parameter) without an explicit asPlayer / asEntity /
+// asBlock / asItem assertion. Generic expressions (variables,
+// function calls, arithmetic, ...) are unaffected: a callback
+// body uses the free functions for everything that is not an
+// event-context value, exactly like the array form.
+// ---------------------------------------------------------------------------
+
+/** The context of a player-only event with no other event values (join, first join, quit, respawn, toggle sneak). */
+export interface PlayerCtx {
+  player(): PlayerExpr;
+}
+
+/** The context of an onChat handler. */
+export interface ChatCtx {
+  player(): PlayerExpr;
+  chatMessage(): Expr;
+}
+
+/** The context of an onDeath handler: no player exists in a death event; the attacker is absent for environmental / command deaths. */
+export interface DeathCtx {
+  victim(): EntityExpr;
+  attacker(): MaybeEntityExpr;
+}
+
+/** The context of an onDamage handler: no player exists in a damage event; the attacker is absent for environmental damage. */
+export interface DamageCtx {
+  victim(): EntityExpr;
+  attacker(): MaybeEntityExpr;
+  damageAmount(): Expr;
+  damageCause(): Expr;
+}
+
+/** The context of an onBlockBreak handler: eventItem is the broken block in item form, not the tool in hand. */
+export interface BlockBreakCtx {
+  player(): PlayerExpr;
+  eventBlock(): BlockExpr;
+  eventItem(): ItemExpr;
+}
+
+/** The context of an onBlockPlace handler. */
+export interface BlockPlaceCtx {
+  player(): PlayerExpr;
+  eventBlock(): BlockExpr;
+  eventItem(): ItemExpr;
+}
+
+/** The context of an onRightClick handler: the block is absent for air / entity clicks, the item for an empty hand, the clicked entity for block / air clicks. */
+export interface RightClickCtx {
+  player(): PlayerExpr;
+  eventBlock(): MaybeBlockExpr;
+  eventItem(): MaybeItemExpr;
+  clickedEntity(): MaybeEntityExpr;
+}
+
+/** The context of an onLeftClick handler: like the right click, but with no clicked entity (clicking an entity is the damage event). */
+export interface LeftClickCtx {
+  player(): PlayerExpr;
+  eventBlock(): MaybeBlockExpr;
+  eventItem(): MaybeItemExpr;
+}
+
+/** The context of an onPickup handler (the player form). */
+export interface PickupCtx {
+  player(): PlayerExpr;
+  eventItem(): ItemExpr;
+}
+
+/** The context of an onDrop handler (the player form). */
+export interface DropCtx {
+  player(): PlayerExpr;
+  eventItem(): ItemExpr;
+}
+
+/** The context of an onEntityPickup handler: the picker may be a mob, in which case player has no value. */
+export interface EntityPickupCtx {
+  eventEntity(): EntityExpr;
+  player(): MaybePlayerExpr;
+  eventItem(): ItemExpr;
+}
+
+/** The context of an onEntityDrop handler. */
+export interface EntityDropCtx {
+  eventEntity(): EntityExpr;
+  droppedItemEntity(): Expr;
+  eventItem(): ItemExpr;
+}
+
+/** The context shared by the fishing sub-events: the fisher, the hook, the state and the hook's timing / angle readings. Fishing events have no event-item. */
+export interface FishingCtx {
+  player(): PlayerExpr;
+  fishingHook(): Expr;
+  eventFishingState(): Expr;
+  fishingWaitTime(bound: "min" | "max"): Expr;
+  fishingBiteTime(): Expr;
+  fishingApproachAngle(bound: "min" | "max"): Expr;
+}
+
+/** The context of an onFishCaught handler: the caught thing is an Item entity. */
+export interface FishCaughtCtx extends FishingCtx {
+  eventEntity(): EntityExpr;
+  droppedItemEntity(): Expr;
+}
+
+/** The context of an onEntityHooked handler. */
+export interface EntityHookedCtx extends FishingCtx {
+  eventEntity(): EntityExpr;
+  hookedEntity(): Expr;
+}
+
+/** The context of the bed events: eventBlock is the bed. */
+export interface BedCtx {
+  player(): PlayerExpr;
+  eventBlock(): BlockExpr;
+}
+
+/** The context of an onConsume handler. */
+export interface ConsumeCtx {
+  player(): PlayerExpr;
+  eventItem(): ItemExpr;
+}
+
+/** The context of an onCraft handler. */
+export interface CraftCtx {
+  player(): PlayerExpr;
+  eventItem(): ItemExpr;
+  eventInventory(): Expr;
+}
+
+/** The context of an onProjectileHit handler: the shooter is absent for non-entity sources, the victim for a block hit, the block for an entity hit. There is no player value. */
+export interface ProjectileHitCtx {
+  attacker(): MaybeEntityExpr;
+  victim(): MaybeEntityExpr;
+  eventBlock(): MaybeBlockExpr;
+}
+
+/** The context of an onSwapHand handler: eventItem is the item moving into the main hand. */
+export interface SwapHandCtx {
+  player(): PlayerExpr;
+  eventItem(): ItemExpr;
+}
+
+/** The context of an onInventoryClick handler: the clicked item is absent for an empty slot, the cursor item for an empty cursor, the GUI id when the inventory is not a tagged script GUI. */
+export interface InventoryClickCtx {
+  player(): PlayerExpr;
+  eventItem(): MaybeItemExpr;
+  eventInventory(): Expr;
+  clickedSlotIndex(): Expr;
+  clickedRawSlotIndex(): Expr;
+  clickedClickType(): Expr;
+  eventCursor(): MaybeItemExpr;
+  guiEventId(): MaybeExpr;
+}
+
+/** The context of an onInventoryClose handler. */
+export interface InventoryCloseCtx {
+  player(): PlayerExpr;
+  eventInventory(): Expr;
+}
+
+/** The context of an onInventoryDrag handler: eventItem is the post-drag cursor, which always has a value (an air item of amount 0 when the drag empties it). */
+export interface InventoryDragCtx {
+  player(): PlayerExpr;
+  eventInventory(): Expr;
+  eventItem(): ItemExpr;
+  draggedSlots(): Expr;
+  eventCursor(): MaybeItemExpr;
+}
+
+/** The context of the websocket open / close events. */
+export interface WsCtx {
+  wsId(): Expr;
+}
+
+/** The context of an onWsMessage handler. */
+export interface WsMessageCtx extends WsCtx {
+  wsMessage(): Expr;
+}
+
+/** The context of the timer events. */
+export interface TimerCtx {
+  timerId(): Expr;
+}
+
+/** The context of an onPlaceholderRequest handler: the player is absent for offline / console requests. */
+export interface PlaceholderCtx {
+  player(): MaybePlayerExpr;
+  placeholderIdentifier(): Expr;
+  placeholderPrefix(): Expr;
+}
+
+/** The context of an onHttpResponse handler: the status is absent when no response arrived, the body on downloads, the error on success, the saved path on fetches. */
+export interface HttpResponseCtx {
+  httpId(): Expr;
+  httpStatus(): MaybeExpr;
+  httpBody(): MaybeExpr;
+  httpError(): MaybeExpr;
+  httpSavedPath(): MaybeExpr;
+}
+
+/** The context of an onCfResponse handler: the error is absent on success, the signed URL only on presign completions, the size only on head completions. */
+export interface CfResponseCtx {
+  cfId(): Expr;
+  cfError(): MaybeExpr;
+  cfSignedUrl(): MaybeExpr;
+  cfR2Size(): MaybeExpr;
+}
+
+/** The context of an onResourcePackStatus handler. */
+export interface ResourcePackStatusCtx {
+  player(): PlayerExpr;
+  resourcePackStatus(): Expr;
+}
+
+/** The context of a periodical trigger: no event values exist there, like a function body. */
+export type PeriodicalCtx = Record<never, never>;
+
+/** An event body in either form: the statement array, or a callback evaluated once at build time with the event's typed context. */
+export type EventBody<C> = readonly Stmt[] | ((ctx: C) => readonly Stmt[]);
+
+/** Evaluate a callback body against its context; an array body passes through unchanged. */
+function bodyOf<C>(body: EventBody<C>, ctx: C): readonly Stmt[] {
+  return typeof body === "function" ? (body as (ctx: C) => readonly Stmt[])(ctx) : body;
+}
+
+const playerCtx: PlayerCtx = { player: () => player() };
+const chatCtx: ChatCtx = { player: () => player(), chatMessage: () => chatMessage() };
+const deathCtx: DeathCtx = {
+  victim: () => victim(),
+  attacker: () => attacker() as Expr as MaybeEntityExpr,
+};
+const damageCtx: DamageCtx = {
+  victim: () => victim(),
+  attacker: () => attacker() as Expr as MaybeEntityExpr,
+  damageAmount: () => damageAmount(),
+  damageCause: () => damageCause(),
+};
+const blockBreakCtx: BlockBreakCtx = {
+  player: () => player(),
+  eventBlock: () => eventBlock(),
+  eventItem: () => eventItem(),
+};
+const blockPlaceCtx: BlockPlaceCtx = {
+  player: () => player(),
+  eventBlock: () => eventBlock(),
+  eventItem: () => eventItem(),
+};
+const rightClickCtx: RightClickCtx = {
+  player: () => player(),
+  eventBlock: () => eventBlock() as Expr as MaybeBlockExpr,
+  eventItem: () => eventItem() as Expr as MaybeItemExpr,
+  clickedEntity: () => clickedEntity() as MaybeEntityExpr,
+};
+const leftClickCtx: LeftClickCtx = {
+  player: () => player(),
+  eventBlock: () => eventBlock() as Expr as MaybeBlockExpr,
+  eventItem: () => eventItem() as Expr as MaybeItemExpr,
+};
+const pickupCtx: PickupCtx = { player: () => player(), eventItem: () => eventItem() };
+const dropCtx: DropCtx = { player: () => player(), eventItem: () => eventItem() };
+const entityPickupCtx: EntityPickupCtx = {
+  eventEntity: () => eventEntity(),
+  player: () => player() as Expr as MaybePlayerExpr,
+  eventItem: () => eventItem(),
+};
+const entityDropCtx: EntityDropCtx = {
+  eventEntity: () => eventEntity(),
+  droppedItemEntity: () => droppedItemEntity(),
+  eventItem: () => eventItem(),
+};
+const fishingCtx: FishingCtx = {
+  player: () => player(),
+  fishingHook: () => fishingHook(),
+  eventFishingState: () => eventFishingState(),
+  fishingWaitTime: (bound) => fishingWaitTime(bound),
+  fishingBiteTime: () => fishingBiteTime(),
+  fishingApproachAngle: (bound) => fishingApproachAngle(bound),
+};
+const fishCaughtCtx: FishCaughtCtx = {
+  ...fishingCtx,
+  eventEntity: () => eventEntity(),
+  droppedItemEntity: () => droppedItemEntity(),
+};
+const entityHookedCtx: EntityHookedCtx = {
+  ...fishingCtx,
+  eventEntity: () => eventEntity(),
+  hookedEntity: () => hookedEntity(),
+};
+const bedCtx: BedCtx = { player: () => player(), eventBlock: () => eventBlock() };
+const consumeCtx: ConsumeCtx = { player: () => player(), eventItem: () => eventItem() };
+const craftCtx: CraftCtx = {
+  player: () => player(),
+  eventItem: () => eventItem(),
+  eventInventory: () => eventInventory(),
+};
+const projectileHitCtx: ProjectileHitCtx = {
+  attacker: () => attacker() as Expr as MaybeEntityExpr,
+  victim: () => victim() as Expr as MaybeEntityExpr,
+  eventBlock: () => eventBlock() as Expr as MaybeBlockExpr,
+};
+const swapHandCtx: SwapHandCtx = { player: () => player(), eventItem: () => eventItem() };
+const inventoryClickCtx: InventoryClickCtx = {
+  player: () => player(),
+  eventItem: () => eventItem() as Expr as MaybeItemExpr,
+  eventInventory: () => eventInventory(),
+  clickedSlotIndex: () => clickedSlotIndex(),
+  clickedRawSlotIndex: () => clickedRawSlotIndex(),
+  clickedClickType: () => clickedClickType(),
+  eventCursor: () => eventCursor() as Expr as MaybeItemExpr,
+  guiEventId: () => guiEventId() as MaybeExpr,
+};
+const inventoryCloseCtx: InventoryCloseCtx = {
+  player: () => player(),
+  eventInventory: () => eventInventory(),
+};
+const inventoryDragCtx: InventoryDragCtx = {
+  player: () => player(),
+  eventInventory: () => eventInventory(),
+  eventItem: () => eventItem(),
+  draggedSlots: () => draggedSlots(),
+  eventCursor: () => eventCursor() as Expr as MaybeItemExpr,
+};
+const wsCtx: WsCtx = { wsId: () => wsId() };
+const wsMessageCtx: WsMessageCtx = { wsId: () => wsId(), wsMessage: () => wsMessage() };
+const timerCtx: TimerCtx = { timerId: () => timerId() };
+const placeholderCtx: PlaceholderCtx = {
+  player: () => player() as Expr as MaybePlayerExpr,
+  placeholderIdentifier: () => placeholderIdentifier(),
+  placeholderPrefix: () => placeholderPrefix(),
+};
+const httpResponseCtx: HttpResponseCtx = {
+  httpId: () => httpId(),
+  httpStatus: () => httpStatus() as MaybeExpr,
+  httpBody: () => httpBody() as MaybeExpr,
+  httpError: () => httpError() as MaybeExpr,
+  httpSavedPath: () => httpSavedPath() as MaybeExpr,
+};
+const cfResponseCtx: CfResponseCtx = {
+  cfId: () => cfId(),
+  cfError: () => cfError() as MaybeExpr,
+  cfSignedUrl: () => cfSignedUrl() as MaybeExpr,
+  cfR2Size: () => cfR2Size() as MaybeExpr,
+};
+const resourcePackStatusCtx: ResourcePackStatusCtx = {
+  player: () => player(),
+  resourcePackStatus: () => resourcePackStatus(),
+};
+const periodicalCtx: PeriodicalCtx = {};
+
 /** Construct an on-join event. */
-export function onJoin(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("join", body, options, "onJoin"));
+export function onJoin(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onJoin(body: (ctx: PlayerCtx) => readonly Stmt[], options?: EventOptions): TopLevel;
+export function onJoin(body: EventBody<PlayerCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("join", bodyOf(body, playerCtx), options, "onJoin"));
 }
 
 /** Construct an on-first-join event. */
-export function onFirstJoin(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("firstJoin", body, options, "onFirstJoin"));
+export function onFirstJoin(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onFirstJoin(
+  body: (ctx: PlayerCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onFirstJoin(body: EventBody<PlayerCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("firstJoin", bodyOf(body, playerCtx), options, "onFirstJoin"));
 }
 
 /** Construct an on-quit event. */
-export function onQuit(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("quit", body, options, "onQuit"));
+export function onQuit(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onQuit(body: (ctx: PlayerCtx) => readonly Stmt[], options?: EventOptions): TopLevel;
+export function onQuit(body: EventBody<PlayerCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("quit", bodyOf(body, playerCtx), options, "onQuit"));
 }
 
 /** Construct an on-chat event. */
-export function onChat(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("chat", body, options, "onChat"));
+export function onChat(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onChat(body: (ctx: ChatCtx) => readonly Stmt[], options?: EventOptions): TopLevel;
+export function onChat(body: EventBody<ChatCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("chat", bodyOf(body, chatCtx), options, "onChat"));
 }
 
 /** Filter options for onDeath: the victim types of the "of" slot — the death header's only slot (phase 22). */
@@ -1370,11 +1752,23 @@ export interface DeathEventFilter {
  * body. The optional filter restricts the handler to the named
  * victim types ("on death of zombie").
  */
-export function onDeath(body: readonly Stmt[], filter?: DeathEventFilter): TopLevel {
+export function onDeath(body: readonly Stmt[], filter?: DeathEventFilter): TopLevel;
+export function onDeath(
+  body: (ctx: DeathCtx) => readonly Stmt[],
+  filter?: DeathEventFilter,
+): TopLevel;
+export function onDeath(body: EventBody<DeathCtx>, filter?: DeathEventFilter): TopLevel {
   requireFilterKeys(filter, ["victim", "priority"], "onDeath");
   const f: EventFilter = {};
   if (filter?.victim !== undefined) f.victimTypes = requireTypeNames(filter.victim, "victim");
-  return withLoc(eventWithFilter("death", body, f, requirePriority(filter?.priority, "onDeath")));
+  return withLoc(
+    eventWithFilter(
+      "death",
+      bodyOf(body, deathCtx),
+      f,
+      requirePriority(filter?.priority, "onDeath"),
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1431,11 +1825,16 @@ export function onDeath(body: readonly Stmt[], filter?: DeathEventFilter): TopLe
 // ---------------------------------------------------------------------------
 
 /** Construct an on-block-break event: a player breaks a block. The optional filter restricts it to the named block types ("on break of stone"). */
-export function onBlockBreak(body: readonly Stmt[], filter?: BlockEventFilter): TopLevel {
+export function onBlockBreak(body: readonly Stmt[], filter?: BlockEventFilter): TopLevel;
+export function onBlockBreak(
+  body: (ctx: BlockBreakCtx) => readonly Stmt[],
+  filter?: BlockEventFilter,
+): TopLevel;
+export function onBlockBreak(body: EventBody<BlockBreakCtx>, filter?: BlockEventFilter): TopLevel {
   return withLoc(
     eventWithFilter(
       "blockBreak",
-      body,
+      bodyOf(body, blockBreakCtx),
       blockFilter(filter, "onBlockBreak"),
       requirePriority(filter?.priority, "onBlockBreak"),
     ),
@@ -1443,11 +1842,16 @@ export function onBlockBreak(body: readonly Stmt[], filter?: BlockEventFilter): 
 }
 
 /** Construct an on-block-place event: a player places a block. The optional filter restricts it to the named block types ("on place of stone"). */
-export function onBlockPlace(body: readonly Stmt[], filter?: BlockEventFilter): TopLevel {
+export function onBlockPlace(body: readonly Stmt[], filter?: BlockEventFilter): TopLevel;
+export function onBlockPlace(
+  body: (ctx: BlockPlaceCtx) => readonly Stmt[],
+  filter?: BlockEventFilter,
+): TopLevel;
+export function onBlockPlace(body: EventBody<BlockPlaceCtx>, filter?: BlockEventFilter): TopLevel {
   return withLoc(
     eventWithFilter(
       "blockPlace",
-      body,
+      bodyOf(body, blockPlaceCtx),
       blockFilter(filter, "onBlockPlace"),
       requirePriority(filter?.priority, "onBlockPlace"),
     ),
@@ -1455,11 +1859,16 @@ export function onBlockPlace(body: readonly Stmt[], filter?: BlockEventFilter): 
 }
 
 /** Construct an on-right-click event: a player right-clicks a block, an entity, or air. The optional filter restricts it by clicked block, clicked entity and/or held item ("on right click on a villager with a stick"). */
-export function onRightClick(body: readonly Stmt[], filter?: ClickEventFilter): TopLevel {
+export function onRightClick(body: readonly Stmt[], filter?: ClickEventFilter): TopLevel;
+export function onRightClick(
+  body: (ctx: RightClickCtx) => readonly Stmt[],
+  filter?: ClickEventFilter,
+): TopLevel;
+export function onRightClick(body: EventBody<RightClickCtx>, filter?: ClickEventFilter): TopLevel {
   return withLoc(
     eventWithFilter(
       "rightClick",
-      body,
+      bodyOf(body, rightClickCtx),
       clickFilter(filter, "onRightClick"),
       requirePriority(filter?.priority, "onRightClick"),
     ),
@@ -1467,11 +1876,16 @@ export function onRightClick(body: readonly Stmt[], filter?: ClickEventFilter): 
 }
 
 /** Construct an on-left-click event: a player left-clicks a block or air (attacking an entity is the damage event, not a click). The optional filter restricts it like onRightClick's. */
-export function onLeftClick(body: readonly Stmt[], filter?: ClickEventFilter): TopLevel {
+export function onLeftClick(body: readonly Stmt[], filter?: ClickEventFilter): TopLevel;
+export function onLeftClick(
+  body: (ctx: LeftClickCtx) => readonly Stmt[],
+  filter?: ClickEventFilter,
+): TopLevel;
+export function onLeftClick(body: EventBody<LeftClickCtx>, filter?: ClickEventFilter): TopLevel {
   return withLoc(
     eventWithFilter(
       "leftClick",
-      body,
+      bodyOf(body, leftClickCtx),
       clickFilter(filter, "onLeftClick"),
       requirePriority(filter?.priority, "onLeftClick"),
     ),
@@ -1479,13 +1893,25 @@ export function onLeftClick(body: readonly Stmt[], filter?: ClickEventFilter): T
 }
 
 /** Construct an on-damage event: an entity takes damage from any cause. The optional filter restricts it by victim and/or attacker type ("on damage of player by zombie"; either side may be filtered alone). */
-export function onDamage(body: readonly Stmt[], filter?: DamageEventFilter): TopLevel {
+export function onDamage(body: readonly Stmt[], filter?: DamageEventFilter): TopLevel;
+export function onDamage(
+  body: (ctx: DamageCtx) => readonly Stmt[],
+  filter?: DamageEventFilter,
+): TopLevel;
+export function onDamage(body: EventBody<DamageCtx>, filter?: DamageEventFilter): TopLevel {
   requireFilterKeys(filter, ["victim", "attacker", "priority"], "onDamage");
   const f: EventFilter = {};
   if (filter?.victim !== undefined) f.victimTypes = requireTypeNames(filter.victim, "victim");
   if (filter?.attacker !== undefined)
     f.attackerTypes = requireTypeNames(filter.attacker, "attacker");
-  return withLoc(eventWithFilter("damage", body, f, requirePriority(filter?.priority, "onDamage")));
+  return withLoc(
+    eventWithFilter(
+      "damage",
+      bodyOf(body, damageCtx),
+      f,
+      requirePriority(filter?.priority, "onDamage"),
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1669,19 +2095,35 @@ function clickFilter(filter: ClickEventFilter | undefined, what: string): EventF
 }
 
 /** Construct an on-pickup event: a player picks up an item from the ground. The optional filter restricts it to the named item types ("on pick up of wheat"). */
-export function onPickup(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+export function onPickup(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel;
+export function onPickup(
+  body: (ctx: PickupCtx) => readonly Stmt[],
+  filter?: ItemEventFilter,
+): TopLevel;
+export function onPickup(body: EventBody<PickupCtx>, filter?: ItemEventFilter): TopLevel {
   requireFilterKeys(filter, ["item", "priority"], "onPickup");
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
-  return withLoc(eventWithFilter("pickup", body, f, requirePriority(filter?.priority, "onPickup")));
+  return withLoc(
+    eventWithFilter(
+      "pickup",
+      bodyOf(body, pickupCtx),
+      f,
+      requirePriority(filter?.priority, "onPickup"),
+    ),
+  );
 }
 
 /** Construct an on-drop event: a player drops an item from their inventory. The optional filter restricts it to the named item types ("on drop of an egg"); cancelling it keeps the item. */
-export function onDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+export function onDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel;
+export function onDrop(body: (ctx: DropCtx) => readonly Stmt[], filter?: ItemEventFilter): TopLevel;
+export function onDrop(body: EventBody<DropCtx>, filter?: ItemEventFilter): TopLevel {
   requireFilterKeys(filter, ["item", "priority"], "onDrop");
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
-  return withLoc(eventWithFilter("drop", body, f, requirePriority(filter?.priority, "onDrop")));
+  return withLoc(
+    eventWithFilter("drop", bodyOf(body, dropCtx), f, requirePriority(filter?.priority, "onDrop")),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1733,68 +2175,143 @@ export function onDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLeve
 // ---------------------------------------------------------------------------
 
 /** Construct an entity-pickup event: ANY entity (a mob, or a player too) picks up an item. The optional filter restricts it to the named item types ("on entity pick up of wheat"). */
-export function onEntityPickup(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+export function onEntityPickup(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel;
+export function onEntityPickup(
+  body: (ctx: EntityPickupCtx) => readonly Stmt[],
+  filter?: ItemEventFilter,
+): TopLevel;
+export function onEntityPickup(
+  body: EventBody<EntityPickupCtx>,
+  filter?: ItemEventFilter,
+): TopLevel {
   requireFilterKeys(filter, ["item", "priority"], "onEntityPickup");
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
   return withLoc(
-    eventWithFilter("entityPickup", body, f, requirePriority(filter?.priority, "onEntityPickup")),
+    eventWithFilter(
+      "entityPickup",
+      bodyOf(body, entityPickupCtx),
+      f,
+      requirePriority(filter?.priority, "onEntityPickup"),
+    ),
   );
 }
 
 /** Construct an entity-drop event: a NON-player entity drops an item (a chicken laying an egg). Player drops are the bare onDrop form. The optional filter restricts it to the named item types ("on entity drop of egg"). */
-export function onEntityDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+export function onEntityDrop(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel;
+export function onEntityDrop(
+  body: (ctx: EntityDropCtx) => readonly Stmt[],
+  filter?: ItemEventFilter,
+): TopLevel;
+export function onEntityDrop(body: EventBody<EntityDropCtx>, filter?: ItemEventFilter): TopLevel {
   requireFilterKeys(filter, ["item", "priority"], "onEntityDrop");
   const f: EventFilter = {};
   if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
   return withLoc(
-    eventWithFilter("entityDrop", body, f, requirePriority(filter?.priority, "onEntityDrop")),
+    eventWithFilter(
+      "entityDrop",
+      bodyOf(body, entityDropCtx),
+      f,
+      requirePriority(filter?.priority, "onEntityDrop"),
+    ),
   );
 }
 
 /** Construct a fish-cast event: a player casts a fishing line (state "fishing line cast"). */
-export function onFishCast(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("fishCast", body, options, "onFishCast"));
+export function onFishCast(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onFishCast(
+  body: (ctx: FishingCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onFishCast(body: EventBody<FishingCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishCast", bodyOf(body, fishingCtx), options, "onFishCast"));
 }
 
 /** Construct a fish-approach event: a fish is approaching the bobber (state "lured"). */
-export function onFishApproach(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("fishApproach", body, options, "onFishApproach"));
+export function onFishApproach(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onFishApproach(
+  body: (ctx: FishingCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onFishApproach(body: EventBody<FishingCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishApproach", bodyOf(body, fishingCtx), options, "onFishApproach"));
 }
 
 /** Construct a fish-bite event: a fish bites the hook (state "bite"). Reel in promptly or the fish escapes. */
-export function onFishBite(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("fishBite", body, options, "onFishBite"));
+export function onFishBite(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onFishBite(
+  body: (ctx: FishingCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onFishBite(body: EventBody<FishingCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishBite", bodyOf(body, fishingCtx), options, "onFishBite"));
 }
 
 /** Construct a fish-caught event: the player reels in a fish (state "fish caught"). The caught stack is itemOfEntity(eventEntity()). */
-export function onFishCaught(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("fishCaught", body, options, "onFishCaught"));
+export function onFishCaught(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onFishCaught(
+  body: (ctx: FishCaughtCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onFishCaught(body: EventBody<FishCaughtCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishCaught", bodyOf(body, fishCaughtCtx), options, "onFishCaught"));
 }
 
 /** Construct an entity-hooked event: the hook catches an entity (state "entity caught"). hookedEntity() / eventEntity() are the caught entity. */
-export function onEntityHooked(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("entityHooked", body, options, "onEntityHooked"));
+export function onEntityHooked(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onEntityHooked(
+  body: (ctx: EntityHookedCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onEntityHooked(body: EventBody<EntityHookedCtx>, options?: EventOptions): TopLevel {
+  return withLoc(
+    plainEvent("entityHooked", bodyOf(body, entityHookedCtx), options, "onEntityHooked"),
+  );
 }
 
 /** Construct a hook-in-ground event: the bobber hits the ground (state "bobber in ground"). */
-export function onHookInGround(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("hookInGround", body, options, "onHookInGround"));
+export function onHookInGround(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onHookInGround(
+  body: (ctx: FishingCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onHookInGround(body: EventBody<FishingCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("hookInGround", bodyOf(body, fishingCtx), options, "onHookInGround"));
 }
 
 /** Construct a fish-escape event: the bite window lapsed without a reel-in and the fish got away (state "fish escape"). */
-export function onFishEscape(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("fishEscape", body, options, "onFishEscape"));
+export function onFishEscape(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onFishEscape(
+  body: (ctx: FishingCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onFishEscape(body: EventBody<FishingCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishEscape", bodyOf(body, fishingCtx), options, "onFishEscape"));
 }
 
 /** Construct a fish-reel-in event: the player reels the line in without a catch (state "reel in"). */
-export function onFishReelIn(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("fishReelIn", body, options, "onFishReelIn"));
+export function onFishReelIn(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onFishReelIn(
+  body: (ctx: FishingCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onFishReelIn(body: EventBody<FishingCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("fishReelIn", bodyOf(body, fishingCtx), options, "onFishReelIn"));
 }
 
 /** Construct a fishing-state-change event: fires for EVERY fishing state; read the state with eventFishingState(). */
-export function onFishingStateChange(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("fishingStateChange", body, options, "onFishingStateChange"));
+export function onFishingStateChange(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onFishingStateChange(
+  body: (ctx: FishingCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onFishingStateChange(
+  body: EventBody<FishingCtx>,
+  options?: EventOptions,
+): TopLevel {
+  return withLoc(
+    plainEvent("fishingStateChange", bodyOf(body, fishingCtx), options, "onFishingStateChange"),
+  );
 }
 
 /** Construct an event-entity expression: the entity an entity pickup / drop is about; in fishing events, the caught entity (or the caught Item entity for a fish). */
@@ -1847,18 +2364,33 @@ export function itemOfEntity(target: Expr): Expr {
 }
 
 /** Construct an on-respawn event: a player respawns after death. Not cancellable. */
-export function onRespawn(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("respawn", body, options, "onRespawn"));
+export function onRespawn(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onRespawn(
+  body: (ctx: PlayerCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onRespawn(body: EventBody<PlayerCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("respawn", bodyOf(body, playerCtx), options, "onRespawn"));
 }
 
 /** Construct an on-bed-enter event: a player gets into a bed. eventBlock() is the bed; the event is cancellable. */
-export function onBedEnter(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("bedEnter", body, options, "onBedEnter"));
+export function onBedEnter(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onBedEnter(
+  body: (ctx: BedCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onBedEnter(body: EventBody<BedCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("bedEnter", bodyOf(body, bedCtx), options, "onBedEnter"));
 }
 
 /** Construct an on-bed-leave event: a player gets out of a bed. eventBlock() is the bed; the event is not cancellable. */
-export function onBedLeave(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("bedLeave", body, options, "onBedLeave"));
+export function onBedLeave(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onBedLeave(
+  body: (ctx: BedCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onBedLeave(body: EventBody<BedCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("bedLeave", bodyOf(body, bedCtx), options, "onBedLeave"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1895,28 +2427,55 @@ export function onBedLeave(body: readonly Stmt[], options?: EventOptions): TopLe
 // ---------------------------------------------------------------------------
 
 /** Construct an on-consume event: a player consumes an item (eats, drinks). eventItem() is the consumed stack; the event is cancellable. */
-export function onConsume(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("consume", body, options, "onConsume"));
+export function onConsume(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onConsume(
+  body: (ctx: ConsumeCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onConsume(body: EventBody<ConsumeCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("consume", bodyOf(body, consumeCtx), options, "onConsume"));
 }
 
 /** Construct an on-craft event: a player takes a crafted result out of a crafting inventory. eventItem() is the result, eventInventory() the crafting inventory; the event is cancellable. */
-export function onCraft(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("craft", body, options, "onCraft"));
+export function onCraft(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onCraft(body: (ctx: CraftCtx) => readonly Stmt[], options?: EventOptions): TopLevel;
+export function onCraft(body: EventBody<CraftCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("craft", bodyOf(body, craftCtx), options, "onCraft"));
 }
 
 /** Construct a projectile-hit event: a projectile hits an entity or a block. attacker() is the shooter (entity shooters only), victim() the hit entity, eventBlock() the hit block. Not cancellable. */
-export function onProjectileHit(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("projectileHit", body, options, "onProjectileHit"));
+export function onProjectileHit(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onProjectileHit(
+  body: (ctx: ProjectileHitCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onProjectileHit(
+  body: EventBody<ProjectileHitCtx>,
+  options?: EventOptions,
+): TopLevel {
+  return withLoc(
+    plainEvent("projectileHit", bodyOf(body, projectileHitCtx), options, "onProjectileHit"),
+  );
 }
 
 /** Construct a toggle-sneak event: a player starts or stops sneaking. The event is cancellable. */
-export function onToggleSneak(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("toggleSneak", body, options, "onToggleSneak"));
+export function onToggleSneak(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onToggleSneak(
+  body: (ctx: PlayerCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onToggleSneak(body: EventBody<PlayerCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("toggleSneak", bodyOf(body, playerCtx), options, "onToggleSneak"));
 }
 
 /** Construct a swap-hand event: a player swaps their main-hand and off-hand items. eventItem() is the item moving into the main hand; the event is cancellable. ENGINE-ONLY: Skript has no swap-hand event under any spelling, so scripts using it deploy IR-only. */
-export function onSwapHand(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("swapHand", body, options, "onSwapHand"));
+export function onSwapHand(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onSwapHand(
+  body: (ctx: SwapHandCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onSwapHand(body: EventBody<SwapHandCtx>, options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("swapHand", bodyOf(body, swapHandCtx), options, "onSwapHand"));
 }
 
 /** Construct an event-block expression: the block of a block break / place / click event (no value for air clicks). */
@@ -2206,18 +2765,24 @@ export function wsDisconnect(id: string): Stmt {
 }
 
 /** Construct an on-websocket-open event (engine builtin). */
-export function onWsOpen(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "wsOpen", body });
+export function onWsOpen(body: readonly Stmt[]): TopLevel;
+export function onWsOpen(body: (ctx: WsCtx) => readonly Stmt[]): TopLevel;
+export function onWsOpen(body: EventBody<WsCtx>): TopLevel {
+  return withLoc({ kind: "event", event: "wsOpen", body: bodyOf(body, wsCtx) });
 }
 
 /** Construct an on-websocket-message event (engine builtin). */
-export function onWsMessage(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "wsMessage", body });
+export function onWsMessage(body: readonly Stmt[]): TopLevel;
+export function onWsMessage(body: (ctx: WsMessageCtx) => readonly Stmt[]): TopLevel;
+export function onWsMessage(body: EventBody<WsMessageCtx>): TopLevel {
+  return withLoc({ kind: "event", event: "wsMessage", body: bodyOf(body, wsMessageCtx) });
 }
 
 /** Construct an on-websocket-close event (engine builtin). */
-export function onWsClose(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "wsClose", body });
+export function onWsClose(body: readonly Stmt[]): TopLevel;
+export function onWsClose(body: (ctx: WsCtx) => readonly Stmt[]): TopLevel;
+export function onWsClose(body: EventBody<WsCtx>): TopLevel {
+  return withLoc({ kind: "event", event: "wsClose", body: bodyOf(body, wsCtx) });
 }
 
 /** Construct a websocket-message expression: the text received, inside wsMessage events. */
@@ -2294,13 +2859,17 @@ export function timerResume(id: string): Stmt {
 }
 
 /** Construct an on-timer-tick event (engine builtin): fires every second while a timer runs. */
-export function onTimerTick(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "timerTick", body });
+export function onTimerTick(body: readonly Stmt[]): TopLevel;
+export function onTimerTick(body: (ctx: TimerCtx) => readonly Stmt[]): TopLevel;
+export function onTimerTick(body: EventBody<TimerCtx>): TopLevel {
+  return withLoc({ kind: "event", event: "timerTick", body: bodyOf(body, timerCtx) });
 }
 
 /** Construct an on-timer-complete event (engine builtin): fires once when a timer's countdown reaches zero. */
-export function onTimerComplete(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "timerComplete", body });
+export function onTimerComplete(body: readonly Stmt[]): TopLevel;
+export function onTimerComplete(body: (ctx: TimerCtx) => readonly Stmt[]): TopLevel;
+export function onTimerComplete(body: EventBody<TimerCtx>): TopLevel {
+  return withLoc({ kind: "event", event: "timerComplete", body: bodyOf(body, timerCtx) });
 }
 
 /** Construct a timer-id expression: the name of the timer, inside timer events. */
@@ -2480,8 +3049,21 @@ export function placeholderValue(player: Expr, text: TextExpr): Expr {
 export function onPlaceholderRequest(
   prefix: string | readonly string[],
   body: readonly Stmt[],
+): TopLevel;
+export function onPlaceholderRequest(
+  prefix: string | readonly string[],
+  body: (ctx: PlaceholderCtx) => readonly Stmt[],
+): TopLevel;
+export function onPlaceholderRequest(
+  prefix: string | readonly string[],
+  body: EventBody<PlaceholderCtx>,
 ): TopLevel {
-  return withLoc({ kind: "event", event: "papiRequest", prefixes: requirePrefixes(prefix), body });
+  return withLoc({
+    kind: "event",
+    event: "papiRequest",
+    prefixes: requirePrefixes(prefix),
+    body: bodyOf(body, placeholderCtx),
+  });
 }
 
 /** Construct a placeholder-identifier expression: the parameter part of the request, inside placeholder-request events. */
@@ -3085,13 +3667,33 @@ export function closeInventory(target: Expr): Stmt {
 }
 
 /** Construct an inventory-click event: fires for every click in an inventory view, with eventItem / eventInventory / slot indices set. */
-export function onInventoryClick(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("inventoryClick", body, options, "onInventoryClick"));
+export function onInventoryClick(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onInventoryClick(
+  body: (ctx: InventoryClickCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onInventoryClick(
+  body: EventBody<InventoryClickCtx>,
+  options?: EventOptions,
+): TopLevel {
+  return withLoc(
+    plainEvent("inventoryClick", bodyOf(body, inventoryClickCtx), options, "onInventoryClick"),
+  );
 }
 
 /** Construct an inventory-close event: fires when a player closes an inventory view. */
-export function onInventoryClose(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("inventoryClose", body, options, "onInventoryClose"));
+export function onInventoryClose(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onInventoryClose(
+  body: (ctx: InventoryCloseCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onInventoryClose(
+  body: EventBody<InventoryCloseCtx>,
+  options?: EventOptions,
+): TopLevel {
+  return withLoc(
+    plainEvent("inventoryClose", bodyOf(body, inventoryCloseCtx), options, "onInventoryClose"),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -3320,8 +3922,18 @@ export function setCursorItem(target: Expr, itemValue: Expr): Stmt {
 }
 
 /** Construct an inventory-drag event: fires for every drag in an inventory view, with eventItem (the post-drag cursor) / eventInventory / dragged slots set. */
-export function onInventoryDrag(body: readonly Stmt[], options?: EventOptions): TopLevel {
-  return withLoc(plainEvent("inventoryDrag", body, options, "onInventoryDrag"));
+export function onInventoryDrag(body: readonly Stmt[], options?: EventOptions): TopLevel;
+export function onInventoryDrag(
+  body: (ctx: InventoryDragCtx) => readonly Stmt[],
+  options?: EventOptions,
+): TopLevel;
+export function onInventoryDrag(
+  body: EventBody<InventoryDragCtx>,
+  options?: EventOptions,
+): TopLevel {
+  return withLoc(
+    plainEvent("inventoryDrag", bodyOf(body, inventoryDragCtx), options, "onInventoryDrag"),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -3754,14 +4366,20 @@ export function setWorldWeather(world: Expr, name: WeatherName): Stmt {
  * period after the script loads, and a reload re-anchors the
  * schedule. The body runs with no event context.
  */
-export function every(amount: number, unit: TimeUnit, body: readonly Stmt[]): TopLevel {
+export function every(amount: number, unit: TimeUnit, body: readonly Stmt[]): TopLevel;
+export function every(
+  amount: number,
+  unit: TimeUnit,
+  body: (ctx: PeriodicalCtx) => readonly Stmt[],
+): TopLevel;
+export function every(amount: number, unit: TimeUnit, body: EventBody<PeriodicalCtx>): TopLevel {
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     throw new RangeError("periodical amount must be a positive number");
   }
   if (unit !== "ticks" && unit !== "seconds" && unit !== "minutes") {
     throw new RangeError(`invalid periodical unit: ${String(unit)}`);
   }
-  return withLoc({ kind: "periodical", amount, unit, body });
+  return withLoc({ kind: "periodical", amount, unit, body: bodyOf(body, periodicalCtx) });
 }
 // ---------------------------------------------------------------------------
 // Core language (phase 19): player / entity state and effects
@@ -4592,8 +5210,10 @@ export function httpDownload(
 }
 
 /** Construct an on-http-response event (engine builtin). */
-export function onHttpResponse(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "httpResponse", body });
+export function onHttpResponse(body: readonly Stmt[]): TopLevel;
+export function onHttpResponse(body: (ctx: HttpResponseCtx) => readonly Stmt[]): TopLevel;
+export function onHttpResponse(body: EventBody<HttpResponseCtx>): TopLevel {
+  return withLoc({ kind: "event", event: "httpResponse", body: bodyOf(body, httpResponseCtx) });
 }
 
 /** Construct an http-id expression: the request id, inside httpResponse events. */
@@ -4685,8 +5305,10 @@ export function cfD1Query(
 }
 
 /** Construct an on-cf-response event (engine builtin). */
-export function onCfResponse(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "cfResponse", body });
+export function onCfResponse(body: readonly Stmt[]): TopLevel;
+export function onCfResponse(body: (ctx: CfResponseCtx) => readonly Stmt[]): TopLevel;
+export function onCfResponse(body: EventBody<CfResponseCtx>): TopLevel {
+  return withLoc({ kind: "event", event: "cfResponse", body: bodyOf(body, cfResponseCtx) });
 }
 
 /** Construct a cf-id expression: the operation id, inside cfResponse events. */
@@ -4933,8 +5555,16 @@ export function sendResourcePack(
 }
 
 /** Construct an on-resource-pack-status event (engine builtin). */
-export function onResourcePackStatus(body: readonly Stmt[]): TopLevel {
-  return withLoc({ kind: "event", event: "resourcePackStatus", body });
+export function onResourcePackStatus(body: readonly Stmt[]): TopLevel;
+export function onResourcePackStatus(
+  body: (ctx: ResourcePackStatusCtx) => readonly Stmt[],
+): TopLevel;
+export function onResourcePackStatus(body: EventBody<ResourcePackStatusCtx>): TopLevel {
+  return withLoc({
+    kind: "event",
+    event: "resourcePackStatus",
+    body: bodyOf(body, resourcePackStatusCtx),
+  });
 }
 
 /** Construct a resource-pack-status expression: the status text inside resourcePackStatus events. */
