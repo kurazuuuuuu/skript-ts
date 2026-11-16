@@ -287,6 +287,7 @@ import { timeScript } from "../examples/time.js";
 import { uuidvarsScript } from "../examples/uuidvars.js";
 import { uuidofScript } from "../examples/uuidof.js";
 import { varhandlesScript } from "../examples/varhandles.js";
+import { varindexScript } from "../examples/varindex.js";
 import { priorityScript } from "../examples/priority.js";
 import { randomScript } from "../examples/random.js";
 import { inventoryScript } from "../examples/inventory.js";
@@ -386,6 +387,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("varhandles", () => {
     expect(emit(varhandlesScript)).toBe(fixture("varhandles.sk"));
+  });
+  it("varindex", () => {
+    expect(emit(varindexScript)).toBe(fixture("varindex.sk"));
   });
   it("random", () => {
     expect(emit(randomScript)).toBe(fixture("random.sk"));
@@ -550,6 +554,68 @@ describe("typed variable handles (feedback E6 / E7)", () => {
     expect(() => playerVar("  ")).toThrow(RangeError);
     expect(() => localHandle("")).toThrow(RangeError);
     expect(() => localHandle("  ")).toThrow(RangeError);
+  });
+});
+
+describe("multi-level variable indices (ext-varindex)", () => {
+  it("legacy shapes stay byte-identical: no index and single index keep the old AST/IR", () => {
+    expect(variable("x")).toEqual({ kind: "variable", name: "x" });
+    expect(variable("x", player())).toEqual({ kind: "variable", name: "x", index: player() });
+    expect(localVar("x")).toEqual({ kind: "localVariable", name: "x" });
+    expect(localVar("x", num(1))).toEqual({ kind: "localVariable", name: "x", index: num(1) });
+  });
+  it("variable(name, a, b) emits {name::%a%::%b%} and carries indices only in the multi case", () => {
+    expect(variable("xp", player(), str("mining"))).toEqual({
+      kind: "variable",
+      name: "xp",
+      indices: [player(), str("mining")],
+    });
+    expect(
+      emit(script(onJoin([set(variable("xp", player(), str("mining")), num(3))]))),
+    ).toBe('on join:\n    set {xp::%player%::%"mining"%} to 3\n');
+    expect(
+      emit(script(onJoin([set(localVar("xp", str("a"), num(2)), num(1))]))),
+    ).toBe('on join:\n    set {_xp::%"a"%::%2%} to 1\n');
+  });
+  it("playerVar with extra indices builds the same nodes as variable(name, player, ...)", () => {
+    const xp = playerVar("xp");
+    expect(xp.of(player(), str("mining"))).toEqual(variable("xp", player(), str("mining")));
+    expect(
+      emit(
+        script(
+          onJoin([
+            xp.set(player(), str("mining"), 100),
+            xp.add(player(), str("mining"), num(5)),
+            xp.delete(player(), str("mining")),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        '    set {xp::%player%::%"mining"%} to 100\n' +
+        '    add 5 to {xp::%player%::%"mining"%}\n' +
+        '    delete {xp::%player%::%"mining"%}\n',
+    );
+  });
+  it("localHandle with indices builds the same nodes as localVar(name, ...)", () => {
+    const scratch = localHandle("scratch");
+    expect(scratch.get(str("a"), str("b"))).toEqual(localVar("scratch", str("a"), str("b")));
+    expect(
+      emit(
+        script(
+          onJoin([
+            scratch.set(str("a"), str("b"), 7),
+            scratch.delete(str("a"), str("b")),
+            send(player(), fmt("s=", scratch.get(str("a"), str("b")))),
+          ]),
+        ),
+      ),
+    ).toBe(
+      "on join:\n" +
+        '    set {_scratch::%"a"%::%"b"%} to 7\n' +
+        '    delete {_scratch::%"a"%::%"b"%}\n' +
+        '    send "s=%{_scratch::%"a"%::%"b"%}%" to player\n',
+    );
   });
 });
 

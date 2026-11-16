@@ -6,7 +6,12 @@ export type Expr =
   | { kind: "victim" }
   | { kind: "argument"; index: number }
   | { kind: "chatMessage" }
-  | { kind: "variable"; name: string; index?: Expr }
+  // Multi-level indices (ext-varindex): `indices` is set ONLY when
+  // there are two or more index segments ({name::%a%::%b%}); a single
+  // segment keeps the legacy `index` field and no segment keeps
+  // neither, so existing AST/IR for variable(name) and
+  // variable(name, index) stays byte-identical.
+  | { kind: "variable"; name: string; index?: Expr; indices?: readonly Expr[] }
   // Core-language list support (phase 12): the whole list {name::*}
   // as a value (its entries in iteration order), and its size.
   | { kind: "variableList"; name: string }
@@ -125,7 +130,7 @@ export type Expr =
   // function call gets a fresh one (function parameters ARE locals,
   // bound by name). Verified against the real Skript 2.17.1: frames
   // are isolated in both directions and fresh on every call.
-  | { kind: "localVariable"; name: string; index?: Expr }
+  | { kind: "localVariable"; name: string; index?: Expr; indices?: readonly Expr[] }
   | { kind: "localVariableList"; name: string }
   // Core-language function call (phase 13): invoke a function made
   // with defineFunction and use its return value. Skript resolves

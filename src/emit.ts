@@ -20,6 +20,12 @@ function emitTimespan(t: { amount: number; unit: string }): string {
   return `${String(t.amount)} ${t.unit}`;
 }
 
+/** The `::%seg%` suffix(es) of a variable: none, one legacy `index`, or the multi-level `indices` list. */
+function variableIndexSuffix(e: { index?: Expr; indices?: readonly Expr[] }): string {
+  if (e.indices !== undefined) return e.indices.map((i) => `::%${emitValue(i)}%`).join("");
+  return e.index !== undefined ? `::%${emitValue(e.index)}%` : "";
+}
+
 function emitValue(e: Expr): string {
   switch (e.kind) {
     case "player":
@@ -35,11 +41,11 @@ function emitValue(e: Expr): string {
     case "chatMessage":
       return "message";
     case "variable":
-      return `{${e.name}${e.index !== undefined ? `::%${emitValue(e.index)}%` : ""}}`;
+      return `{${e.name}${variableIndexSuffix(e)}}`;
     case "variableList":
       return `{${e.name}::*}`;
     case "localVariable":
-      return `{_${e.name}${e.index !== undefined ? `::%${emitValue(e.index)}%` : ""}}`;
+      return `{_${e.name}${variableIndexSuffix(e)}}`;
     case "localVariableList":
       return `{_${e.name}::*}`;
     case "functionCall":

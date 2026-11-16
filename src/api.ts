@@ -80,19 +80,30 @@ export function chatMessage(): Expr {
   return { kind: "chatMessage" };
 }
 
-/** Construct a variable expression, optionally indexed. */
-export function variable(name: string, index?: Expr): VariableExpr {
-  if (index === undefined) return { kind: "variable", name };
-  return { kind: "variable", name, index };
+/**
+ * Construct a variable expression, optionally indexed.
+ * With two or more indices this is a multi-level variable
+ * ({name::%a%::%b%}); each segment is converted by the usual
+ * index rules (a player segment keys by UUID in the engine).
+ * Zero/one index keeps the exact legacy AST/IR shape.
+ */
+export function variable(name: string, ...indices: Expr[]): VariableExpr {
+  if (indices.length === 0) return { kind: "variable", name };
+  if (indices.length === 1) return { kind: "variable", name, index: indices[0] };
+  return { kind: "variable", name, indices };
 }
 
-/** Construct a local variable expression ({_name}), optionally indexed ({_name::%index%}). */
-export function localVar(name: string, index?: Expr): LocalVariableExpr {
+/**
+ * Construct a local variable expression ({_name}), optionally
+ * indexed ({_name::%index%}, multi-level {_name::%a%::%b%}).
+ */
+export function localVar(name: string, ...indices: Expr[]): LocalVariableExpr {
   if (typeof name !== "string" || name.trim() === "") {
     throw new RangeError("local variable name must be a non-empty string");
   }
-  if (index === undefined) return { kind: "localVariable", name };
-  return { kind: "localVariable", name, index };
+  if (indices.length === 0) return { kind: "localVariable", name };
+  if (indices.length === 1) return { kind: "localVariable", name, index: indices[0] };
+  return { kind: "localVariable", name, indices };
 }
 
 /** Construct a whole local-list expression ({_name::*}). */
@@ -740,22 +751,53 @@ function requireLocalHandleName(name: string): string {
   return name;
 }
 
+/** Split a handle writing call's trailing arguments into extra indices + the final value. */
+function splitIndicesAndValue(
+  args: readonly unknown[],
+  label: string,
+): { indices: Expr[]; value: VarHandleValue } {
+  if (args.length === 0) throw new RangeError(`${label} requires a value`);
+  const indices = args.slice(0, -1) as Expr[];
+  for (const idx of indices) {
+    if (typeof idx !== "object" || idx === null || typeof (idx as { kind?: unknown }).kind !== "string") {
+      throw new TypeError(`${label} extra indices must be expressions`);
+    }
+  }
+  return { indices, value: args[args.length - 1] as VarHandleValue };
+}
+
 /**
  * A typed handle for one player-indexed global variable
  * ({name::%player%}): every method takes the player expression
  * that selects the slot. See playerVar().
+ *
+ * Multi-level form (ext-varindex): extra index expressions after
+ * the player build {name::%player%::%extra%::...} — e.g.
+ * `playerVar("xp").of(player(), str("mining"))`. The writing
+ * methods take the extra indices before the value:
+ * `set(player, skill, 100)`, `add(player, skill, 5)`,
+ * `delete(player, skill)`.
  */
 export interface PlayerVarHandle {
-  /** Read one player's slot as an expression: variable(name, player). */
-  of(player: Expr): VariableExpr;
-  /** Set one player's slot: set(variable(name, player), value). */
+  /** Read one player's slot: variable(name, player, ...extraIndices). */
+  of(player: Expr, ...extraIndices: Expr[]): VariableExpr;
+  /** Set one player's slot: set(variable(name, player, ...extra), value). */
   set(player: Expr, value: VarHandleValue): Stmt;
-  /** Add to one player's slot: add(variable(name, player), value). */
+  set(player: Expr, i1: Expr, value: VarHandleValue): Stmt;
+  set(player: Expr, i1: Expr, i2: Expr, value: VarHandleValue): Stmt;
+  set(player: Expr, i1: Expr, i2: Expr, i3: Expr, value: VarHandleValue): Stmt;
+  /** Add to one player's slot: add(variable(name, player, ...extra), value). */
   add(player: Expr, value: VarHandleValue): Stmt;
-  /** Remove from one player's slot: remove(variable(name, player), value). */
+  add(player: Expr, i1: Expr, value: VarHandleValue): Stmt;
+  add(player: Expr, i1: Expr, i2: Expr, value: VarHandleValue): Stmt;
+  add(player: Expr, i1: Expr, i2: Expr, i3: Expr, value: VarHandleValue): Stmt;
+  /** Remove from one player's slot: remove(variable(name, player, ...extra), value). */
   remove(player: Expr, value: VarHandleValue): Stmt;
-  /** Delete one player's slot: deleteVar(variable(name, player)). */
-  delete(player: Expr): Stmt;
+  remove(player: Expr, i1: Expr, value: VarHandleValue): Stmt;
+  remove(player: Expr, i1: Expr, i2: Expr, value: VarHandleValue): Stmt;
+  remove(player: Expr, i1: Expr, i2: Expr, i3: Expr, value: VarHandleValue): Stmt;
+  /** Delete one player's slot: deleteVar(variable(name, player, ...extraIndices)). */
+  delete(player: Expr, ...extraIndices: Expr[]): Stmt;
 }
 
 /**
@@ -768,13 +810,21 @@ export interface PlayerVarHandle {
  */
 export function playerVar(name: string): PlayerVarHandle {
   const validName = requirePlayerVarName(name);
-  const target = (playerExpr: Expr): VariableExpr => variable(validName, playerExpr);
+  const target = (playerExpr: Expr, extra: readonly Expr[] = []): VariableExpr =>
+    variable(validName, playerExpr, ...extra);
+  const write =
+    (op: "set" | "add" | "remove") =>
+    (playerExpr: Expr, ...args: unknown[]): Stmt => {
+      const { indices, value } = splitIndicesAndValue(args, `playerVar("${validName}").${op}`);
+      const fn = op === "set" ? set : op === "add" ? add : remove;
+      return fn(target(playerExpr, indices), normalizeVarHandleValue(value));
+    };
   return {
-    of: (playerExpr) => target(playerExpr),
-    set: (playerExpr, value) => set(target(playerExpr), normalizeVarHandleValue(value)),
-    add: (playerExpr, value) => add(target(playerExpr), normalizeVarHandleValue(value)),
-    remove: (playerExpr, value) => remove(target(playerExpr), normalizeVarHandleValue(value)),
-    delete: (playerExpr) => deleteVar(target(playerExpr)),
+    of: (playerExpr, ...extra) => target(playerExpr, extra),
+    set: write("set") as PlayerVarHandle["set"],
+    add: write("add") as PlayerVarHandle["add"],
+    remove: write("remove") as PlayerVarHandle["remove"],
+    delete: (playerExpr, ...extra) => deleteVar(target(playerExpr, extra)),
   };
 }
 
@@ -783,16 +833,25 @@ export function playerVar(name: string): PlayerVarHandle {
  * trigger or function frame. See localHandle().
  */
 export interface LocalVarHandle {
-  /** Read the local as an expression: localVar(name). */
-  get(): LocalVariableExpr;
-  /** Set the local: set(localVar(name), value). */
+  /** Read the local: localVar(name, ...indices) — no indices is the plain {_name}. */
+  get(...indices: Expr[]): LocalVariableExpr;
+  /** Set the local: set(localVar(name, ...extra), value) — extra indices precede the value. */
   set(value: VarHandleValue): Stmt;
-  /** Add to the local: add(localVar(name), value). */
+  set(i1: Expr, value: VarHandleValue): Stmt;
+  set(i1: Expr, i2: Expr, value: VarHandleValue): Stmt;
+  set(i1: Expr, i2: Expr, i3: Expr, value: VarHandleValue): Stmt;
+  /** Add to the local: add(localVar(name, ...extra), value). */
   add(value: VarHandleValue): Stmt;
-  /** Remove from the local: remove(localVar(name), value). */
+  add(i1: Expr, value: VarHandleValue): Stmt;
+  add(i1: Expr, i2: Expr, value: VarHandleValue): Stmt;
+  add(i1: Expr, i2: Expr, i3: Expr, value: VarHandleValue): Stmt;
+  /** Remove from the local: remove(localVar(name, ...extra), value). */
   remove(value: VarHandleValue): Stmt;
-  /** Delete the local: deleteVar(localVar(name)). */
-  delete(): Stmt;
+  remove(i1: Expr, value: VarHandleValue): Stmt;
+  remove(i1: Expr, i2: Expr, value: VarHandleValue): Stmt;
+  remove(i1: Expr, i2: Expr, i3: Expr, value: VarHandleValue): Stmt;
+  /** Delete the local (or one indexed slot): deleteVar(localVar(name, ...indices)). */
+  delete(...indices: Expr[]): Stmt;
 }
 
 /**
@@ -803,13 +862,20 @@ export interface LocalVarHandle {
  */
 export function localHandle(name: string): LocalVarHandle {
   const validName = requireLocalHandleName(name);
-  const target = (): LocalVariableExpr => localVar(validName);
+  const target = (indices: readonly Expr[] = []): LocalVariableExpr => localVar(validName, ...indices);
+  const write =
+    (op: "set" | "add" | "remove") =>
+    (...args: unknown[]): Stmt => {
+      const { indices, value } = splitIndicesAndValue(args, `localHandle("${validName}").${op}`);
+      const fn = op === "set" ? set : op === "add" ? add : remove;
+      return fn(target(indices), normalizeVarHandleValue(value));
+    };
   return {
-    get: () => target(),
-    set: (value) => set(target(), normalizeVarHandleValue(value)),
-    add: (value) => add(target(), normalizeVarHandleValue(value)),
-    remove: (value) => remove(target(), normalizeVarHandleValue(value)),
-    delete: () => deleteVar(target()),
+    get: (...indices) => target(indices),
+    set: write("set") as LocalVarHandle["set"],
+    add: write("add") as LocalVarHandle["add"],
+    remove: write("remove") as LocalVarHandle["remove"],
+    delete: (...indices) => deleteVar(target(indices)),
   };
 }
 

@@ -1,0 +1,53 @@
+command /skillset <text> <integer>:
+    trigger:
+        set {skillxp::%player%::%arg-1%} to arg-2
+        send "skillset=%{skillxp::%player%::%arg-1%}%" to player
+
+command /skillread <text>:
+    trigger:
+        send "skill=%{skillxp::%player%::%arg-1%}%" to player
+
+command /skilladd <text> <integer>:
+    trigger:
+        add arg-2 to {skillxp::%player%::%arg-1%}
+        send "skilladded=%{skillxp::%player%::%arg-1%}%" to player
+
+command /skilldel <text>:
+    trigger:
+        delete {skillxp::%player%::%arg-1%}
+        send "skillafterdel=%{skillxp::%player%::%arg-1%}%" to player
+
+command /visetup:
+    trigger:
+        set {vindex::%"a"%::%"b"%} to "AB"
+        set {vindex::%"a"%::%"c"%} to "AC"
+        set {vindex::%"d"%} to "D"
+        send "visetup done" to player
+
+command /viread:
+    trigger:
+        send "vi ab=%{vindex::%"A"%::%"B"%}% ac=%{vindex::%"a"%::%"c"%}% d=%{vindex::%"d"%}%" to player
+
+command /visize:
+    trigger:
+        send "visize=%size of {vindex::*}%" to player
+        loop {vindex::*}:
+            send "vi entry %loop-index%=%loop-value%" to player
+
+function viFn(k: text) :: text:
+    set {_vscratch::%{_k}%::%"deep"%} to "fnval"
+    return {_vscratch::%{_k}%::%"deep"%}
+
+command /vifn:
+    trigger:
+        send "vifn=%viFn("key1")%" to player
+
+command /videlone:
+    trigger:
+        delete {vindex::%"a"%::%"b"%}
+        send "videl ab=%{vindex::%"a"%::%"b"%}% ac=%{vindex::%"a"%::%"c"%}%" to player
+
+command /viclear:
+    trigger:
+        delete {vindex::*}
+        send "vicleared size=%size of {vindex::*}%" to player

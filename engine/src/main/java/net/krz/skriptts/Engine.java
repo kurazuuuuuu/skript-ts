@@ -5284,6 +5284,18 @@ final class Engine {
      */
     private String varKey(Map<String, Object> varNode, Ctx ctx) {
         String name = str(varNode.get("name")).toLowerCase(Locale.ROOT);
+        Object indices = varNode.get("indices");
+        if (indices instanceof List<?> list && !list.isEmpty()) {
+            // Multi-level variable (ext-varindex): join each
+            // segment with "::", applying indexSegment per segment
+            // so a player segment keys by UUID, a numeric text
+            // canonicalizes, etc., exactly as for a single index.
+            StringBuilder sb = new StringBuilder(name);
+            for (Object seg : list) {
+                sb.append("::").append(indexSegment(evalExpr(node(seg), ctx)));
+            }
+            return sb.toString();
+        }
         Object index = varNode.get("index");
         if (index == null) return name;
         return name + "::" + indexSegment(evalExpr(node(index), ctx));
