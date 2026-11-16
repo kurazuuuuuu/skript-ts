@@ -177,10 +177,18 @@ there is no success / failure read-back in either runtime.
 A leading `/` is accepted (the original's own examples
 write `"/stop"`); the engine strips exactly one leading
 slash before dispatching. A missing or empty command is a
-no-op. The player-execution family (`make %player% execute
-...`) is deliberately **not** offered: the brief's scope is
-console execution only, and the probed forms are recorded
-with the lane's findings. `examples/consolecmd.ts`
+no-op, and an unknown command does not stop the trigger
+(all probed against the real Skript 2.17.1). The probed
+syntax family: `execute console command %text%` (the form
+this builder emits), `make console execute [command]
+%text%` and bare `execute command %text%` all parse and
+run as console; the player form `make %player% execute
+command %text%` also exists in the same family but is
+deliberately **not** offered — this subset's scope is
+console execution only, and the console forms stand alone
+without it. No `as op` suffix parses on any of these
+forms in 2.17.1 (probed on the console and player forms
+alike). `examples/consolecmd.ts`
 exercises the fixed, slashed and argument-built forms, and
 `examples/behavior/consolecmd.behavior.ts` asserts the
 identical console `say` broadcasts under both runtimes.
