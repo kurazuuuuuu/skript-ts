@@ -1572,6 +1572,26 @@ final class Engine {
                 Bukkit.getServer().broadcast(LEGACY.deserialize(renderText(node(stmt.get("message")), ctx)));
                 cont.run();
             }
+            case "executeConsoleCommand" -> {
+                // Console command execution (ext-console U1,
+                // core): dispatch the rendered command text as
+                // the server console sender, so it runs with
+                // full console permissions and its feedback
+                // goes to the console / log, not to a player.
+                // The original's own examples write the command
+                // with a leading slash ("/stop"); Bukkit's
+                // dispatchCommand expects no slash, so exactly
+                // one leading slash is stripped. A missing or
+                // empty command (or a bare "/") is a no-op.
+                String command = renderText(node(stmt.get("command")), ctx);
+                if (command != null) {
+                    if (command.startsWith("/")) command = command.substring(1);
+                    if (!command.isEmpty()) {
+                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                    }
+                }
+                cont.run();
+            }
             case "sendTitle" -> {
                 // Display effects (phase 21): the parts go out
                 // in the original's packet order — times,
@@ -2020,6 +2040,30 @@ final class Engine {
                         storeFor(target, ctx).set(varKey(target, ctx), stack);
                     }
                 }
+                cont.run();
+            }
+            case "setChunkTag" -> {
+                // Write a hidden tag into the PersistentData-
+                // Container of the chunk containing the target
+                // (ext-console U2, engine-only, mirroring
+                // setItemTag). ChunkTags.chunkOf resolves a
+                // location / block target without force-loading
+                // its chunk; an unloaded chunk, a non-location
+                // target, an invalid key, or a value that is
+                // not text / number / boolean is a no-op.
+                org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(stmt.get("target")), ctx));
+                if (chunk != null) {
+                    Object value = evalExpr(node(stmt.get("value")), ctx);
+                    ChunkTags.set(chunk, str(stmt.get("key")), value);
+                }
+                cont.run();
+            }
+            case "deleteChunkTag" -> {
+                // Remove a hidden chunk tag (ext-console U2,
+                // engine-only): same target resolution as
+                // setChunkTag; a missing tag is a no-op.
+                org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(stmt.get("target")), ctx));
+                if (chunk != null) ChunkTags.remove(chunk, str(stmt.get("key")));
                 cont.run();
             }
             case "setSlot" -> {
@@ -3386,6 +3430,13 @@ final class Engine {
                 ItemStack stack = toItemStack(evalExpr(node(cond.get("item")), ctx));
                 yield stack != null && ItemTags.has(stack, str(cond.get("key")));
             }
+            case "hasChunkTag" -> {
+                // Chunk tags (ext-console U2, engine-only):
+                // false for a missing tag, a non-location
+                // target, and an unloaded chunk.
+                org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(cond.get("target")), ctx));
+                yield chunk != null && ChunkTags.has(chunk, str(cond.get("key")));
+            }
             case "isOp" -> {
                 Object target = evalExpr(node(cond.get("target")), ctx);
                 yield target instanceof Player p && p.isOp();
@@ -4124,6 +4175,15 @@ final class Engine {
                 // a real stack, PDC included.
                 ItemStack stack = toItemStack(evalExpr(node(expr.get("item")), ctx));
                 yield stack == null ? null : ItemTags.get(stack, str(expr.get("key")));
+            }
+            case "chunkTag" -> {
+                // Chunk tags (ext-console U2, engine-only): the
+                // tag value from the PDC of the chunk containing
+                // the target — or no value when the tag is
+                // missing, the target is not location-like, or
+                // the chunk is not loaded (chunkOf never loads).
+                org.bukkit.Chunk chunk = ChunkTags.chunkOf(evalExpr(node(expr.get("target")), ctx));
+                yield chunk == null ? null : ChunkTags.get(chunk, str(expr.get("key")));
             }
             case "loreOf" -> {
                 Object target = evalExpr(node(expr.get("target")), ctx);

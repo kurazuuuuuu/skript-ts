@@ -376,6 +376,14 @@ export type Expr =
   // item at all). Keys are validated at build time by the API:
   // lowercase [a-z0-9._-] only.
   | { kind: "itemTag"; item: Expr; key: string }
+  // Chunk tags (ext-console U2): ENGINE-ONLY, mirroring itemTag.
+  // chunkTag reads the tag stored under `key` in the
+  // PersistentDataContainer of the chunk that contains the
+  // target (a location or a block; an entity target resolves via
+  // its location): a text, number or boolean value, or no value
+  // when the tag is missing, the target is not location-like, or
+  // the chunk is not loaded (reading never force-loads a chunk).
+  | { kind: "chunkTag"; target: Expr; key: string }
   | { kind: "loreOf"; target: Expr }
   | { kind: "amountOf"; target: Expr }
   // Inventory operations (feedback lane D, 2026-11-13), semantics
@@ -780,6 +788,11 @@ export type Cond =
   // PersistentDataContainer. False for a missing tag, an item
   // without meta, and a non-item value.
   | { kind: "hasItemTag"; item: Expr; key: string }
+  // Chunk tags (ext-console U2): ENGINE-ONLY leaf condition —
+  // the chunk containing the target carries a tag under `key`.
+  // False for a missing tag, a non-location target, and an
+  // unloaded chunk.
+  | { kind: "hasChunkTag"; target: Expr; key: string }
   // Core-language randomness (phase 28): the draw succeeds with
   // the given probability. The value is a FRACTION — chance(0.5)
   // is a 50% chance — which is the original's own percent model
@@ -992,6 +1005,12 @@ export type Stmt =
   // directly; string/format expressions still emit as quoted text.
   | { kind: "send"; target: Expr; message: Expr; loc?: SourceLoc }
   | { kind: "broadcast"; message: Expr; loc?: SourceLoc }
+  // Console command execution (ext-console U1): core language.
+  // Emits `execute console command <text>`; the engine dispatches
+  // the rendered text as the server console sender (full console
+  // permissions). A missing / empty command is a no-op. This is a
+  // last-resort escape hatch — see docs/reference.md.
+  | { kind: "executeConsoleCommand"; command: Expr; loc?: SourceLoc }
   | { kind: "give"; target: Expr; itemName: string; amount: number; loc?: SourceLoc }
   | { kind: "teleport"; target: Expr; location: Expr; loc?: SourceLoc }
   | { kind: "setVar"; variable: VarTarget; value: Expr; loc?: SourceLoc }
@@ -1068,6 +1087,14 @@ export type Stmt =
   // decides the stored PDC type: text -> STRING, number ->
   // DOUBLE, boolean -> BYTE (1/0); any other value is a no-op.
   | { kind: "setItemTag"; target: ScalarVarExpr; key: string; value: Expr; loc?: SourceLoc }
+  // Chunk tags (ext-console U2): ENGINE-ONLY statements mirroring
+  // setItemTag — write / delete a tag in the PersistentData-
+  // Container of the chunk containing the target (location or
+  // block). The value's runtime type decides the stored PDC
+  // type: text -> STRING, number -> DOUBLE, boolean -> BYTE
+  // (1/0); any other value is a no-op, as is an unloaded chunk.
+  | { kind: "setChunkTag"; target: Expr; key: string; value: Expr; loc?: SourceLoc }
+  | { kind: "deleteChunkTag"; target: Expr; key: string; loc?: SourceLoc }
   | { kind: "setItemLore"; target: ScalarVarExpr; lines: readonly Expr[]; loc?: SourceLoc }
   | { kind: "setItemAmount"; target: ScalarVarExpr; amount: Expr; loc?: SourceLoc }
   | { kind: "setSlot"; inventory: Expr; slot: Expr; item: Expr; loc?: SourceLoc }

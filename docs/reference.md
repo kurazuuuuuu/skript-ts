@@ -134,6 +134,7 @@ section.
 | ------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `send(target, message)`                           | `send "<text>" to <target>` (any expression; text emits quoted, other expressions bare) |
 | `broadcast(message)`                              | `broadcast "<text>"` (any expression)                                                   |
+| `executeConsoleCommand(command)`                  | `execute console command "<text>"` (any expression; see below)                          |
 | `give(target, itemName, amount)`                  | `give <amount> <item> to <target>`                                                      |
 | `teleport(target, location)`                      | `teleport <target> to <location>`                                                       |
 | `set(variable, value)`                            | `set {var} to <value>`                                                                  |
@@ -159,6 +160,30 @@ section.
 | `setDamage(value)`                                | `set damage to <value>` (inside `onDamage`)                                             |
 | `replaceAllIn(var, find, repl, caseSensitive?)`   | `replace all <find> in {var} with <repl>` (`with case sensitivity` when asked)          |
 | `replaceFirstIn(var, find, repl, caseSensitive?)` | `replace first <find> in {var} with <repl>`                                             |
+
+**Console command execution** (`executeConsoleCommand`,
+ext-console U1): runs a command string as the server
+console. This is the subset's **last resort** — a temporary
+fill for functionality the subset does not cover — not a
+replacement for dedicated builders. The command runs with
+**full console permissions**: any string a player can
+influence (a command argument, chat text, a variable they
+control) becomes a console command with no permission
+check of its own, so scripts must treat the input as
+trusted or sanitize it themselves. The command's feedback
+goes to the console / server log, not to the player who
+triggered it, and the statement yields no result value —
+there is no success / failure read-back in either runtime.
+A leading `/` is accepted (the original's own examples
+write `"/stop"`); the engine strips exactly one leading
+slash before dispatching. A missing or empty command is a
+no-op. The player-execution family (`make %player% execute
+...`) is deliberately **not** offered: the brief's scope is
+console execution only, and the probed forms are recorded
+with the lane's findings. `examples/consolecmd.ts`
+exercises the fixed, slashed and argument-built forms, and
+`examples/behavior/consolecmd.behavior.ts` asserts the
+identical console `say` broadcasts under both runtimes.
 
 ## Expressions
 
@@ -1346,6 +1371,38 @@ clicking through a live GUI; see the development log):
   a number and a boolean tag, and a `/tagcheck` command
   that reads them back and branches on `hasItemTag` —
   and `examples/behavior/itemtags.behavior.ts` drives a
+  bot through the flow under the engine.
+- **Chunk tags (engine-only)**: the chunk counterpart
+  of the hidden item tags, with the same rules — a
+  script using any of them deploys IR-only, keys are
+  validated at build time (lowercase `[a-z0-9._-]`
+  only), the engine namespaces every key with the
+  plugin's own NamespacedKey (`skript-ts`), and the
+  type mapping is identical (text -> `STRING`, number
+  -> `DOUBLE`, boolean -> `BYTE` 1/0). The subset has
+  no chunk value type, so the target is a **location
+  or a block** expression (an entity target resolves
+  via its location) and the chunk containing it is the
+  tag's home: `setChunkTag(target, key, value)` writes
+  (a value that is not text / number / boolean is a
+  no-op), `chunkTag(target, key)` reads (no value when
+  the tag is missing), `hasChunkTag(target, key)` is
+  the leaf-condition form, and `deleteChunkTag(target,
+  key)` removes a tag. Access **never force-loads a
+  chunk**: Bukkit's chunk PersistentDataContainer is
+  only available on loaded chunks, so a target in an
+  unloaded chunk reads as no value / false and writes
+  are no-ops. Persistence is delegated to the world
+  data — Bukkit saves a chunk's PDC with the chunk —
+  so a record such as "a block was placed in this
+  chunk" survives restarts without growing
+  `variables.json`. `examples/chunktags.ts` exercises
+  it — a `/chunkmark` command that places a stone block
+  and stamps its chunk with a text, a number and a
+  boolean tag, and a `/chunkcheck` command that reads
+  them back, branches on `hasChunkTag`, and deletes
+  the text tag — and
+  `examples/behavior/chunktags.behavior.ts` drives a
   bot through the flow under the engine.
 - **Held items**: `toolOf(player)` is the item in the
   player's main hand (`tool of %player%`, Skript's

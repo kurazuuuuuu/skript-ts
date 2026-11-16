@@ -1,0 +1,14 @@
+command /consolesay:
+    trigger:
+        execute console command "say extconsole-fixed"
+        send "consolesay: dispatched" to player
+
+command /consoleslash:
+    trigger:
+        execute console command "/say extconsole-slash"
+        send "consoleslash: dispatched" to player
+
+command /consoleecho [<text>]:
+    trigger:
+        execute console command "say extconsole-echo %arg-1%"
+        send "consoleecho: dispatched" to player

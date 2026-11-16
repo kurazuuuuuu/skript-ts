@@ -276,6 +276,7 @@ const COND_KINDS: ReadonlySet<string> = new Set([
   "hasItem",
   "canHoldItem",
   "hasItemTag",
+  "hasChunkTag",
   "chance",
   "timerActive",
   "guiEventIs",
@@ -557,6 +558,21 @@ export function send(target: Expr, message: Value): Stmt {
 /** Construct a broadcast statement. The message may be any expression; text expressions emit as quoted strings. */
 export function broadcast(message: Value): Stmt {
   return withLoc({ kind: "broadcast", message: toExpr(message) });
+}
+
+/**
+ * Construct a console-command statement (core): run a command as
+ * the server console (`execute console command <text>`). The
+ * command runs with full console permissions and its feedback
+ * goes to the console, not to any player — this is the subset's
+ * last-resort escape hatch, so prefer a dedicated builder where
+ * one exists. A leading `/` is accepted (the original's own
+ * examples write `"/stop"`); the engine strips one leading slash
+ * before dispatching, matching that form. A missing or empty
+ * command is a no-op in both runtimes.
+ */
+export function executeConsoleCommand(command: Value): Stmt {
+  return withLoc({ kind: "executeConsoleCommand", command: toExpr(command) });
 }
 
 /** Construct a give statement. */
@@ -914,6 +930,7 @@ const WHILE_LEAF_KINDS: ReadonlySet<Cond["kind"]> = new Set([
   "hasItem",
   "canHoldItem",
   "hasItemTag",
+  "hasChunkTag",
   "isOp",
   "equals",
   "notEquals",
@@ -3552,6 +3569,68 @@ export function itemTag(item: Expr, key: string): Expr {
 /** Construct a has-item-tag condition (engine-only): the item carries a hidden tag under the key. */
 export function hasItemTag(item: Expr, key: string): Cond {
   return { kind: "hasItemTag", item, key: requireItemTagKey(key) };
+}
+
+// ---------------------------------------------------------------------------
+// Chunk tags (ext-console U2): ENGINE-ONLY
+//
+// The chunk counterpart of the hidden item tags above, with the
+// same rules: values live in a PersistentDataContainer (here the
+// chunk's own PDC, which Bukkit persists with the chunk in the
+// world data — not in variables.json), Skript has no PDC access,
+// keys are validated at build time (lowercase [a-z0-9._-] only),
+// the engine namespaces every key with the plugin's own
+// NamespacedKey ("skript-ts"), and the type mapping is identical
+// (text -> STRING, number -> DOUBLE, boolean -> BYTE 1/0).
+//
+// The target is NOT a chunk value (the subset has no chunk type):
+// it is a location or a block expression, and the chunk that
+// contains it is the tag's home (an entity target resolves via
+// its location). Access NEVER force-loads a chunk: a target in
+// an unloaded chunk reads as no value / false and writes are
+// no-ops, because Bukkit's chunk PDC is only available on loaded
+// chunks. Deletion is the explicit deleteChunkTag statement.
+// ---------------------------------------------------------------------------
+
+/** Validate a chunk tag key at build time: same rule as item tag keys. */
+function requireChunkTagKey(key: string): string {
+  if (typeof key !== "string" || !ITEM_TAG_KEY_PATTERN.test(key)) {
+    throw new RangeError(
+      "chunk tag key must be a non-empty lowercase [a-z0-9._-] string: " + JSON.stringify(key),
+    );
+  }
+  return key;
+}
+
+/**
+ * Construct a set-chunk-tag statement (engine-only): write a
+ * hidden tag into the PersistentDataContainer of the chunk
+ * containing the target (a location or block expression). A
+ * value that is not text / number / boolean, a non-location
+ * target, and an unloaded chunk are all no-ops.
+ */
+export function setChunkTag(target: Expr, key: string, value: Value): Stmt {
+  return withLoc({
+    kind: "setChunkTag",
+    target,
+    key: requireChunkTagKey(key),
+    value: toExpr(value),
+  });
+}
+
+/** Construct a delete-chunk-tag statement (engine-only): remove a hidden tag from the chunk containing the target. */
+export function deleteChunkTag(target: Expr, key: string): Stmt {
+  return withLoc({ kind: "deleteChunkTag", target, key: requireChunkTagKey(key) });
+}
+
+/** Construct a chunk-tag expression (engine-only): the tag value on the chunk containing the target, or no value when absent / unloaded. */
+export function chunkTag(target: Expr, key: string): Expr {
+  return { kind: "chunkTag", target, key: requireChunkTagKey(key) };
+}
+
+/** Construct a has-chunk-tag condition (engine-only): the chunk containing the target carries a hidden tag under the key. */
+export function hasChunkTag(target: Expr, key: string): Cond {
+  return { kind: "hasChunkTag", target, key: requireChunkTagKey(key) };
 }
 
 /** Construct a set-slot statement: write an item into a 0-based slot of an inventory (a player means their own inventory). */

@@ -1,0 +1,231 @@
+{
+  "kind": "script",
+  "body": [
+    {
+      "kind": "command",
+      "name": "chunkmark",
+      "args": [],
+      "body": [
+        {
+          "kind": "setBlock",
+          "location": {
+            "kind": "locationOf",
+            "target": {
+              "kind": "player"
+            }
+          },
+          "item": {
+            "kind": "item",
+            "name": "stone"
+          }
+        },
+        {
+          "kind": "setChunkTag",
+          "target": {
+            "kind": "blockAt",
+            "location": {
+              "kind": "locationOf",
+              "target": {
+                "kind": "player"
+              }
+            }
+          },
+          "key": "placed",
+          "value": {
+            "kind": "string",
+            "value": "stone-marker"
+          }
+        },
+        {
+          "kind": "setChunkTag",
+          "target": {
+            "kind": "blockAt",
+            "location": {
+              "kind": "locationOf",
+              "target": {
+                "kind": "player"
+              }
+            }
+          },
+          "key": "count",
+          "value": {
+            "kind": "number",
+            "value": 7
+          }
+        },
+        {
+          "kind": "setChunkTag",
+          "target": {
+            "kind": "blockAt",
+            "location": {
+              "kind": "locationOf",
+              "target": {
+                "kind": "player"
+              }
+            }
+          },
+          "key": "owned",
+          "value": {
+            "kind": "boolean",
+            "value": true
+          }
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "string",
+            "value": "chunkmark: marked"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "command",
+      "name": "chunkcheck",
+      "args": [],
+      "body": [
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "format",
+            "parts": [
+              "chunkcheck: placed=",
+              {
+                "kind": "chunkTag",
+                "target": {
+                  "kind": "locationOf",
+                  "target": {
+                    "kind": "player"
+                  }
+                },
+                "key": "placed"
+              },
+              " count=",
+              {
+                "kind": "chunkTag",
+                "target": {
+                  "kind": "locationOf",
+                  "target": {
+                    "kind": "player"
+                  }
+                },
+                "key": "count"
+              },
+              " owned=",
+              {
+                "kind": "chunkTag",
+                "target": {
+                  "kind": "locationOf",
+                  "target": {
+                    "kind": "player"
+                  }
+                },
+                "key": "owned"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "hasChunkTag",
+            "target": {
+              "kind": "locationOf",
+              "target": {
+                "kind": "player"
+              }
+            },
+            "key": "placed"
+          },
+          "then": [
+            {
+              "kind": "send",
+              "target": {
+                "kind": "player"
+              },
+              "message": {
+                "kind": "string",
+                "value": "chunkcheck: tagged=yes"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "deleteChunkTag",
+          "target": {
+            "kind": "locationOf",
+            "target": {
+              "kind": "player"
+            }
+          },
+          "key": "placed"
+        },
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "hasChunkTag",
+            "target": {
+              "kind": "locationOf",
+              "target": {
+                "kind": "player"
+              }
+            },
+            "key": "placed"
+          },
+          "then": [
+            {
+              "kind": "send",
+              "target": {
+                "kind": "player"
+              },
+              "message": {
+                "kind": "string",
+                "value": "chunkcheck: after-delete=tagged"
+              }
+            }
+          ],
+          "else": [
+            {
+              "kind": "send",
+              "target": {
+                "kind": "player"
+              },
+              "message": {
+                "kind": "string",
+                "value": "chunkcheck: after-delete=untagged"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "send",
+          "target": {
+            "kind": "player"
+          },
+          "message": {
+            "kind": "format",
+            "parts": [
+              "chunkcheck: missing=",
+              {
+                "kind": "chunkTag",
+                "target": {
+                  "kind": "locationOf",
+                  "target": {
+                    "kind": "player"
+                  }
+                },
+                "key": "placed"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

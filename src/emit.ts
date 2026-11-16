@@ -403,6 +403,7 @@ function emitValue(e: Expr): string {
     case "eventCursor":
     case "freeSpaceFor":
     case "itemTag":
+    case "chunkTag":
     case "guiEventId":
       // Engine-builtin expressions (phases 6-10, 26, the
       // world paint family, phase 28's cursor, the
@@ -595,6 +596,7 @@ function emitString(e: Expr): string {
     case "eventCursor":
     case "freeSpaceFor":
     case "itemTag":
+    case "chunkTag":
     case "guiEventId":
       throw new Error(
         `Unhandled Expr in emitString: '${e.kind}' is an engine-only builtin with no .sk form`,
@@ -738,6 +740,7 @@ function emitLeafCond(c: Cond, negated: boolean): string {
     case "httpOk":
     case "cfOk":
     case "hasItemTag":
+    case "hasChunkTag":
       throw new Error(
         `Unhandled Cond in emitCond: '${c.kind}' is an engine-only builtin with no .sk form`,
       );
@@ -1066,6 +1069,8 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
       return [own(`${prefix}send ${emitText(s.message)} to ${emitValue(s.target)}`, path, s.loc)];
     case "broadcast":
       return [own(`${prefix}broadcast ${emitText(s.message)}`, path, s.loc)];
+    case "executeConsoleCommand":
+      return [own(`${prefix}execute console command ${emitText(s.command)}`, path, s.loc)];
     case "sendTitle": {
       // The timing tail comes after the target (probed:
       // `for` before `to` is a parse error), in stay /
@@ -1458,6 +1463,8 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
     case "sendResourcePack":
     case "paint":
     case "setItemTag":
+    case "setChunkTag":
+    case "deleteChunkTag":
     case "spawnParticle":
     case "launchFirework":
     case "openGuiTagged":

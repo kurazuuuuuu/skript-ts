@@ -281,6 +281,7 @@ import { worldScript } from "../examples/world.js";
 import { stateScript } from "../examples/state.js";
 import { commandsScript } from "../examples/commands.js";
 import { cooldownScript } from "../examples/cooldown.js";
+import { consoleCmdScript } from "../examples/consolecmd.js";
 import { displayScript } from "../examples/display.js";
 import { bossbarScript } from "../examples/bossbar.js";
 import { timespanScript } from "../examples/timespan.js";
@@ -379,6 +380,9 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("cooldown", () => {
     expect(emit(cooldownScript)).toBe(fixture("cooldown.sk"));
+  });
+  it("consolecmd", () => {
+    expect(emit(consoleCmdScript)).toBe(fixture("consolecmd.sk"));
   });
   it("display", () => {
     expect(emit(displayScript)).toBe(fixture("display.sk"));
