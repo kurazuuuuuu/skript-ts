@@ -1734,6 +1734,75 @@ expressions), and food / game-mode state on
 non-player entities (player-only in the
 original's type system).
 
+## Entity equipment, names, AI, tags, attributes and velocity
+
+Entity manipulation beyond health (feedback D, ext-entity
+wave) is core language: the same script runs under Skript
+(as emitted `.sk`) and under the engine jar. Semantics were
+probed against the real Skript 2.17.1 in the sandbox (probe
+rounds in the lane findings):
+
+- **Equipment**: `equipmentOf(entity, slot)` /
+  `setEquipment(entity, slot, item)` with `slot` one of
+  `"helmet"`, `"chestplate"`, `"leggings"`, `"boots"`,
+  `"mainhand"`, `"offhand"` (a validated literal). The armor
+  slots emit the original's armor forms (`helmet of
+  %entity%`, ...); the hands emit its tool forms over living
+  entities (`tool of %entity%` / `offhand tool of %entity%`)
+  — so for a player, `equipmentOf(p, "mainhand")` reads the
+  same live hand as `toolOf(p)`, which stays as the
+  player-spelled convenience. An empty armor slot has **no
+  value**; an empty hand reads as the `air` item (the tool
+  expressions' probed rule). A target with no equipment (a
+  non-living entity) has no value, and writing to one does
+  nothing. Setting a slot from an item expression with no
+  value clears the slot.
+- **Custom name**: `customNameOf(entity)` /
+  `setCustomName(entity, text)` /
+  `setCustomNameVisible(entity, bool)` — the entity's
+  name-tag name (`custom name of %entity%`). This is NOT a
+  player's account name: `nameOf(player)` stays the account
+  name, and an item's display name is also `nameOf` — the
+  three are kept distinct in the API names on purpose. An
+  unnamed entity's custom name has no value.
+- **AI and scoreboard tags**: `hasAi(entity)` /
+  `setAi(entity, bool)` switch a living entity's AI (a mob
+  with AI off stands still and does not act), and
+  `addEntityTag` / `removeEntityTag` / `hasEntityTag` edit
+  and test the entity's Bukkit scoreboard tag set (the
+  original's `scoreboard tags of %entity%` list).
+- **General attributes**: `attributeOf(entity, name)` reads
+  the **total** (modifier-applied) value and
+  `setAttribute(entity, name, value)` writes the **base**
+  value of one validated attribute literal: `"attack
+  damage"`, `"movement speed"`, `"armor"`, `"armor
+  toughness"`, `"knockback resistance"`, `"max health"`,
+  `"attack speed"`, `"follow range"`. Values are the raw
+  Bukkit attribute numbers — in particular `"max health"`
+  reads **hit points** (20 for a full-health player), NOT
+  the hearts of `maxHealthOf`; the other attributes are
+  unitless raw values (movement speed 0.23 is a zombie's,
+  attack damage is in half-hearts as Bukkit counts them).
+  An entity lacking the attribute (attack damage on a cow)
+  reads no value and ignores writes.
+- **Velocity**: the original's velocity is a vector and the
+  subset has no vector type, so reads are per-component —
+  `velocityComponentOf(entity, "x" | "y" | "z")`, in blocks
+  per tick — and the write takes the three components:
+  `setVelocity(entity, x, y, z)` replaces the velocity
+  outright, which covers the practical use (knockback /
+  launching) without a vector value type.
+
+`examples/entity.ts` exercises all of it — `/entmake`
+spawns and dresses a zombie (AI frozen, iron helmet /
+chestplate / sword, name "Boss Zombie", tag "boss", attack
+damage 5, armor 2), `/entcheck` reads it back, `/entvel`
+launches it and reads the components in the same trigger,
+`/entstrip` renames and untags it, `/enthand` compares the
+player's hand through both hand reads — and
+`examples/behavior/entity.behavior.ts` drives a bot through
+the whole flow under both runtimes.
+
 ## Command definitions
 
 Commands take any number of typed arguments, plus the

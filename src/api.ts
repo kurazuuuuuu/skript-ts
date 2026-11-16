@@ -3866,7 +3866,12 @@ export function equipmentOf(target: Expr, slot: EquipmentSlotName): Expr {
 
 /** Construct a set-equipment statement (`set helmet of <target> to <item>`): write an item into one equipment slot of a living entity; an item expression with no value clears the slot. */
 export function setEquipment(target: Expr, slot: EquipmentSlotName, itemValue: Expr): Stmt {
-  return withLoc({ kind: "setEquipment", target, slot: requireEquipmentSlot(slot), item: itemValue });
+  return withLoc({
+    kind: "setEquipment",
+    target,
+    slot: requireEquipmentSlot(slot),
+    item: itemValue,
+  });
 }
 
 /** Construct a custom-name expression: an entity's custom (name-tag) name, or no value when unnamed. Not a player's account name — see nameOf for that. */
@@ -3952,7 +3957,12 @@ export function attributeOf(target: Expr, attribute: AttributeName): Expr {
 
 /** Construct a set-attribute statement: write the BASE value of one attribute of a living entity, in raw Bukkit units. */
 export function setAttribute(target: Expr, attribute: AttributeName, value: Expr): Stmt {
-  return withLoc({ kind: "setAttribute", target, attribute: requireAttributeName(attribute), value });
+  return withLoc({
+    kind: "setAttribute",
+    target,
+    attribute: requireAttributeName(attribute),
+    value,
+  });
 }
 
 /** Construct a velocity-component expression: one axis ("x" / "y" / "z") of an entity's velocity, in blocks per tick. */

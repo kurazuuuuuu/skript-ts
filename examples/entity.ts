@@ -125,12 +125,7 @@ const entstrip = command("entstrip", null, [
 const enthand = command("enthand", null, [
   send(
     player(),
-    fmt(
-      "enthand: tool=",
-      toolOf(player()),
-      " equip=",
-      equipmentOf(player(), "mainhand"),
-    ),
+    fmt("enthand: tool=", toolOf(player()), " equip=", equipmentOf(player(), "mainhand")),
   ),
 ]);
 
