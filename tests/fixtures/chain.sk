@@ -1,0 +1,15 @@
+on join:
+    if {mining_level::%player%} is greater than or equal to 10:
+        send "mining rank: expert" to player
+
+command /chainstats:
+    trigger:
+        set {bonus} to ((level of player * 10) + 5)
+        send "hp=%health of player% bonus=%{bonus}%" to player
+        if health of player is less than 5:
+            broadcast "someone is low on health"
+
+command /chainshout:
+    trigger:
+        if length of message is greater than 10:
+            broadcast "shout: %message in uppercase%"
