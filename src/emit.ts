@@ -70,6 +70,12 @@ function emitValue(e: Expr): string {
       return "clicked entity";
     case "eventEntity":
       return "event-entity";
+    case "eventLocation":
+      return "event-location";
+    case "pastEventLocation":
+      return "past event-location";
+    case "smeltedItem":
+      return "smelted item";
     case "hookedEntity":
       return "hooked entity";
     case "fishingHook":
@@ -360,6 +366,7 @@ function emitValue(e: Expr): string {
       return "fishing bite time";
     case "fishingApproachAngle":
       return `${e.bound} fishing approach angle`;
+    case "areaName":
     case "wsMessage":
     case "wsId":
     case "borderSize":
@@ -457,6 +464,9 @@ function emitString(e: Expr): string {
     case "eventItem":
     case "clickedEntity":
     case "eventEntity":
+    case "eventLocation":
+    case "pastEventLocation":
+    case "smeltedItem":
     case "hookedEntity":
     case "fishingHook":
     case "eventFishingState":
@@ -552,6 +562,7 @@ function emitString(e: Expr): string {
       return `%${emitValue(e)}%`;
     case "format":
       return emitStringParts(e.parts);
+    case "areaName":
     case "wsMessage":
     case "wsId":
     case "borderSize":
@@ -1233,6 +1244,8 @@ function emitStmt(s: Stmt, level: number, path: string): OwnedLine[] {
       return [own(`${prefix}uncancel event`, path, s.loc)];
     case "setDamage":
       return [own(`${prefix}set damage to ${emitValue(s.value)}`, path, s.loc)];
+    case "setSmeltedItem":
+      return [own(`${prefix}set the smelted item to ${emitValue(s.item)}`, path, s.loc)];
     case "textReplace":
       return [
         own(
@@ -1565,6 +1578,10 @@ function eventHeaderBase(t: Extract<TopLevel, { kind: "event" }>): string {
       return "on inventory close";
     case "inventoryDrag":
       return "on inventory drag";
+    case "smelt":
+      return `on smelt${f?.ofTypes ? ` of ${typeList(f.ofTypes)}` : ""}`;
+    case "move":
+      return "on player move";
     case "consume":
       return "on consume";
     case "craft":
@@ -1593,7 +1610,9 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
         t.event === "httpResponse" ||
         t.event === "cfResponse" ||
         t.event === "resourcePackStatus" ||
-        t.event === "swapHand"
+        t.event === "swapHand" ||
+        t.event === "areaEnter" ||
+        t.event === "areaLeave"
       ) {
         throw new Error(
           `Unhandled Event in emitTop: '${t.event}' is an engine-only builtin with no .sk form`,
@@ -1663,6 +1682,10 @@ function emitTop(t: TopLevel, path: string): OwnedLine[] {
       const header = `function ${t.name}(${params})${ret}:`;
       return [own(header, path, t.loc), ...emitBlock(t.body, 1, path, "body")];
     }
+    case "defineArea":
+      throw new Error(
+        "Unhandled TopLevel in emitTop: 'defineArea' is an engine-only builtin with no .sk form",
+      );
     case "periodical": {
       // The unit word is always the plural (the original's
       // timespan grammar accepts "every 1 minutes" too —

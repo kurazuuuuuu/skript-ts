@@ -96,6 +96,8 @@ const ENGINE_ONLY_KINDS: ReadonlySet<string> = new Set([
   "packRequired",
   "sendResourcePack",
   "resourcePackStatus",
+  "defineArea",
+  "areaName",
   "cuboidShape",
   "sphereShape",
   "cylinderShape",
@@ -130,6 +132,10 @@ const ENGINE_ONLY_EVENTS: ReadonlySet<string> = new Set([
   // Feedback batch D: Skript has no swap-hand event under any
   // spelling, so the event exists only in the engine.
   "swapHand",
+  // Ext-events U3: area enter/leave are engine-only (the
+  // original's region events need a regions plugin).
+  "areaEnter",
+  "areaLeave",
 ]);
 
 function containsEngineOnly(value: unknown): boolean {

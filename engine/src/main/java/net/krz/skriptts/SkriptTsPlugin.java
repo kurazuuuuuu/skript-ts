@@ -38,6 +38,9 @@ import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.Location;
+import org.bukkit.event.inventory.FurnaceSmeltEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -772,11 +775,16 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        // Area tracking baseline (ext-events U3): the areas a
+        // player spawns inside are recorded silently — entering
+        // is a transition, and there is none at join.
+        areaBaseline(player);
         engine.fireEvent("join", baseCtx(player), !player.hasPlayedBefore());
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        areaTrackerClear(event.getPlayer());
         engine.fireEvent("quit", baseCtx(event.getPlayer()), false);
     }
 
@@ -1198,6 +1206,102 @@ public final class SkriptTsPlugin extends JavaPlugin implements Listener {
         ctx.eventItem = normalizeItem(event.getMainHandItem());
         ctx.cancellable = event;
         engine.fireEvent("swapHand", ctx, false);
+    }
+
+    // ------------------------------------------------------------------
+    // Smelt and move events (ext-events U1/U2, core language —
+    // both headers exist in the original and were probed against
+    // the real Skript 2.17.1), plus the engine-only area
+    // enter/leave events (U3), which ride the same move listener:
+    // whenever a player's BLOCK position changes, the engine
+    // compares the destination against every defineArea cuboid
+    // and fires the transition events. A move cancelled by a
+    // move handler never happened, so it produces no area
+    // transition either.
+    // ------------------------------------------------------------------
+
+    @EventHandler
+    public void onSmelt(FurnaceSmeltEvent event) {
+        // No player in a smelt event (the original rejects
+        // `player` there at parse time). The generic event-item
+        // is the furnace block in item form, as in the original;
+        // the filter's "of" slot matches the SOURCE stack, and
+        // the result rides the live event (smeltedItem /
+        // setSmeltedItem).
+        Engine.Ctx ctx = new Engine.Ctx();
+        ctx.eventBlock = event.getBlock();
+        ctx.eventItem = new ItemStack(event.getBlock().getType());
+        ctx.smeltSource = normalizeItem(event.getSource() == null ? null : event.getSource().clone());
+        ctx.smeltEvent = event;
+        ctx.cancellable = event;
+        engine.fireEvent("smelt", ctx, false);
+    }
+
+    @EventHandler
+    public void onPlayerMove(PlayerMoveEvent event) {
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        // Look-only changes are not moves (probed in the
+        // original: rotating the head fires nothing).
+        if (from.getX() == to.getX() && from.getY() == to.getY() && from.getZ() == to.getZ()) {
+            return;
+        }
+        Engine.Ctx ctx = baseCtx(event.getPlayer());
+        ctx.eventLocation = to.clone();
+        ctx.pastEventLocation = from.clone();
+        ctx.cancellable = event;
+        engine.fireEvent("move", ctx, false);
+        if (event.isCancelled()) return;
+        if (from.getBlockX() != to.getBlockX()
+                || from.getBlockY() != to.getBlockY()
+                || from.getBlockZ() != to.getBlockZ()) {
+            updateAreas(event.getPlayer(), from, to);
+        }
+    }
+
+    /** The area names each online player is currently inside, by player id (ext-events U3). */
+    private final java.util.Map<java.util.UUID, java.util.Set<String>> areaMembership = new java.util.HashMap<>();
+
+    /** Record the areas a player is inside without firing any event (the join baseline). */
+    private void areaBaseline(Player player) {
+        java.util.Set<String> inside = new java.util.HashSet<>();
+        for (Engine.AreaDef area : engine.areas()) {
+            if (area.contains(player.getLocation())) inside.add(area.name());
+        }
+        areaMembership.put(player.getUniqueId(), inside);
+    }
+
+    private void areaTrackerClear(Player player) {
+        areaMembership.remove(player.getUniqueId());
+    }
+
+    /** Fire areaEnter / areaLeave for every area whose membership the block move changed. */
+    private void updateAreas(Player player, Location from, Location to) {
+        java.util.Set<String> before = areaMembership.computeIfAbsent(player.getUniqueId(), id -> {
+            // No baseline (e.g. the program was reloaded while the
+            // player was online): derive it from the origin side.
+            java.util.Set<String> s = new java.util.HashSet<>();
+            for (Engine.AreaDef area : engine.areas()) {
+                if (area.contains(from)) s.add(area.name());
+            }
+            return s;
+        });
+        for (Engine.AreaDef area : engine.areas()) {
+            boolean was = before.contains(area.name());
+            boolean now = area.contains(to);
+            if (was == now) continue;
+            Engine.Ctx ctx = baseCtx(player);
+            ctx.areaName = area.name();
+            ctx.eventLocation = to.clone();
+            ctx.pastEventLocation = from.clone();
+            if (now) {
+                before.add(area.name());
+                engine.fireEvent("areaEnter", ctx, false);
+            } else {
+                before.remove(area.name());
+                engine.fireEvent("areaLeave", ctx, false);
+            }
+        }
     }
 
     /**
