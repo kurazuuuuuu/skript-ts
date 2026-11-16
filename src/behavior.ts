@@ -160,6 +160,8 @@ export interface BehaviorBot {
   // events.
   /** Set the sneak control state (each change fires the toggle-sneak event on the server). */
   setSneak(on: boolean): void;
+  /** Set the forward-walk control state (ext-events: walking is what fires the move / area events on the server). */
+  setForward(on: boolean): void;
   /** Craft one batch of the named item from inventory materials, without a crafting table (the 2x2 grid). Throws when no usable recipe exists. */
   craftItem(itemName: string, timeoutMs?: number): Promise<void>;
   // RP-3 controls: resource-pack offers — enough to exercise the
@@ -919,6 +921,10 @@ class MineflayerBehaviorBot implements BehaviorBot {
 
   setSneak(on: boolean): void {
     this.bot.setControlState("sneak", on);
+  }
+
+  setForward(on: boolean): void {
+    this.bot.setControlState("forward", on);
   }
 
   resourcePackOffers(): readonly ResourcePackOffer[] {

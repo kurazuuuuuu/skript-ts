@@ -37,6 +37,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.inventory.FurnaceSmeltEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
@@ -263,6 +264,11 @@ final class Engine {
         String clickType; // "click type" in inventory click events; null elsewhere
         Cancellable cancellable; // the Bukkit event being handled, when it can be cancelled
         EntityDamageEvent damageEvent; // the live damage event (damage get/set); null elsewhere
+        Location eventLocation; // "event-location" in move / area events (the destination)
+        Location pastEventLocation; // "past event-location" in move / area events (the origin)
+        ItemStack smeltSource; // the source stack of a smelt event (the header filter's slot)
+        FurnaceSmeltEvent smeltEvent; // the live smelt event (smelted item get/set); null elsewhere
+        String areaName; // "area name" in area enter/leave events (engine-only); null elsewhere
         String chatMessage; // "message" in chat events
         String wsId;        // websocket connection id in websocket events
         String wsText;      // received text in websocket message events
@@ -309,6 +315,11 @@ final class Engine {
             c.clickType = clickType;
             c.cancellable = cancellable;
             c.damageEvent = damageEvent;
+            c.eventLocation = eventLocation;
+            c.pastEventLocation = pastEventLocation;
+            c.smeltSource = smeltSource;
+            c.smeltEvent = smeltEvent;
+            c.areaName = areaName;
             c.chatMessage = chatMessage;
             c.wsId = wsId;
             c.wsText = wsText;
@@ -760,6 +771,58 @@ final class Engine {
             byName.computeIfAbsent(name, k -> new ArrayList<>()).add(top);
         }
         this.functions = byName;
+        // Area definitions (ext-events U3, engine-only): the
+        // corner expressions are evaluated once, here at load
+        // time, in a blank context (they are location expressions
+        // by contract). A definition whose corners do not both
+        // evaluate to locations in the same world is dropped with
+        // a warning.
+        List<AreaDef> areas = new ArrayList<>();
+        for (Map<String, Object> top : topLevels) {
+            if (!"defineArea".equals(kind(top))) continue;
+            String name = str(top.get("name"));
+            Ctx blank = new Ctx();
+            Object c1 = evalExpr(node(top.get("corner1")), blank);
+            Object c2 = evalExpr(node(top.get("corner2")), blank);
+            if (name == null || !(c1 instanceof Location a) || !(c2 instanceof Location b)
+                    || a.getWorld() == null || !a.getWorld().equals(b.getWorld())) {
+                logger.warning("skript-ts: defineArea '" + name + "' ignored; its corners are not two locations in one world");
+                continue;
+            }
+            areas.add(new AreaDef(name, a, b));
+        }
+        this.areaDefs = areas;
+    }
+
+    /** A named cuboid area (ext-events U3): the two corners normalized to min/max block coordinates. */
+    record AreaDef(String name, Location min, Location max) {
+        AreaDef {
+            Location a = min;
+            Location b = max;
+            min = new Location(a.getWorld(),
+                    Math.min(a.getBlockX(), b.getBlockX()),
+                    Math.min(a.getBlockY(), b.getBlockY()),
+                    Math.min(a.getBlockZ(), b.getBlockZ()));
+            max = new Location(a.getWorld(),
+                    Math.max(a.getBlockX(), b.getBlockX()),
+                    Math.max(a.getBlockY(), b.getBlockY()),
+                    Math.max(a.getBlockZ(), b.getBlockZ()));
+        }
+
+        /** Whether the location's BLOCK position is inside the cuboid (bounds inclusive, world must match). */
+        boolean contains(Location loc) {
+            return loc.getWorld() != null && loc.getWorld().equals(min.getWorld())
+                    && loc.getBlockX() >= min.getBlockX() && loc.getBlockX() <= max.getBlockX()
+                    && loc.getBlockY() >= min.getBlockY() && loc.getBlockY() <= max.getBlockY()
+                    && loc.getBlockZ() >= min.getBlockZ() && loc.getBlockZ() <= max.getBlockZ();
+        }
+    }
+
+    private List<AreaDef> areaDefs = List.of();
+
+    /** The loaded program's area definitions, in declaration order. */
+    List<AreaDef> areas() {
+        return areaDefs;
     }
 
     List<Map<String, Object>> topLevels() {
@@ -836,7 +899,11 @@ final class Engine {
         if (!(top.get("filter") instanceof Map<?, ?> filter)) return true;
         String ev = str(top.get("event"));
         if (filter.get("ofTypes") instanceof List<?> names) {
-            Object value = ("pickup".equals(ev) || "drop".equals(ev)
+            // The smelt "of" slot matches the SOURCE item (probed
+            // against the real Skript 2.17.1), not the furnace
+            // block the generic event-item carries there.
+            Object value = "smelt".equals(ev) ? ctx.smeltSource
+                    : ("pickup".equals(ev) || "drop".equals(ev)
                     || "entityPickup".equals(ev) || "entityDrop".equals(ev))
                     ? ctx.eventItem : ctx.eventBlock;
             if (!typeListMatches(names, value)) return false;
@@ -1965,6 +2032,19 @@ final class Engine {
                 Object v = evalExpr(node(stmt.get("value")), ctx);
                 if (ctx.damageEvent != null && v instanceof Number n) {
                     ctx.damageEvent.setDamage(n.doubleValue());
+                }
+                cont.run();
+            }
+            case "setSmeltedItem" -> {
+                // The smelted item is settable in Skript (probed:
+                // `set the smelted item to gold ingot` changed the
+                // furnace's result slot); the write lands on the
+                // live FurnaceSmeltEvent, so smeltedItem() reads in
+                // the same handler see it.
+                Object v = evalExpr(node(stmt.get("item")), ctx);
+                ItemStack stack = toItemStack(v);
+                if (ctx.smeltEvent != null && stack != null) {
+                    ctx.smeltEvent.setResult(stack);
                 }
                 cont.run();
             }
@@ -3988,6 +4068,10 @@ final class Engine {
             // original both names denote the caught entity of
             // an entity-hooked event (verified live).
             case "eventEntity" -> ctx.eventEntity;
+            case "eventLocation" -> ctx.eventLocation;
+            case "pastEventLocation" -> ctx.pastEventLocation;
+            case "smeltedItem" -> ctx.smeltEvent == null ? null : ctx.smeltEvent.getResult();
+            case "areaName" -> ctx.areaName;
             case "hookedEntity" -> ctx.eventEntity;
             case "fishingHook" -> ctx.fishingHook;
             // Timespan values and the fishing wait / bite /

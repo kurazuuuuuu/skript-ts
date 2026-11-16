@@ -1,0 +1,7 @@
+on smelt of raw iron:
+    set the smelted item to gold ingot
+    broadcast "smelted %smelted item%"
+
+on smelt of raw gold:
+    cancel event
+    broadcast "smelt blocked"

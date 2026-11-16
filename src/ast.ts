@@ -191,6 +191,24 @@ export type Expr =
   | { kind: "fishingState"; name: FishingStateName }
   | { kind: "droppedItemEntity" }
   | { kind: "itemOfEntity"; target: Expr }
+  // Event locations (ext-events U2): `event-location` is the
+  // destination of a move event (a location with yaw/pitch) and
+  // `past event-location` its origin; both were probed against
+  // the real Skript 2.17.1 in an `on player move:` handler. The
+  // engine packs the same two values for move and for the
+  // engine-only area enter/leave events; anywhere else they
+  // have no value.
+  | { kind: "eventLocation" }
+  | { kind: "pastEventLocation" }
+  // The smelted item (ext-events U1): the RESULT of a smelt
+  // event (`smelted item` in the original — the source is the
+  // header filter's slot, and the generic event-item there is
+  // the furnace block in item form). No value outside smelt.
+  | { kind: "smeltedItem" }
+  // The name of the area an area enter/leave event is about
+  // (ext-events U3, engine-only: the original's region events
+  // need a regions plugin the subset does not carry).
+  | { kind: "areaName" }
   // A timespan is a duration stored as whole milliseconds. Literals
   // quantize by rounding to the nearest millisecond (0.0015 seconds is
   // 2 ms); months are 30 days and years 365 days (the original's fixed
@@ -1055,6 +1073,12 @@ export type Stmt =
   | { kind: "cancelEvent"; loc?: SourceLoc }
   | { kind: "uncancelEvent"; loc?: SourceLoc }
   | { kind: "setDamage"; value: Expr; loc?: SourceLoc }
+  // The smelted-item write (ext-events U1): `set the smelted item
+  // to <item>` inside an onSmelt handler rewrites the furnace
+  // event's result (probed against the real Skript 2.17.1: the
+  // rewritten item is what lands in the furnace's result slot).
+  // Anywhere else it does nothing.
+  | { kind: "setSmeltedItem"; item: Expr; loc?: SourceLoc }
   // Core-language text replacement (phase 15): Skript's replace
   // effect, applied to the text held by a scalar variable. Probed
   // semantics: matching is literal (never a regex) and
@@ -1572,6 +1596,10 @@ export type EventKind =
   | "bedLeave"
   | "consume"
   | "craft"
+  | "smelt"
+  | "move"
+  | "areaEnter"
+  | "areaLeave"
   | "projectileHit"
   | "toggleSneak"
   | "swapHand"
@@ -1756,7 +1784,15 @@ export type TopLevel =
   // the next comes one period after the reload). The body runs
   // with no event context, like a function body: there is no
   // player or event value, only globals and the body's locals.
-  | { kind: "periodical"; amount: number; unit: TimeUnit; body: readonly Stmt[]; loc?: SourceLoc };
+  | { kind: "periodical"; amount: number; unit: TimeUnit; body: readonly Stmt[]; loc?: SourceLoc }
+  // A named cuboid area definition (ext-events U3, engine-only):
+  // the two corner expressions are evaluated once when the
+  // engine loads the program, and the engine tracks players'
+  // block positions against every defined area, firing the
+  // areaEnter / areaLeave events on transitions. There is no
+  // .sk form (the original's region events require a regions
+  // plugin), so a script containing one deploys IR-only.
+  | { kind: "defineArea"; name: string; corner1: Expr; corner2: Expr; loc?: SourceLoc };
 
 /** Represents a Skript script. */
 export interface Script {

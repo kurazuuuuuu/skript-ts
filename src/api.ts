@@ -2083,7 +2083,8 @@ function eventWithFilter(
     | "pickup"
     | "drop"
     | "entityPickup"
-    | "entityDrop",
+    | "entityDrop"
+    | "smelt",
   body: readonly Stmt[],
   filter: EventFilter,
   priority?: EventPriority,
@@ -2495,6 +2496,88 @@ export function onSwapHand(
 ): TopLevel;
 export function onSwapHand(body: EventBody<SwapHandCtx>, options?: EventOptions): TopLevel {
   return withLoc(plainEvent("swapHand", bodyOf(body, swapHandCtx), options, "onSwapHand"));
+}
+
+// ---------------------------------------------------------------------------
+// Smelt and move events (ext-events U1/U2), plus the engine-only
+// area events (U3). Smelt and move are core language: both
+// headers were probed against the real Skript 2.17.1.
+//
+// - smelt (FurnaceSmeltEvent): `on smelt [of <item types>]`.
+//   The filter matches the SOURCE item in the furnace's input
+//   slot (probed live: "of raw iron" fired for raw iron, "of
+//   iron ingot" did not). eventBlock() is the furnace block and
+//   eventItem() the furnace block in item form (the original's
+//   generic event-item there); the RESULT is the dedicated
+//   smeltedItem() expression, rewritable with setSmeltedItem().
+//   There is no player. Cancellable — a cancelled smelt leaves
+//   the source in the input slot and produces no result.
+// - move (PlayerMoveEvent): `on player move:` (the original's
+//   pattern is `%entity type% (move|walk|step)`; the subset
+//   ships the player form). It fires on every POSITION change
+//   (sub-block, per movement packet — probed live with a bot),
+//   never for look-only changes. eventLocation() is the
+//   destination, pastEventLocation() the origin. Cancellable.
+// - area enter/leave are ENGINE-ONLY (the original's region
+//   events require a regions plugin): defineArea() declares a
+//   named cuboid, and the engine fires the events when a
+//   player's block position crosses its boundary.
+// ---------------------------------------------------------------------------
+
+/** Construct an on-smelt event: a furnace (or blast furnace / smoker) smelts an item. The optional filter restricts it to the named SOURCE item types ("on smelt of raw iron"). smeltedItem() is the result; the event is cancellable. */
+export function onSmelt(body: readonly Stmt[], filter?: ItemEventFilter): TopLevel {
+  requireFilterKeys(filter, ["item", "priority"], "onSmelt");
+  const f: EventFilter = {};
+  if (filter?.item !== undefined) f.ofTypes = requireTypeNames(filter.item, "item");
+  return withLoc(eventWithFilter("smelt", body, f, requirePriority(filter?.priority, "onSmelt")));
+}
+
+/** Construct an on-move event: a player changes position (any amount, not just whole blocks; look-only changes do not fire it). eventLocation() is the destination and pastEventLocation() the origin; the event is cancellable. */
+export function onMove(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("move", body, options, "onMove"));
+}
+
+/** Construct an area-enter event: a player's block position crosses into a defineArea() cuboid. areaName() is the area's name. ENGINE-ONLY: scripts using it deploy IR-only. */
+export function onAreaEnter(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("areaEnter", body, options, "onAreaEnter"));
+}
+
+/** Construct an area-leave event: a player's block position crosses out of a defineArea() cuboid. areaName() is the area's name. ENGINE-ONLY: scripts using it deploy IR-only. */
+export function onAreaLeave(body: readonly Stmt[], options?: EventOptions): TopLevel {
+  return withLoc(plainEvent("areaLeave", body, options, "onAreaLeave"));
+}
+
+/** Define a named cuboid area from two corner locations (any pair of opposite corners). The corners are evaluated once when the engine loads the program; definitions are not persisted — the script is the source of truth. ENGINE-ONLY. */
+export function defineArea(name: string, corner1: Expr, corner2: Expr): TopLevel {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new RangeError("defineArea requires a non-empty area name");
+  }
+  return withLoc({ kind: "defineArea", name, corner1, corner2 });
+}
+
+/** Construct an event-location expression: the destination location of a move (or area enter/leave) event, with yaw/pitch; no value outside those events. */
+export function eventLocation(): Expr {
+  return { kind: "eventLocation" };
+}
+
+/** Construct a past-event-location expression: the location a move (or area enter/leave) event started from; no value outside those events. */
+export function pastEventLocation(): Expr {
+  return { kind: "pastEventLocation" };
+}
+
+/** Construct a smelted-item expression: the result item of a smelt event; no value outside one. */
+export function smeltedItem(): ItemExpr {
+  return { kind: "smeltedItem" } as ItemExpr;
+}
+
+/** Construct an area-name expression: the name of the area an area enter/leave event is about; no value outside those events. */
+export function areaName(): Expr {
+  return { kind: "areaName" };
+}
+
+/** Construct a set-smelted-item statement: rewrite the result of the smelt event being handled (`set the smelted item to <item>`). */
+export function setSmeltedItem(itemValue: Value): Stmt {
+  return withLoc({ kind: "setSmeltedItem", item: toExpr(itemValue) });
 }
 
 /** Construct an event-block expression: the block of a block break / place / click event (no value for air clicks). */

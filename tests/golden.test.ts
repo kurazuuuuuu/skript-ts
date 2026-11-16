@@ -166,6 +166,16 @@ import {
   onRightClick,
   onSwapHand,
   onToggleSneak,
+  onSmelt,
+  onMove,
+  onAreaEnter,
+  onAreaLeave,
+  defineArea,
+  smeltedItem,
+  setSmeltedItem,
+  eventLocation,
+  pastEventLocation,
+  areaName,
   offsetLocation,
   openGui,
   openInventory,
@@ -275,6 +285,9 @@ import { events2Script } from "../examples/events2.js";
 import { events3Script } from "../examples/events3.js";
 import { events4Script } from "../examples/events4.js";
 import { eventCtxScript } from "../examples/eventctx.js";
+import { smeltScript } from "../examples/smelt.js";
+import { moveScript } from "../examples/move.js";
+import { areasScript } from "../examples/areas.js";
 import { guiScript } from "../examples/gui.js";
 import { gui2Script } from "../examples/gui2.js";
 import { worldScript } from "../examples/world.js";
@@ -356,6 +369,11 @@ describe("whole sample programs (golden fixtures)", () => {
   });
   it("eventctx", () => {
     expect(emit(eventCtxScript)).toBe(fixture("eventctx.sk"));
+  it("smelt", () => {
+    expect(emit(smeltScript)).toBe(fixture("smelt.sk"));
+  });
+  it("move", () => {
+    expect(emit(moveScript)).toBe(fixture("move.sk"));
   });
   it("timespan", () => {
     expect(emit(timespanScript)).toBe(fixture("timespan.sk"));
@@ -1179,6 +1197,31 @@ describe("more events (feedback D)", () => {
         ),
       ),
     ).toBe(false);
+  });
+  it("smelt and move are core language, not engine-only", () => {
+    expect(isEngineOnlyScript(smeltScript)).toBe(false);
+    expect(isEngineOnlyScript(moveScript)).toBe(false);
+    expect(emit(script(onSmelt(body)))).toBe('on smelt:\n    broadcast "x"\n');
+    expect(emit(script(onSmelt(body, { item: ["raw iron", "raw gold"] })))).toBe(
+      'on smelt of raw iron or raw gold:\n    broadcast "x"\n',
+    );
+    expect(emit(script(onMove(body)))).toBe('on player move:\n    broadcast "x"\n');
+  });
+  it("areas are engine-only: no .sk form, IR carries the definition and events", () => {
+    expect(isEngineOnlyScript(areasScript)).toBe(true);
+    expect(() => emit(areasScript)).toThrow(/engine-only/);
+    expect(isEngineOnlyScript(script(onAreaEnter(body)))).toBe(true);
+    expect(isEngineOnlyScript(script(onAreaLeave(body)))).toBe(true);
+    const ir = toIr(areasScript) as {
+      body: { kind?: string; name?: string; event?: string }[];
+    };
+    expect(ir.body[0]?.kind).toBe("defineArea");
+    expect(ir.body[0]?.name).toBe("extzone");
+    expect(ir.body[1]?.event).toBe("areaEnter");
+    expect(ir.body[2]?.event).toBe("areaLeave");
+    expect(() =>
+      defineArea("  ", location(num(0), num(0), num(0)), location(num(1), num(1), num(1))),
+    ).toThrow(RangeError);
   });
   it("swap hand is engine-only: no .sk form, IR carries the event", () => {
     expect(isEngineOnlyScript(script(onSwapHand(body)))).toBe(true);
