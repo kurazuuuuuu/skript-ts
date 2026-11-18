@@ -1,6 +1,26 @@
 allowBuilds:
   esbuild: true
 
+overrides:
+  # GHSA-w5hq-g745-h8pq (moderate): uuid <11.1.1 misses a buffer bounds
+  # check in v3/v5/v6 when buf is provided. The vulnerable copies arrive
+  # transitively via mineflayer (minecraft-protocol > yggdrasil) and
+  # @azure/msal-node (via prismarine-auth), which pin older majors.
+  # uuid 11 keeps the same API surface those consumers use (v4 etc.) and
+  # is the advisory's patched floor, so pin the whole tree to it.
+  uuid: ^11.1.1
+
+auditConfig:
+  ignoreGhsas:
+    # GHSA-fc5q-39xc-vjpf (high): picomatch <=4.0.7 is vulnerable to ReDoS
+    # through single-branch repeated extglobs, and 4.0.7 is the latest
+    # published release — no patched version exists to upgrade to.
+    # Exposure here is dev-toolchain only: picomatch reaches this repo
+    # solely through vitest's glob matching (tinyglobby), where patterns
+    # come from this repo's own config, never from outside input.
+    # Remove this entry as soon as a fixed picomatch ships.
+    - GHSA-fc5q-39xc-vjpf
+
 # Supply-chain settings (checked whenever the lockfile is resolved
 # or installed):
 # - Do not resolve versions published less than a day ago, so a
